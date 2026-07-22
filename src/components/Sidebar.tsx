@@ -111,21 +111,21 @@ export default function Sidebar({
 
       {/* User Profile Footer */}
       <div className="border-t border-slate-100 pt-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#EFF6FF] text-[#2563EB] font-bold flex items-center justify-center text-sm">
-              {profile.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className={`w-9 h-9 rounded-full ${themeStyles.activeBg} font-black flex items-center justify-center text-xs shrink-0 shadow-sm border border-slate-100`}>
+              {profile.name.replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
             </div>
-            <div className="min-w-0">
-              <p className="font-sans font-semibold text-sm text-slate-800 truncate leading-tight">{profile.name}</p>
-              <p className="text-[11px] font-sans font-medium text-slate-400 truncate mt-0.5">{profile.role}</p>
+            <div className="min-w-0 flex-1">
+              <p className="font-sans font-bold text-xs text-slate-800 truncate leading-tight" title={profile.name}>{profile.name}</p>
+              <p className="text-[10px] font-sans font-semibold text-slate-400 truncate mt-0.5" title={profile.role}>{profile.role}</p>
             </div>
           </div>
           {onLogout && (
             <button 
               onClick={onLogout}
               title="Keluar dari Akun"
-              className="text-slate-400 hover:text-rose-600 p-2 rounded-xl hover:bg-rose-50 transition-all font-semibold text-xs flex items-center gap-1 cursor-pointer"
+              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all font-semibold text-[11px] shrink-0 cursor-pointer"
             >
               <span>Keluar</span>
             </button>
@@ -142,7 +142,7 @@ export default function Sidebar({
           </div>
           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
             <div 
-              className="bg-[#2563EB] h-full rounded-full transition-all duration-500" 
+              className={`${themeStyles.bg} h-full rounded-full transition-all duration-500`} 
               style={{ width: `${(profile.storageUsed / profile.storageMax) * 100}%` }}
             />
           </div>
