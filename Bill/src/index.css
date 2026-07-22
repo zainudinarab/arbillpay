@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-up {
+  animation: scaleUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Custom safety padding for mobile devices with home indicators (iPhone safe area) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+
+/* Styling khusus cetak (Print Stylesheet) */
+@media print {
+  /* Hide unnecessary elements */
+  aside,
+  nav,
+  header,
+  button,
+  .no-print,
+  footer {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Make sure parent layouts don't flex or collapse during print */
+  #root,
+  .min-h-screen,
+  .flex-1 {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Add safe printable margin on the body, A4 height/width limits */
+  body {
+    display: block !important;
+    margin: 0 !important;
+    padding: 15mm 20mm !important; /* Emulates browser margin without headers/footers */
+    background: #ffffff !important;
+  }
+
+  /* Hide everything inside main except the print area */
+  main > *:not(#invoice-print-area):not(#thermal-print-area) {
+    display: none !important;
+  }
+
+  /* Position print area and add inner padding to prevent text cutting */
+  #invoice-print-area {
+    visibility: visible !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 6mm !important; /* Safe inner padding to prevent cutting corners */
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Make sure all children of print area are visible */
+  #invoice-print-area, #invoice-print-area * {
+    visibility: visible !important;
+  }
+
+  /* Force browser to print colors and borders */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Set page format to A4 and hide default browser headers/footers */
+  @page {
+    size: A4;
+    margin: 0; /* Hides 'My Google Ai Studio App' title and print date */
+  }
+
+  /* --- THERMAL RECEIPT PRINTER (58mm POS) STYLING --- */
+  @page thermal {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  body.print-mode-thermal {
+    page: thermal;
+    width: 58mm !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.print-mode-thermal #root,
+  body.print-mode-thermal .min-h-screen,
+  body.print-mode-thermal .flex-1,
+  body.print-mode-thermal main {
+    display: block !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  body.print-mode-thermal #invoice-print-area {
+    display: none !important;
+  }
+
+  body.print-mode-thermal #thermal-print-area {
+    display: block !important;
+    visibility: visible !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 2mm 3mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+
+  body.print-mode-thermal #thermal-print-area,
+  body.print-mode-thermal #thermal-print-area * {
+    visibility: visible !important;
+    color: #000000 !important;
+    font-family: "Courier New", Courier, monospace !important;
+  }
+}

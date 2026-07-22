@@ -1,0 +1,6 @@
+{
+  "name": "Billava",
+  "description": "Aplikasi Invoice Web Mobile Terintegrasi E-Wallet Indonesia",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
