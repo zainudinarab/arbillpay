@@ -30,6 +30,16 @@ export default function Sidebar({
   onLogout
 }: SidebarProps) {
   
+  const theme = profile.themeColor || 'blue';
+  const themeStyles = {
+    blue: { bg: 'bg-[#0066FF]', activeBg: 'bg-blue-50 text-blue-600', activeIcon: 'text-blue-600', btnBg: 'bg-[#2563EB] hover:bg-blue-700 shadow-blue-100' },
+    emerald: { bg: 'bg-emerald-600', activeBg: 'bg-emerald-50 text-emerald-600', activeIcon: 'text-emerald-600', btnBg: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100' },
+    violet: { bg: 'bg-violet-600', activeBg: 'bg-violet-50 text-violet-600', activeIcon: 'text-violet-600', btnBg: 'bg-violet-600 hover:bg-violet-700 shadow-violet-100' },
+    rose: { bg: 'bg-rose-600', activeBg: 'bg-rose-50 text-rose-600', activeIcon: 'text-rose-600', btnBg: 'bg-rose-600 hover:bg-rose-700 shadow-rose-100' },
+    amber: { bg: 'bg-amber-600', activeBg: 'bg-amber-50 text-amber-600', activeIcon: 'text-amber-600', btnBg: 'bg-amber-600 hover:bg-amber-700 shadow-amber-100' },
+    dark: { bg: 'bg-slate-900', activeBg: 'bg-slate-100 text-slate-900', activeIcon: 'text-slate-900', btnBg: 'bg-slate-900 hover:bg-slate-800 shadow-slate-200' }
+  }[theme];
+
   const menuItems = [
     { id: 'overview', label: t.overview, icon: LayoutGrid },
     { id: 'invoices', label: t.invoices, icon: FileText },
@@ -44,7 +54,7 @@ export default function Sidebar({
       <div className="space-y-6">
         {/* Brand */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#0066FF] flex items-center justify-center text-white shadow-md shadow-blue-200">
+          <div className={`w-10 h-10 rounded-xl ${themeStyles.bg} flex items-center justify-center text-white shadow-md transition-all`}>
             <QrCode size={20} className="stroke-[2.5]" />
           </div>
           <span className="font-sans font-bold text-xl tracking-tight text-slate-800">Billava</span>
@@ -53,7 +63,7 @@ export default function Sidebar({
         {/* Quick Invoice Button */}
         <button
           onClick={onQuickInvoice}
-          className="w-full py-3 px-4 bg-[#2563EB] hover:bg-blue-700 transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-100 cursor-pointer"
+          className={`w-full py-3 px-4 ${themeStyles.btnBg} transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg cursor-pointer`}
         >
           <Plus size={18} />
           <span>{t.quickInvoice}</span>
@@ -71,11 +81,11 @@ export default function Sidebar({
                 onClick={() => setCurrentView(item.id)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-sans font-medium transition-all cursor-pointer ${
                   isActive 
-                    ? 'bg-[#EFF6FF] text-[#2563EB]' 
+                    ? themeStyles.activeBg 
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                 }`}
               >
-                <IconComponent size={18} className={isActive ? 'text-[#2563EB]' : 'text-slate-400'} />
+                <IconComponent size={18} className={isActive ? themeStyles.activeIcon : 'text-slate-400'} />
                 <span>{item.label}</span>
               </button>
             );
@@ -89,11 +99,11 @@ export default function Sidebar({
             onClick={() => setCurrentView('settings')}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-sans font-medium transition-all cursor-pointer ${
               currentView === 'settings' 
-                ? 'bg-[#EFF6FF] text-[#2563EB]' 
+                ? themeStyles.activeBg 
                 : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
             }`}
           >
-            <Settings size={18} className={currentView === 'settings' ? 'text-[#2563EB]' : 'text-slate-400'} />
+            <Settings size={18} className={currentView === 'settings' ? themeStyles.activeIcon : 'text-slate-400'} />
             <span>{t.settings}</span>
           </button>
         </div>

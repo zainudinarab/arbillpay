@@ -76,6 +76,7 @@ export interface BusinessProfile {
   taxId?: string; // NPWP
   currency: 'IDR' | 'USD';
   language: 'id' | 'en';
+  themeColor?: 'blue' | 'emerald' | 'violet' | 'rose' | 'amber' | 'dark';
   storageUsed: number; // in GB
   storageMax: number; // in GB
 }
