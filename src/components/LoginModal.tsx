@@ -76,7 +76,7 @@ const demoAccounts: { [key: string]: { password: string; account: UserAccount } 
   }
 };
 
-export default function LoginModal({ onLoginSuccess }: LoginModalProps) {
+export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps) {
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
