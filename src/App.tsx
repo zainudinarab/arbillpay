@@ -68,11 +68,40 @@ export default function App() {
     return local ? JSON.parse(local) : defaultBusinessProfile;
   });
 
-  // --- NAVIGATION & FLOW STATE ---
-  const [currentView, setCurrentView] = useState<string>('overview');
+  // --- NAVIGATION & FLOW STATE (Synced with URL Hash / Routes) ---
+  const [currentView, setCurrentView] = useState<string>(() => {
+    const hash = window.location.hash.replace('#/', '').replace('#', '');
+    if (hash && hash !== 'admin-login') return hash;
+    return 'overview';
+  });
+
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [showSimulator, setShowSimulator] = useState<boolean>(false);
+
+  // Read URL Hash or Search Query on initial load & hashchange
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      const params = new URLSearchParams(window.location.search);
+      
+      if (hash === 'admin-login' || params.get('login') === 'admin') {
+        setShowAdminLoginModal(true);
+      } else if (hash) {
+        setCurrentView(hash);
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Sync currentView changes to URL Hash so refresh persists current page
+  const navigateToView = (view: string) => {
+    setCurrentView(view);
+    window.location.hash = `#/${view}`;
+  };
 
   // Sync Current User to Local Storage & Update Profile Role dynamically
   useEffect(() => {
@@ -85,11 +114,15 @@ export default function App() {
         role: currentUser.role === 'owner' ? 'Super Admin / Owner' : currentUser.role === 'kasir' ? 'POS Operator / Kasir' : 'Pelanggan WiFi / Customer'
       }));
 
-      // Redirect automatic view based on role if logged in
-      if (currentUser.role === 'kasir') {
-        setCurrentView('invoices'); // Kasir langsung ke POS Voucher List
-      } else if (currentUser.role === 'pelanggan') {
-        setCurrentView('overview'); // Pelanggan ke Portal Ringkasan Voucher
+      // Redirect automatic view based on role if logged in (only if at default)
+      if (!window.location.hash || window.location.hash === '#/overview' || window.location.hash === '#/admin-login') {
+        if (currentUser.role === 'kasir') {
+          navigateToView('invoices'); // Kasir langsung ke POS Voucher List
+        } else if (currentUser.role === 'pelanggan') {
+          navigateToView('overview'); // Pelanggan ke Portal Ringkasan Voucher
+        } else {
+          navigateToView('overview');
+        }
       }
     } else {
       localStorage.removeItem('arbil_current_user');
@@ -562,13 +595,13 @@ export default function App() {
       <Sidebar 
         currentView={currentView} 
         setCurrentView={(view) => {
-          setCurrentView(view);
+          navigateToView(view);
           setSelectedInvoice(null);
         }} 
         profile={profile}
         t={t}
         onQuickInvoice={() => {
-          setCurrentView('new-invoice');
+          navigateToView('new-invoice');
           setSelectedInvoice(null);
         }}
         onLogout={handleLogout}
@@ -583,12 +616,12 @@ export default function App() {
       <MobileNav 
         currentView={currentView} 
         setCurrentView={(view) => {
-          setCurrentView(view);
+          navigateToView(view);
           setSelectedInvoice(null);
         }} 
         t={t}
         onQuickInvoice={() => {
-          setCurrentView('new-invoice');
+          navigateToView('new-invoice');
           setSelectedInvoice(null);
         }}
       />
