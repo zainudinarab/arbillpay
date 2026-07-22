@@ -569,32 +569,35 @@ export default function App() {
 
 
   // 1. PUBLIC LANDING STORE (Jika belum terautentikasi)
-  if (!currentUser && !showAdminLoginModal) {
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-[#F8FAFC]">
         <PublicVoucherStore
           onBuyVoucher={(pkg) => {
             setSelectedPublicPackage(pkg);
-            // Buka Modal Login / ArabPay Checkout
             setShowAdminLoginModal(true);
           }}
           onOpenAdminLogin={() => setShowAdminLoginModal(true)}
         />
+
+        {showAdminLoginModal && (
+          <LoginModal 
+            onLoginSuccess={handleLoginSuccess}
+            onClose={() => {
+              setShowAdminLoginModal(false);
+              // Clean URL
+              if (window.location.hash === '#/admin-login') {
+                window.location.hash = '#/';
+              }
+            }}
+          />
+        )}
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex font-sans antialiased text-slate-800">
-      
-      {/* 0. Login Modal (If User Not Logged In) */}
-      {!currentUser && showAdminLoginModal && (
-        <LoginModal 
-          onLoginSuccess={handleLoginSuccess}
-          onClose={() => setShowAdminLoginModal(false)}
-        />
-      )}
-
       {/* 1. Desktop Sidebar */}
       <Sidebar 
         currentView={currentView} 
