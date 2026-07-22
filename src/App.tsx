@@ -26,9 +26,21 @@ import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
 import { formatCurrency, formatDate } from './utils';
 
 import LoginModal from './components/LoginModal';
+import PublicVoucherStore from './components/PublicVoucherStore';
 import { UserAccount } from './types';
 
 export default function App() {
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(false);
+  const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
+
+  // Check URL query string for admin login route (e.g. ?login=admin)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('login') === 'admin') {
+      setShowAdminLoginModal(true);
+    }
+  }, []);
+
   // --- AUTHENTICATION STATE ---
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     const savedUser = localStorage.getItem('arbil_current_user');
@@ -87,11 +99,13 @@ export default function App() {
   // Handle Login & Logout Handlers
   const handleLoginSuccess = (account: UserAccount) => {
     setCurrentUser(account);
+    setShowAdminLoginModal(false);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('arbil_current_user');
+    setShowAdminLoginModal(false);
   };
 
   // Sync to Local Storage
@@ -515,12 +529,33 @@ export default function App() {
     );
   }
 
+
+
+  // 1. PUBLIC LANDING STORE (Jika belum terautentikasi)
+  if (!currentUser && !showAdminLoginModal) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC]">
+        <PublicVoucherStore
+          onBuyVoucher={(pkg) => {
+            setSelectedPublicPackage(pkg);
+            // Buka Modal Login / ArabPay Checkout
+            setShowAdminLoginModal(true);
+          }}
+          onOpenAdminLogin={() => setShowAdminLoginModal(true)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex font-sans antialiased text-slate-800">
       
       {/* 0. Login Modal (If User Not Logged In) */}
-      {!currentUser && (
-        <LoginModal onLoginSuccess={handleLoginSuccess} />
+      {!currentUser && showAdminLoginModal && (
+        <LoginModal 
+          onLoginSuccess={handleLoginSuccess}
+          onClose={() => setShowAdminLoginModal(false)}
+        />
       )}
 
       {/* 1. Desktop Sidebar */}

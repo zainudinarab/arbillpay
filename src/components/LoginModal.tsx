@@ -4,6 +4,7 @@ import { UserAccount } from '../types';
 
 interface LoginModalProps {
   onLoginSuccess: (account: UserAccount) => void;
+  onClose?: () => void;
 }
 
 // Preset Database User Kredensial untuk Demo
@@ -128,6 +129,15 @@ export default function LoginModal({ onLoginSuccess }: LoginModalProps) {
         
         {/* Top Header Card */}
         <div className="bg-gradient-to-br from-[#0066FF] to-blue-700 p-8 text-white text-center relative overflow-hidden">
+          {onClose && (
+            <button 
+              type="button"
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-all cursor-pointer z-20 font-extrabold text-sm"
+            >
+              ✕
+            </button>
+          )}
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
           <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-400/20 rounded-full blur-xl pointer-events-none" />
 
