@@ -30,15 +30,35 @@ import PublicVoucherStore from './components/PublicVoucherStore';
 import { UserAccount } from './types';
 
 export default function App() {
-  const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(() => {
+    const hash = window.location.hash.replace('#/', '').replace('#', '');
+    const pathname = window.location.pathname.replace('/', '');
+    const params = new URLSearchParams(window.location.search);
+    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin';
+  });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
 
-  // Check URL query string for admin login route (e.g. ?login=admin)
+  // Check URL query string or pathname for admin login route (e.g. /admin-login or #/admin-login)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('login') === 'admin') {
-      setShowAdminLoginModal(true);
-    }
+    const handleHashAndRoute = () => {
+      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      const pathname = window.location.pathname.replace('/', '');
+      const params = new URLSearchParams(window.location.search);
+      
+      if (hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin') {
+        setShowAdminLoginModal(true);
+      } else if (hash) {
+        setCurrentView(hash);
+      }
+    };
+
+    handleHashAndRoute();
+    window.addEventListener('hashchange', handleHashAndRoute);
+    window.addEventListener('popstate', handleHashAndRoute);
+    return () => {
+      window.removeEventListener('hashchange', handleHashAndRoute);
+      window.removeEventListener('popstate', handleHashAndRoute);
+    };
   }, []);
 
   // --- AUTHENTICATION STATE ---
@@ -79,23 +99,7 @@ export default function App() {
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [showSimulator, setShowSimulator] = useState<boolean>(false);
 
-  // Read URL Hash or Search Query on initial load & hashchange
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#/', '').replace('#', '');
-      const params = new URLSearchParams(window.location.search);
-      
-      if (hash === 'admin-login' || params.get('login') === 'admin') {
-        setShowAdminLoginModal(true);
-      } else if (hash) {
-        setCurrentView(hash);
-      }
-    };
 
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
 
   // Sync currentView changes to URL Hash so refresh persists current page
   const navigateToView = (view: string) => {
