@@ -109,6 +109,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = result.rows[0];
 
+    // STRICT OWNER ONLY EMERGENCY LOGIN: Staf/Kasir & Pelanggan MUST login via ArabPay SSO
+    if (user.role !== 'owner') {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Akses Ditolak: Login darurat hanya diizinkan untuk Akun Owner (Super Admin). Pengguna lain wajib masuk via ArabPay SSO.' 
+      });
+    }
+
     // Check if password matches Bcrypt Hash or Legacy Plaintext
     let isPasswordValid = false;
 

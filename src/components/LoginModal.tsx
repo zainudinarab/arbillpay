@@ -42,11 +42,16 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
 
       const data = await res.json();
       if (res.ok && data.success && data.user) {
+        if (data.user.role !== 'owner') {
+          setErrorMsg('Akses Ditolak: Mode darurat HANYA untuk Owner (Super Admin). Pengguna lain wajib masuk via ArabPay SSO.');
+          setIsLoading(false);
+          return;
+        }
         setIsLoading(false);
         onLoginSuccess(data.user);
         return;
       } else {
-        setErrorMsg(data.message || 'Login darurat gagal.');
+        setErrorMsg(data.message || 'Login darurat gagal. Hanya akun Owner yang diizinkan.');
       }
     } catch (err) {
       setErrorMsg('Gagal terhubung ke server.');
