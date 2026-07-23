@@ -452,6 +452,200 @@ app.post('/api/auth/change-password', async (req, res) => {
   }
 });
 
+// ==============================================================================
+// RT/RW NET BILLING & MANAGEMENT ENDPOINTS (PACKAGES & CUSTOMERS)
+// ==============================================================================
+
+// GET /api/packages - List all internet packages
+app.get('/api/packages', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, name, type, price, speed_limit, validity_days, created_at FROM packages ORDER BY type ASC, price ASC');
+    res.json({ success: true, packages: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/customers - List all RT/RW Net customers (joined with packages and users)
+app.get('/api/customers', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT c.id, c.user_id, c.name, c.phone_number, c.address, c.connection_type, 
+             c.pppoe_username, c.pppoe_password, c.package_id, c.status, c.created_at,
+             p.name as package_name, p.price as package_price, p.type as package_type, p.speed_limit,
+             u.email as linked_user_email, u.arabpay_user_id
+      FROM customers c
+      LEFT JOIN packages p ON c.package_id = p.id
+      LEFT JOIN users u ON c.user_id = u.id
+      ORDER BY c.created_at DESC
+    `);
+    res.json({ success: true, customers: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/customers - Add new RT/RW Net customer (created by Owner/Teknisi without ArabPay account)
+app.post('/api/customers', async (req, res) => {
+  const { name, phone_number, address, connection_type, pppoe_username, pppoe_password, package_id } = req.body;
+
+  if (!name || !phone_number || !package_id) {
+    return res.status(400).json({ success: false, message: 'Nama, Nomor HP, dan Paket Internet wajib diisi.' });
+  }
+
+  try {
+    const customerId = crypto.randomUUID();
+    const cleanPhone = phone_number.trim();
+
+    // Check if phone matches any existing ArabPay user in users table
+    const matchedUser = await pool.query('SELECT id FROM users WHERE phone_number = $1 OR arabpay_user_id = $1 LIMIT 1', [cleanPhone]);
+    const linkedUserId = matchedUser.rows.length > 0 ? matchedUser.rows[0].id : null;
+
+    const result = await pool.query(`
+      INSERT INTO customers (id, user_id, name, phone_number, address, connection_type, pppoe_username, pppoe_password, package_id, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+      RETURNING id, user_id, name, phone_number, address, connection_type, pppoe_username, package_id, status, created_at
+    `, [customerId, linkedUserId, name.trim(), cleanPhone, address?.trim() || null, connection_type || 'pppoe', pppoe_username?.trim() || null, pppoe_password?.trim() || null, package_id]);
+
+    res.json({
+      success: true,
+      message: `Pelanggan RT/RW Net "${name}" berhasil didaftarkan!`,
+      customer: result.rows[0],
+      autoLinkedArabPay: linkedUserId !== null
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/customers/:id - Update RT/RW Net customer details or status
+app.put('/api/customers/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, phone_number, address, connection_type, pppoe_username, pppoe_password, package_id, status } = req.body;
+
+  if (!name || !phone_number || !package_id) {
+    return res.status(400).json({ success: false, message: 'Nama, Nomor HP, dan Paket Internet wajib diisi.' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE customers
+      SET name = $1,
+          phone_number = $2,
+          address = $3,
+          connection_type = $4,
+          pppoe_username = $5,
+          pppoe_password = $6,
+          package_id = $7,
+          status = $8
+      WHERE id = $9
+      RETURNING id, user_id, name, phone_number, address, connection_type, pppoe_username, package_id, status
+    `, [name.trim(), phone_number.trim(), address?.trim() || null, connection_type || 'pppoe', pppoe_username?.trim() || null, pppoe_password?.trim() || null, package_id, status || 'active', id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Data pelanggan tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Data pelanggan "${name}" berhasil diperbarui!`,
+      customer: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/customers/check-phone - Check if ArabPay SSO phone matches an unlinked customer
+app.post('/api/customers/check-phone', async (req, res) => {
+  const { phone_number, userId } = req.body;
+
+  if (!phone_number) {
+    return res.status(400).json({ success: false, message: 'Nomor HP wajib disertakan.' });
+  }
+
+  try {
+    const cleanPhone = phone_number.trim();
+    
+    // 1. Check if customer is already linked to this userId
+    const alreadyLinked = await pool.query(`
+      SELECT c.id, c.name, c.connection_type, c.status, p.name as package_name, p.price as package_price
+      FROM customers c
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE c.user_id = $1 OR c.phone_number = $2 AND c.user_id = $1
+      LIMIT 1
+    `, [userId, cleanPhone]);
+
+    if (alreadyLinked.rows.length > 0) {
+      return res.json({
+        success: true,
+        isLinked: true,
+        customer: alreadyLinked.rows[0]
+      });
+    }
+
+    // 2. Search unlinked customer matching phone_number
+    const unlinkedMatch = await pool.query(`
+      SELECT c.id, c.name, c.phone_number, c.connection_type, c.status, p.name as package_name, p.price as package_price
+      FROM customers c
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE c.phone_number = $1 AND (c.user_id IS NULL OR c.user_id = '')
+      LIMIT 1
+    `, [cleanPhone]);
+
+    if (unlinkedMatch.rows.length > 0) {
+      return res.json({
+        success: true,
+        isLinked: false,
+        matchFound: true,
+        customer: unlinkedMatch.rows[0]
+      });
+    }
+
+    return res.json({
+      success: true,
+      isLinked: false,
+      matchFound: false
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/customers/link-phone - Connect ArabPay SSO user.id to customers.user_id
+app.post('/api/customers/link-phone', async (req, res) => {
+  const { customerId, userId, phone_number } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ success: false, message: 'User ID ArabPay wajib disertakan.' });
+  }
+
+  try {
+    let result;
+    if (customerId) {
+      result = await pool.query(`
+        UPDATE customers SET user_id = $1 WHERE id = $2 RETURNING id, name, phone_number, connection_type, status
+      `, [userId, customerId]);
+    } else if (phone_number) {
+      result = await pool.query(`
+        UPDATE customers SET user_id = $1 WHERE phone_number = $2 RETURNING id, name, phone_number, connection_type, status
+      `, [userId, phone_number.trim()]);
+    }
+
+    if (!result || result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Data pelanggan tidak ditemukan untuk dihubungkan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Selamat! Akun ArabPay Anda berhasil dihubungkan dengan Pelanggan RT/RW Net "${result.rows[0].name}"!`,
+      customer: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`ArbilBaru Database Backend API running on port ${port}`);
 });

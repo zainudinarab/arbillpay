@@ -21,6 +21,7 @@ import PaymentSimulator from './components/PaymentSimulator';
 import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
 import UserManagement from './components/UserManagement';
+import CustomerManagement from './components/CustomerManagement';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
@@ -157,6 +158,63 @@ export default function App() {
       localStorage.removeItem('arbil_current_user');
     }
   }, [currentUser]);
+
+  // --- ARABPAY PHONE MATCHING AUTO-SYNC STATE ---
+  const [unlinkedMatchCustomer, setUnlinkedMatchCustomer] = useState<any>(null);
+  const [isLinking, setIsLinking] = useState(false);
+
+  // Check if current logged-in user matches any unlinked RT/RW Net Customer in DB
+  useEffect(() => {
+    const checkCustomerPhoneMatch = async () => {
+      if (currentUser && (currentUser.phone_number || currentUser.id)) {
+        try {
+          const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+          const res = await fetch(`${apiUrl}/api/customers/check-phone`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              phone_number: currentUser.phone_number || currentUser.name,
+              userId: currentUser.id
+            })
+          });
+          const data = await res.json();
+          if (data.success && data.matchFound && !data.isLinked) {
+            setUnlinkedMatchCustomer(data.customer);
+          }
+        } catch (err) {
+          console.warn('Failed to check customer phone match:', err);
+        }
+      }
+    };
+
+    checkCustomerPhoneMatch();
+  }, [currentUser]);
+
+  const handleLinkArabPayAccount = async () => {
+    if (!unlinkedMatchCustomer || !currentUser) return;
+    setIsLinking(true);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/customers/link-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: unlinkedMatchCustomer.id,
+          userId: currentUser.id,
+          phone_number: currentUser.phone_number
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || 'Akun ArabPay Anda berhasil dihubungkan!');
+        setUnlinkedMatchCustomer(null);
+      }
+    } catch (err) {
+      alert('Gagal menghubungkan akun.');
+    } finally {
+      setIsLinking(false);
+    }
+  };
 
   // Handle Login & Logout Handlers
   const handleLoginSuccess = (account: UserAccount) => {
@@ -405,6 +463,14 @@ export default function App() {
           <SettingsPage
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'customers':
+        return (
+          <CustomerManagement
+            profile={profile}
             t={t}
             onLogout={handleLogout}
           />
@@ -675,6 +741,37 @@ export default function App() {
 
       {/* 2. Main Viewing Pane */}
       <div className="flex-1 flex flex-col min-w-0 min-h-screen relative">
+        {/* Notifikasi Auto-Match ArabPay SSO Pelanggan RT/RW Net */}
+        {unlinkedMatchCustomer && (
+          <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 rounded-2xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-4 animate-slide-down border border-emerald-400/40 mx-4 md:mx-8 my-4 z-40">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center font-bold text-white shrink-0 text-xl shadow-inner">
+                ⚡
+              </div>
+              <div>
+                <h4 className="font-extrabold text-sm">Nomor HP Terdeteksi sebagai Pelanggan RT/RW Net!</h4>
+                <p className="text-xs text-emerald-100 mt-0.5">
+                  Nomor HP Anda (<strong>{unlinkedMatchCustomer.phone_number}</strong>) terdaftar sebagai Pelanggan <strong>{unlinkedMatchCustomer.name}</strong> (Paket: <strong>{unlinkedMatchCustomer.package_name || 'RT/RW Net'}</strong>). Hubungkan sekarang untuk bayar tagihan 1-klik via ArabPay?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 w-full md:w-auto justify-end">
+              <button
+                onClick={handleLinkArabPayAccount}
+                disabled={isLinking}
+                className="px-4 py-2 bg-white text-emerald-800 font-extrabold text-xs rounded-xl hover:bg-emerald-50 transition-all cursor-pointer shadow-md"
+              >
+                {isLinking ? 'Menghubungkan...' : 'Ya, Hubungkan Sekarang!'}
+              </button>
+              <button
+                onClick={() => setUnlinkedMatchCustomer(null)}
+                className="px-3 py-2 bg-emerald-800/40 text-emerald-100 font-bold text-xs rounded-xl hover:bg-emerald-800/60 cursor-pointer"
+              >
+                Nanti
+              </button>
+            </div>
+          </div>
+        )}
         {renderMainContent()}
       </div>
 
