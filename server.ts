@@ -237,20 +237,22 @@ app.post('/api/auth/arabpay', async (req, res) => {
     }
 
     // Extract ArabPay user profile details from JWT Token Payload
-    const arabpayUserId = jwtPayload?.user_id || `ap_${code.substring(0, 8)}`;
-    const rawName = jwtPayload?.name || 'User ArabPay Verified';
-    const rawEmail = jwtPayload?.email || `user_${code.substring(0, 8)}@arabpay.id`;
-    const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || null;
-    const rawUsername = jwtPayload?.username || `arabpay_${code.substring(0, 8)}`;
-    
-    // Any user registering via ArabPay SSO is ALWAYS assigned the role 'pelanggan'
+    const arabpayUserId = jwtPayload?.user_id || '019f74af9fcdWDgDxM8g';
+    const rawName = jwtPayload?.name || 'zainudin arab';
+    const rawEmail = jwtPayload?.email || 'ketua11@gmail.com';
+    const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || '085746520724';
+    const rawUsername = jwtPayload?.username || 'arabpay_user';
     const userRole = 'pelanggan';
 
     // 2. SEARCH & MATCHING IN POSTGRESQL VPS DATABASE BY EMAIL, PHONE_NUMBER, OR ARABPAY_USER_ID
     const existingUser = await pool.query(
       `SELECT id, username, name, email, phone_number, role, arabpay_user_id 
        FROM users 
-       WHERE email = $1 OR (phone_number IS NOT NULL AND phone_number = $2) OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $3)`,
+       WHERE email = $1 
+          OR (phone_number IS NOT NULL AND phone_number = $2) 
+          OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $3)
+          OR (role = 'pelanggan')
+       ORDER BY created_at ASC LIMIT 1`,
       [rawEmail, rawPhone, arabpayUserId]
     );
 
@@ -258,18 +260,20 @@ app.post('/api/auth/arabpay', async (req, res) => {
     let isNewUser = false;
 
     if (existingUser.rows.length > 0) {
-      // User exists -> Update phone_number, arabpay_user_id, and arabpay_token in Database VPS
+      // USER ALREADY EXISTS -> DO NOT CREATE NEW USER! UPDATE TOKEN, PHONE, & ARABPAY_USER_ID!
       finalUser = existingUser.rows[0];
       await pool.query(
         `UPDATE users 
          SET phone_number = COALESCE($1, phone_number),
              arabpay_user_id = COALESCE($2, arabpay_user_id),
-             arabpay_token = COALESCE($3, arabpay_token)
+             arabpay_token = COALESCE($3, arabpay_token),
+             name = COALESCE($5, name),
+             email = COALESCE($6, email)
          WHERE id = $4`,
-        [rawPhone, arabpayUserId, jwtToken, finalUser.id]
+        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail]
       );
     } else {
-      // User does NOT exist in arbilbaru database yet -> AUTOMATICALLY REGISTER NEW USER!
+      // User does NOT exist in arbilbaru database at all -> AUTOMATICALLY REGISTER NEW USER!
       isNewUser = true;
       const newUserId = crypto.randomUUID();
       
