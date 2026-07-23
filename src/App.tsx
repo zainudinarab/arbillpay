@@ -313,6 +313,7 @@ export default function App() {
             setCurrentView={setCurrentView}
             setSelectedInvoice={setSelectedInvoice}
             onQuickInvoice={() => setCurrentView('new-invoice')}
+            onLogout={handleLogout}
           />
         );
       case 'invoices':
@@ -328,6 +329,7 @@ export default function App() {
             setCurrentView={setCurrentView}
             setSelectedInvoice={setSelectedInvoice}
             onQuickInvoice={() => setCurrentView('new-invoice')}
+            onLogout={handleLogout}
           />
         );
       case 'clients':
@@ -349,6 +351,7 @@ export default function App() {
             profile={profile}
             t={t}
             setCurrentView={setCurrentView}
+            onLogout={handleLogout}
           />
         );
       case 'gateways':
