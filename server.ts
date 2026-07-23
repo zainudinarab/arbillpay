@@ -243,15 +243,15 @@ app.post('/api/auth/arabpay', async (req, res) => {
     const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || '085746520724';
     const rawUsername = jwtPayload?.username || 'arabpay_user';
 
-    // 👑 ROLE DETERMINATION (HYBRID: ARABPAY_OWNER_EMAIL or First User Auto-Claim)
-    const ownerEmail = (process.env.ARABPAY_OWNER_EMAIL || 'owner@arbil.id').trim().toLowerCase();
+    // 👑 ROLE DETERMINATION (HYBRID: ARABPAY_OWNER_USER_ID or First User Auto-Claim)
+    const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
     
     // Check total existing users in DB to handle first-user auto-claim
     const totalUsersCount = await pool.query('SELECT COUNT(*)::int as count FROM users');
     const isFirstUserInDb = totalUsersCount.rows[0].count === 0;
 
-    // Grant owner role if email matches ARABPAY_OWNER_EMAIL OR if this is the very first user registering on a fresh deployment!
-    const userRole = (rawEmail.toLowerCase() === ownerEmail || rawEmail.includes('owner') || isFirstUserInDb) ? 'owner' : 'pelanggan';
+    // Grant owner role if arabpayUserId matches ARABPAY_OWNER_USER_ID OR if this is the very first user registering on a fresh deployment!
+    const userRole = (arabpayUserId === ownerUserId || rawEmail.includes('owner') || isFirstUserInDb) ? 'owner' : 'pelanggan';
 
     // 2. SEARCH & MATCHING IN POSTGRESQL VPS DATABASE BY EMAIL, PHONE_NUMBER, OR ARABPAY_USER_ID
     const existingUser = await pool.query(
@@ -277,12 +277,12 @@ app.post('/api/auth/arabpay', async (req, res) => {
              arabpay_token = COALESCE($3, arabpay_token),
              name = COALESCE($5, name),
              email = COALESCE($6, email),
-             role = CASE WHEN $6 = $7 THEN 'owner' ELSE role END
+             role = CASE WHEN $2 = $7 THEN 'owner' ELSE role END
          WHERE id = $4`,
-        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail, ownerEmail]
+        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail, ownerUserId]
       );
       // Ensure updated role is passed back
-      if (rawEmail.toLowerCase() === ownerEmail) {
+      if (arabpayUserId === ownerUserId) {
         finalUser.role = 'owner';
       }
     } else {

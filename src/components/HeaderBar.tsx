@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Globe, Bell, LogOut, User, Shield, ChevronDown } from 'lucide-react';
+import { Search, Globe, Bell, LogOut, User, Shield, ChevronDown, Copy, Check } from 'lucide-react';
 import { BusinessProfile } from '../types';
 
 interface HeaderBarProps {
@@ -24,6 +24,7 @@ export default function HeaderBar({
   subtitle
 }: HeaderBarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
+  const [copied, setCopied] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const savedUserStr = typeof window !== 'undefined' ? localStorage.getItem('arbil_current_user') : null;
@@ -141,16 +142,35 @@ export default function HeaderBar({
               </div>
 
               {/* ArabPay E-Wallet Card inside Dropdown */}
-              <div className="p-3 mx-2 my-2 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl text-white shadow-sm">
+              <div className="p-3 mx-2 my-2 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl text-white shadow-sm space-y-1.5">
                 <div className="flex items-center justify-between text-[10px] font-semibold text-emerald-100">
                   <span className="flex items-center gap-1">💳 ArabPay E-Wallet</span>
                   <span className="bg-white/20 px-1.5 py-0.5 rounded text-[9px]">Verified</span>
                 </div>
-                <div className="text-base font-black tracking-tight mt-1">
+                <div className="text-base font-black tracking-tight">
                   Rp {(currentUser?.arabpay_balance ?? 149800).toLocaleString('id-ID')}
                 </div>
-                <div className="text-[9px] text-emerald-100/80 font-mono mt-0.5">
-                  ID: {currentUser?.arabpay_user_id || 'AP-8849102'}
+                
+                {/* ID ArabPay with 1-Click Copy */}
+                <div className="pt-1 border-t border-white/10 flex items-center justify-between gap-1 text-[10px]">
+                  <span className="text-emerald-100/80 font-mono truncate" title={currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g'}>
+                    ID: {currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const arabId = currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g';
+                      navigator.clipboard.writeText(arabId);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    className="px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white font-sans font-bold text-[9px] rounded flex items-center gap-1 transition-all cursor-pointer border border-white/20 shrink-0"
+                    title="Salin ID ArabPay ke clipboard"
+                  >
+                    {copied ? <Check size={10} className="text-emerald-200" /> : <Copy size={10} />}
+                    <span>{copied ? 'Tersalin!' : 'Salin ID'}</span>
+                  </button>
                 </div>
               </div>
 

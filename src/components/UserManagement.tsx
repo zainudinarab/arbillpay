@@ -263,10 +263,24 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       </td>
 
                       {/* UUID & ArabPay ID */}
-                      <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[200px]">
+                      <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[220px]">
                         <div className="truncate" title={u.id}>ID: {u.id}</div>
-                        {u.arabpay_user_id && (
-                          <div className="text-[10px] text-blue-600 font-semibold truncate" title={u.arabpay_user_id}>AP-ID: {u.arabpay_user_id}</div>
+                        {u.arabpay_user_id ? (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] text-emerald-600 font-bold truncate" title={u.arabpay_user_id}>AP-ID: {u.arabpay_user_id}</span>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(u.arabpay_user_id!);
+                                setToastMsg({ text: `ID ArabPay (${u.arabpay_user_id}) berhasil disalin! Masukkan ke ARABPAY_OWNER_USER_ID di .env`, type: 'success' });
+                              }}
+                              className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded transition-all cursor-pointer border border-emerald-200 shrink-0"
+                              title="Salin ID ArabPay ke clipboard"
+                            >
+                              Salin ID
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400 italic">Belum terhubung ArabPay</div>
                         )}
                       </td>
 
