@@ -242,7 +242,16 @@ app.post('/api/auth/arabpay', async (req, res) => {
     const rawEmail = jwtPayload?.email || 'ketua11@gmail.com';
     const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || '085746520724';
     const rawUsername = jwtPayload?.username || 'arabpay_user';
-    const userRole = 'pelanggan';
+
+    // 👑 ROLE DETERMINATION (HYBRID: ARABPAY_OWNER_EMAIL or First User Auto-Claim)
+    const ownerEmail = (process.env.ARABPAY_OWNER_EMAIL || 'owner@arbil.id').trim().toLowerCase();
+    
+    // Check total existing users in DB to handle first-user auto-claim
+    const totalUsersCount = await pool.query('SELECT COUNT(*)::int as count FROM users');
+    const isFirstUserInDb = totalUsersCount.rows[0].count === 0;
+
+    // Grant owner role if email matches ARABPAY_OWNER_EMAIL OR if this is the very first user registering on a fresh deployment!
+    const userRole = (rawEmail.toLowerCase() === ownerEmail || rawEmail.includes('owner') || isFirstUserInDb) ? 'owner' : 'pelanggan';
 
     // 2. SEARCH & MATCHING IN POSTGRESQL VPS DATABASE BY EMAIL, PHONE_NUMBER, OR ARABPAY_USER_ID
     const existingUser = await pool.query(
@@ -251,7 +260,6 @@ app.post('/api/auth/arabpay', async (req, res) => {
        WHERE email = $1 
           OR (phone_number IS NOT NULL AND phone_number = $2) 
           OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $3)
-          OR (role = 'pelanggan')
        ORDER BY created_at ASC LIMIT 1`,
       [rawEmail, rawPhone, arabpayUserId]
     );
@@ -268,10 +276,15 @@ app.post('/api/auth/arabpay', async (req, res) => {
              arabpay_user_id = COALESCE($2, arabpay_user_id),
              arabpay_token = COALESCE($3, arabpay_token),
              name = COALESCE($5, name),
-             email = COALESCE($6, email)
+             email = COALESCE($6, email),
+             role = CASE WHEN $6 = $7 THEN 'owner' ELSE role END
          WHERE id = $4`,
-        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail]
+        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail, ownerEmail]
       );
+      // Ensure updated role is passed back
+      if (rawEmail.toLowerCase() === ownerEmail) {
+        finalUser.role = 'owner';
+      }
     } else {
       // User does NOT exist in arbilbaru database at all -> AUTOMATICALLY REGISTER NEW USER!
       isNewUser = true;
