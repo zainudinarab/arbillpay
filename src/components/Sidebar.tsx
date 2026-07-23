@@ -9,7 +9,8 @@ import {
   Plus, 
   UserCheck,
   QrCode,
-  Globe
+  Globe,
+  Router
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -46,6 +47,7 @@ export default function Sidebar({
   // Define full menu items
   const allMenuItems = [
     { id: 'overview', label: userRole === 'pelanggan' ? 'Ringkasan Saya' : t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
+    { id: 'packages', label: 'Paket & Profile Mikrotik', icon: Router, roles: ['owner', 'teknisi'] },
     { id: 'customers', label: 'Pelanggan RT/RW Net', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
     { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
     { id: 'users', label: 'Pengguna System', icon: UserCheck, roles: ['owner'] },

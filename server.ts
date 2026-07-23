@@ -456,11 +456,91 @@ app.post('/api/auth/change-password', async (req, res) => {
 // RT/RW NET BILLING & MANAGEMENT ENDPOINTS (PACKAGES & CUSTOMERS)
 // ==============================================================================
 
-// GET /api/packages - List all internet packages
+// GET /api/packages - List all internet packages with Mikrotik Profiles
 app.get('/api/packages', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, type, price, speed_limit, validity_days, created_at FROM packages ORDER BY type ASC, price ASC');
+    const result = await pool.query('SELECT id, name, type, price, speed_limit, validity_days, mikrotik_profile, created_at FROM packages ORDER BY type ASC, price ASC');
     res.json({ success: true, packages: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/packages - Create new Internet Package with Mikrotik Profile
+app.post('/api/packages', async (req, res) => {
+  const { name, type, price, speed_limit, validity_days, mikrotik_profile } = req.body;
+
+  if (!name || !price || !type) {
+    return res.status(400).json({ success: false, message: 'Nama paket, tipe, dan harga wajib diisi.' });
+  }
+
+  try {
+    const pkgId = `pkg-${type}-${Date.now().toString(36)}`;
+    const result = await pool.query(`
+      INSERT INTO packages (id, name, type, price, speed_limit, validity_days, mikrotik_profile)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, name, type, price, speed_limit, validity_days, mikrotik_profile, created_at
+    `, [pkgId, name.trim(), type, parseFloat(price), speed_limit?.trim() || '10M/10M', parseInt(validity_days) || 30, mikrotik_profile?.trim() || 'default']);
+
+    res.json({
+      success: true,
+      message: `Paket Internet "${name}" berhasil dibuat dan tersinkronisasi ke Profile Mikrotik!`,
+      package: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/packages/:id - Update existing Internet Package
+app.put('/api/packages/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, type, price, speed_limit, validity_days, mikrotik_profile } = req.body;
+
+  if (!name || !price || !type) {
+    return res.status(400).json({ success: false, message: 'Nama paket, tipe, dan harga wajib diisi.' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE packages
+      SET name = $1,
+          type = $2,
+          price = $3,
+          speed_limit = $4,
+          validity_days = $5,
+          mikrotik_profile = $6
+      WHERE id = $7
+      RETURNING id, name, type, price, speed_limit, validity_days, mikrotik_profile
+    `, [name.trim(), type, parseFloat(price), speed_limit?.trim() || '10M/10M', parseInt(validity_days) || 30, mikrotik_profile?.trim() || 'default', id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Paket Internet tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Paket Internet "${name}" berhasil diperbarui!`,
+      package: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/packages/:id - Delete Internet Package
+app.delete('/api/packages/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM packages WHERE id = $1 RETURNING id, name', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Paket Internet tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Paket "${result.rows[0].name}" berhasil dihapus!`
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

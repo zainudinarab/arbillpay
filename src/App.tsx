@@ -22,6 +22,7 @@ import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
+import PackageManagement from './components/PackageManagement';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
@@ -470,6 +471,14 @@ export default function App() {
       case 'customers':
         return (
           <CustomerManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'packages':
+        return (
+          <PackageManagement
             profile={profile}
             t={t}
             onLogout={handleLogout}
