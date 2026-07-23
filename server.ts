@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import cookieParser from 'cookie-parser';
 
 dotenv.config();
 
@@ -10,6 +11,7 @@ const app = express();
 const port = process.env.PORT || 3006;
 
 app.use(express.json());
+app.use(cookieParser());
 
 // PostgreSQL Pool connection to VPS database
 const pool = new Pool({
@@ -22,8 +24,9 @@ const pool = new Pool({
 
 // CORS Header
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -44,7 +47,7 @@ app.get('/api/health', async (req, res) => {
 // GET /api/users - List all synced users
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, username, name, email, role, created_at FROM users ORDER BY created_at DESC');
+    const result = await pool.query('SELECT id, username, name, email, phone_number, arabpay_user_id, role, created_at FROM users ORDER BY created_at DESC');
     res.json({ success: true, users: result.rows });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -53,7 +56,7 @@ app.get('/api/users', async (req, res) => {
 
 // POST /api/users - Create/Sync User with Unique UUID and Encrypted Bcrypt Password Hash
 app.post('/api/users', async (req, res) => {
-  const { username, name, email, role, password } = req.body;
+  const { username, name, email, phone_number, role, password } = req.body;
 
   if (!username || !name || !email || !password) {
     return res.status(400).json({ success: false, message: 'Harap lengkapi username, name, email, dan password.' });
@@ -69,10 +72,10 @@ app.post('/api/users', async (req, res) => {
 
     // 3. Insert into PostgreSQL arbil_db.users
     const result = await pool.query(
-      `INSERT INTO users (id, username, name, email, role, password_hash)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, username, name, email, role, created_at`,
-      [userId, username.trim().toLowerCase(), name.trim(), email.trim().toLowerCase(), role || 'pelanggan', passwordHash]
+      `INSERT INTO users (id, username, name, email, phone_number, role, password_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, username, name, email, phone_number, role, created_at`,
+      [userId, username.trim().toLowerCase(), name.trim(), email.trim().toLowerCase(), phone_number || null, role || 'pelanggan', passwordHash]
     );
 
     res.json({
@@ -90,18 +93,18 @@ app.post('/api/auth/login', async (req, res) => {
   const { identity, password } = req.body;
 
   if (!identity || !password) {
-    return res.status(400).json({ success: false, message: 'Harap isi Username/Email dan Password.' });
+    return res.status(400).json({ success: false, message: 'Harap isi Username/Email/Phone dan Password.' });
   }
 
   try {
     const cleanIdentity = identity.trim().toLowerCase();
     const result = await pool.query(
-      'SELECT id, username, name, email, role, password_hash FROM users WHERE username = $1 OR email = $1',
+      'SELECT id, username, name, email, phone_number, role, password_hash FROM users WHERE username = $1 OR email = $1 OR phone_number = $1',
       [cleanIdentity]
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Username atau Email tidak ditemukan.' });
+      return res.status(401).json({ success: false, message: 'Username, Email, atau Nomor HP tidak ditemukan.' });
     }
 
     const user = result.rows[0];
@@ -129,6 +132,7 @@ app.post('/api/auth/login', async (req, res) => {
           username: user.username,
           name: user.name,
           email: user.email,
+          phone_number: user.phone_number,
           role: user.role
         }
       });
@@ -189,7 +193,7 @@ app.post('/api/auth/arabpay', async (req, res) => {
     const bodyStr = JSON.stringify(bodyObj);
     const headers = generateArabPayHeaders(bodyStr);
 
-    let jwtToken = null;
+    let jwtToken: string | null = null;
     let arabpayBalance = 0;
     let jwtPayload: any = null;
 
@@ -224,21 +228,36 @@ app.post('/api/auth/arabpay', async (req, res) => {
       console.warn('ArabPay S2S API Exchange Warning:', apiErr);
     }
 
-    // Extract ArabPay user profile details from JWT Token Payload or OAuth Exchange
+    // Extract ArabPay user profile details from JWT Token Payload
+    const arabpayUserId = jwtPayload?.user_id || `ap_${code.substring(0, 8)}`;
     const rawName = jwtPayload?.name || 'User ArabPay Verified';
     const rawEmail = jwtPayload?.email || `user_${code.substring(0, 8)}@arabpay.id`;
+    const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || null;
     const rawUsername = jwtPayload?.username || `arabpay_${code.substring(0, 8)}`;
     const userRole = (rawEmail === 'owner@arbil.id' || rawUsername === 'owner') ? 'owner' : 'pelanggan';
 
-    // 2. AUTO-PROVISIONING / REGISTER USER TO POSTGRESQL VPS DATABASE
-    // Lookup existing user by email or username
-    const existingUser = await pool.query('SELECT id, username, name, email, role FROM users WHERE email = $1 OR username = $2', [rawEmail, rawUsername]);
+    // 2. SEARCH & MATCHING IN POSTGRESQL VPS DATABASE BY EMAIL, PHONE_NUMBER, OR ARABPAY_USER_ID
+    const existingUser = await pool.query(
+      `SELECT id, username, name, email, phone_number, role, arabpay_user_id 
+       FROM users 
+       WHERE email = $1 OR (phone_number IS NOT NULL AND phone_number = $2) OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $3)`,
+      [rawEmail, rawPhone, arabpayUserId]
+    );
 
     let finalUser = null;
     let isNewUser = false;
 
     if (existingUser.rows.length > 0) {
+      // User exists -> Update phone_number, arabpay_user_id, and arabpay_token in Database VPS
       finalUser = existingUser.rows[0];
+      await pool.query(
+        `UPDATE users 
+         SET phone_number = COALESCE($1, phone_number),
+             arabpay_user_id = COALESCE($2, arabpay_user_id),
+             arabpay_token = COALESCE($3, arabpay_token)
+         WHERE id = $4`,
+        [rawPhone, arabpayUserId, jwtToken, finalUser.id]
+      );
     } else {
       // User does NOT exist in arbilbaru database yet -> AUTOMATICALLY REGISTER NEW USER!
       isNewUser = true;
@@ -247,12 +266,22 @@ app.post('/api/auth/arabpay', async (req, res) => {
       const defaultEncryptedPassword = await bcrypt.hash('123', saltRounds);
 
       const result = await pool.query(
-        `INSERT INTO users (id, username, name, email, role, password_hash)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING id, username, name, email, role, created_at`,
-        [newUserId, rawUsername.toLowerCase(), rawName, rawEmail.toLowerCase(), userRole, defaultEncryptedPassword]
+        `INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, username, name, email, phone_number, arabpay_user_id, role, created_at`,
+        [newUserId, rawUsername.toLowerCase(), rawName, rawEmail.toLowerCase(), rawPhone, arabpayUserId, jwtToken, userRole, defaultEncryptedPassword]
       );
       finalUser = result.rows[0];
+    }
+
+    // 3. SET SECURE HttpOnly COOKIE IN BROWSER FOR MAXIMUM TOKEN SECURITY
+    if (jwtToken) {
+      res.cookie('arabpay_token', jwtToken, {
+        httpOnly: true, // Prevents XSS JavaScript theft
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 Days
+      });
     }
 
     return res.json({
@@ -262,13 +291,17 @@ app.post('/api/auth/arabpay', async (req, res) => {
       provider: 'arabpay_s2s_oauth',
       token: jwtToken,
       jwtPayload: jwtPayload || {
-        user_id: finalUser?.id,
+        user_id: arabpayUserId,
         name: rawName,
         email: rawEmail,
+        phone_number: rawPhone,
         username: rawUsername
       },
       balance: arabpayBalance,
-      user: finalUser
+      user: {
+        ...finalUser,
+        phone_number: rawPhone || finalUser.phone_number
+      }
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });

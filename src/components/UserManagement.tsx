@@ -20,6 +20,8 @@ interface UserItem {
   username: string;
   name: string;
   email: string;
+  phone_number?: string;
+  arabpay_user_id?: string;
   role: 'owner' | 'kasir' | 'pelanggan';
   created_at?: string;
 }
@@ -220,9 +222,9 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
                     <th className="py-4 px-6">Pengguna & Username</th>
-                    <th className="py-4 px-6">Kontak Email</th>
+                    <th className="py-4 px-6">Kontak Email & HP</th>
                     <th className="py-4 px-6">Hak Akses (Role)</th>
-                    <th className="py-4 px-6">ID Pengguna (UUID)</th>
+                    <th className="py-4 px-6">ID System / ArabPay</th>
                     <th className="py-4 px-6 text-right">Status Keamanan</th>
                   </tr>
                 </thead>
@@ -242,9 +244,12 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                         </div>
                       </td>
 
-                      {/* Email */}
-                      <td className="py-4 px-6 text-slate-600 font-medium">
-                        {u.email}
+                      {/* Email & Phone */}
+                      <td className="py-4 px-6">
+                        <div className="font-medium text-slate-700">{u.email}</div>
+                        {u.phone_number && (
+                          <div className="text-[11px] font-mono text-emerald-600 font-semibold mt-0.5">📞 {u.phone_number}</div>
+                        )}
                       </td>
 
                       {/* Role Badge */}
@@ -252,9 +257,12 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                         {getRoleBadge(u.role)}
                       </td>
 
-                      {/* UUID */}
-                      <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[180px] truncate" title={u.id}>
-                        {u.id}
+                      {/* UUID & ArabPay ID */}
+                      <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[200px]">
+                        <div className="truncate" title={u.id}>ID: {u.id}</div>
+                        {u.arabpay_user_id && (
+                          <div className="text-[10px] text-blue-600 font-semibold truncate" title={u.arabpay_user_id}>AP-ID: {u.arabpay_user_id}</div>
+                        )}
                       </td>
 
                       {/* Password Security */}
