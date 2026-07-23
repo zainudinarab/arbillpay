@@ -9,7 +9,7 @@ import {
   RefreshCw, 
   Edit, 
   Trash2, 
-  Router, 
+  Router as RouterIcon, 
   Zap, 
   Clock, 
   Tag, 
@@ -26,7 +26,22 @@ export interface PackageItem {
   speed_limit: string;
   validity_days: number;
   mikrotik_profile?: string;
+  router_id?: string;
   created_at?: string;
+}
+
+export interface RouterOption {
+  id: string;
+  name: string;
+  ip_address: string;
+  api_port: number;
+}
+
+export interface SyncedProfileOption {
+  id: string;
+  name: string;
+  type: string;
+  rate_limit?: string;
 }
 
 interface PackageManagementProps {
@@ -37,6 +52,8 @@ interface PackageManagementProps {
 
 export default function PackageManagement({ profile, t, onLogout }: PackageManagementProps) {
   const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [routers, setRouters] = useState<RouterOption[]>([]);
+  const [syncedProfiles, setSyncedProfiles] = useState<SyncedProfileOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -52,27 +69,65 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const [price, setPrice] = useState<string>('150000');
   const [speedLimit, setSpeedLimit] = useState('10M/10M');
   const [validityDays, setValidityDays] = useState<string>('30');
+  const [selectedRouterId, setSelectedRouterId] = useState<string>('');
   const [mikrotikProfile, setMikrotikProfile] = useState('pppoe-profile-10m');
 
-  const fetchPackages = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/packages`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.packages)) {
-        setPackages(data.packages);
+      const [resPkg, resRtr] = await Promise.all([
+        fetch(`${apiUrl}/api/packages`),
+        fetch(`${apiUrl}/api/routers`)
+      ]);
+      const dataPkg = await resPkg.json();
+      const dataRtr = await resRtr.json();
+
+      if (dataPkg.success && Array.isArray(dataPkg.packages)) {
+        setPackages(dataPkg.packages);
+      }
+      if (dataRtr.success && Array.isArray(dataRtr.routers)) {
+        setRouters(dataRtr.routers);
+        if (dataRtr.routers.length > 0 && !selectedRouterId) {
+          setSelectedRouterId(dataRtr.routers[0].id);
+        }
       }
     } catch (err) {
-      console.error('Failed to fetch packages:', err);
+      console.error('Failed to fetch packages/routers:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchPackages();
+    fetchData();
   }, []);
+
+  // Fetch synced profiles when router changes
+  useEffect(() => {
+    if (selectedRouterId) {
+      const fetchSyncedProfiles = async () => {
+        try {
+          const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+          const res = await fetch(`${apiUrl}/api/routers/${selectedRouterId}/profiles`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.profiles)) {
+            setSyncedProfiles(data.profiles);
+            if (data.profiles.length > 0) {
+              setMikrotikProfile(data.profiles[0].name);
+              if (data.profiles[0].rate_limit) {
+                setSpeedLimit(data.profiles[0].rate_limit);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch router profiles:', err);
+        }
+      };
+
+      fetchSyncedProfiles();
+    }
+  }, [selectedRouterId]);
 
   const resetForm = () => {
     setName('');
@@ -80,19 +135,16 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setPrice('150000');
     setSpeedLimit('10M/10M');
     setValidityDays('30');
-    setMikrotikProfile('pppoe-profile-10m');
+    if (routers.length > 0) setSelectedRouterId(routers[0].id);
   };
 
   const handleTypeChange = (newType: 'pppoe' | 'hotspot_monthly' | 'hotspot_voucher') => {
     setType(newType);
     if (newType === 'pppoe') {
-      setMikrotikProfile('pppoe-profile-20m');
       setValidityDays('30');
     } else if (newType === 'hotspot_monthly') {
-      setMikrotikProfile('hs-profile-monthly');
       setValidityDays('30');
     } else {
-      setMikrotikProfile('hs-profile-3h');
       setValidityDays('1');
       setPrice('5000');
     }
@@ -119,7 +171,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           price: parseFloat(price),
           speed_limit: speedLimit.trim(),
           validity_days: parseInt(validityDays) || 30,
-          mikrotik_profile: mikrotikProfile.trim() || 'default'
+          mikrotik_profile: mikrotikProfile.trim() || 'default',
+          router_id: selectedRouterId || null
         })
       });
 
@@ -128,7 +181,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
         setToastMsg({ type: 'success', text: data.message || `Paket "${name}" berhasil dibuat!` });
         setShowAddModal(false);
         resetForm();
-        fetchPackages();
+        fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal membuat paket internet.' });
       }
@@ -147,6 +200,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setSpeedLimit(pkg.speed_limit || '10M/10M');
     setValidityDays((pkg.validity_days || 30).toString());
     setMikrotikProfile(pkg.mikrotik_profile || 'default');
+    if (pkg.router_id) setSelectedRouterId(pkg.router_id);
     setShowEditModal(true);
   };
 
@@ -171,7 +225,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           price: parseFloat(price),
           speed_limit: speedLimit.trim(),
           validity_days: parseInt(validityDays) || 30,
-          mikrotik_profile: mikrotikProfile.trim() || 'default'
+          mikrotik_profile: mikrotikProfile.trim() || 'default',
+          router_id: selectedRouterId || null
         })
       });
 
@@ -181,7 +236,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
         setShowEditModal(false);
         setEditingPackage(null);
         resetForm();
-        fetchPackages();
+        fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui paket.' });
       }
@@ -203,7 +258,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
       const data = await res.json();
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message || 'Paket berhasil dihapus.' });
-        fetchPackages();
+        fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus paket.' });
       }
@@ -225,7 +280,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
       {/* Header */}
       <HeaderBar
         title="Paket Internet & Profile Mikrotik"
-        subtitle={`Total ${packages.length} Paket Konfigurasi PPPoE & Hotspot`}
+        subtitle={`Total ${packages.length} Paket Konfigurasi Terhubung Multi-Router`}
         profile={profile}
         t={t}
         onLogout={onLogout}
@@ -289,7 +344,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
 
           <div className="flex items-center gap-3">
             <button
-              onClick={fetchPackages}
+              onClick={fetchData}
               className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all cursor-pointer"
               title="Refresh Data Paket"
             >
@@ -355,8 +410,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
 
                   <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200/60">
                     <span className="text-indigo-700 font-bold flex items-center gap-1.5">
-                      <Router size={14} className="text-indigo-600" />
-                      Profile Mikrotik ({pkg.type === 'pppoe' ? 'PPP Profile' : 'User Profile'})
+                      <RouterIcon size={14} className="text-indigo-600" />
+                      Profile Disingkron
                     </span>
                     <span className="font-extrabold font-mono text-indigo-900 bg-indigo-100 px-2 py-0.5 rounded-md text-[11px]">
                       {pkg.mikrotik_profile || 'default'}
@@ -398,13 +453,29 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Buat Paket Internet Baru</h3>
-                  <p className="text-xs text-slate-400">Tentukan tarif & nama Profile di Mikrotik Router</p>
+                  <p className="text-xs text-slate-400">Pilih Router Mikrotik & Profile yang Disingkronkan</p>
                 </div>
               </div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
             </div>
 
             <form onSubmit={handleCreatePackage} className="p-6 space-y-4">
+              {/* Router Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Router Mikrotik</label>
+                <select
+                  value={selectedRouterId}
+                  onChange={(e) => setSelectedRouterId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all font-bold text-slate-800"
+                >
+                  {routers.map(r => (
+                    <option key={r.id} value={r.id}>
+                      📡 {r.name} ({r.ip_address}:{r.api_port})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Paket Internet</label>
                 <select
@@ -430,24 +501,41 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 />
               </div>
 
-              {/* MIKROTIK PROFILE NAME INPUT (DEDICATED) */}
+              {/* MIKROTIK SYNCED PROFILE DROPDOWN SELECTOR */}
               <div className="p-4 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-2">
                 <div className="flex items-center gap-1.5 text-indigo-900 font-extrabold text-xs">
-                  <Router size={16} className="text-indigo-600" />
-                  <span>Nama Profile di Router Mikrotik</span>
+                  <RouterIcon size={16} className="text-indigo-600" />
+                  <span>Pilih Profile Hasil Singkron Mikrotik</span>
                 </div>
-                <input
-                  type="text"
-                  required
-                  placeholder={type === 'pppoe' ? 'Contoh: pppoe-profile-20m' : 'Contoh: hs-profile-monthly'}
-                  value={mikrotikProfile}
-                  onChange={(e) => setMikrotikProfile(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
+                
+                {syncedProfiles.length > 0 ? (
+                  <select
+                    value={mikrotikProfile}
+                    onChange={(e) => {
+                      setMikrotikProfile(e.target.value);
+                      const matched = syncedProfiles.find(p => p.name === e.target.value);
+                      if (matched && matched.rate_limit) setSpeedLimit(matched.rate_limit);
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-extrabold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    {syncedProfiles.map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name} {p.rate_limit ? `(${p.rate_limit})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: pppoe-profile-20m"
+                    value={mikrotikProfile}
+                    onChange={(e) => setMikrotikProfile(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-bold text-indigo-900"
+                  />
+                )}
                 <p className="text-[11px] text-indigo-700 font-medium">
-                  {type === 'pppoe' 
-                    ? '⚠️ Harus persis sama dengan nama PPP Profile di Mikrotik (`/ppp profile`).' 
-                    : '⚠️ Harus persis sama dengan nama Hotspot User Profile di Mikrotik (`/ip hotspot user profile`).'}
+                  ⚡ Profile ditarik otomatis dari router Mikrotik tanpa merusak/merubah config router secara paksa.
                 </p>
               </div>
 
@@ -512,7 +600,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Edit Paket Internet & Profile Mikrotik</h3>
-                  <p className="text-xs text-slate-500">Sesuaikan tarif atau nama Profile Mikrotik</p>
+                  <p className="text-xs text-slate-500">Sesuaikan tarif atau Profile Mikrotik disingkronkan</p>
                 </div>
               </div>
               <button onClick={() => { setShowEditModal(false); setEditingPackage(null); }} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
@@ -543,19 +631,33 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 />
               </div>
 
-              {/* MIKROTIK PROFILE NAME INPUT */}
+              {/* MIKROTIK PROFILE SELECTOR */}
               <div className="p-4 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-2">
                 <div className="flex items-center gap-1.5 text-indigo-900 font-extrabold text-xs">
-                  <Router size={16} className="text-indigo-600" />
-                  <span>Nama Profile di Router Mikrotik</span>
+                  <RouterIcon size={16} className="text-indigo-600" />
+                  <span>Profile Hasil Singkron Mikrotik</span>
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={mikrotikProfile}
-                  onChange={(e) => setMikrotikProfile(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-bold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
+                {syncedProfiles.length > 0 ? (
+                  <select
+                    value={mikrotikProfile}
+                    onChange={(e) => setMikrotikProfile(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-extrabold text-indigo-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    {syncedProfiles.map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name} {p.rate_limit ? `(${p.rate_limit})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    required
+                    value={mikrotikProfile}
+                    onChange={(e) => setMikrotikProfile(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-indigo-300 rounded-xl text-xs font-mono font-bold text-indigo-900"
+                  />
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

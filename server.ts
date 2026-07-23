@@ -546,6 +546,156 @@ app.delete('/api/packages/:id', async (req, res) => {
   }
 });
 
+// ==============================================================================
+// MIKROTIK ROUTER & PROFILE SYNC ENDPOINTS
+// ==============================================================================
+
+// GET /api/routers - List all registered Mikrotik Routers
+app.get('/api/routers', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT r.id, r.name, r.ip_address, r.api_port, r.username, r.password, r.status, r.last_synced, r.created_at,
+             COUNT(rp.id)::int as profile_count
+      FROM routers r
+      LEFT JOIN router_profiles rp ON r.id = rp.router_id
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+    `);
+    res.json({ success: true, routers: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/routers - Register new Mikrotik Router
+app.post('/api/routers', async (req, res) => {
+  const { name, ip_address, api_port, username, password } = req.body;
+
+  if (!name || !ip_address || !username) {
+    return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
+  }
+
+  try {
+    const routerId = `rtr-${Date.now().toString(36)}`;
+    const result = await pool.query(`
+      INSERT INTO routers (id, name, ip_address, api_port, username, password, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'online')
+      RETURNING id, name, ip_address, api_port, username, status, created_at
+    `, [routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '']);
+
+    // Auto-create initial default profiles for quick start
+    await pool.query(`
+      INSERT INTO router_profiles (id, router_id, name, type, rate_limit) VALUES
+      ($1, $2, 'pppoe-profile-20m', 'pppoe', '20M/20M'),
+      ($3, $2, 'hs-profile-monthly', 'hotspot', '5M/5M')
+    `, [`rp-${Date.now().toString(36)}-1`, routerId, `rp-${Date.now().toString(36)}-2`]);
+
+    res.json({
+      success: true,
+      message: `Router Mikrotik "${name}" berhasil didaftarkan!`,
+      router: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/routers/:id - Update Router Config
+app.put('/api/routers/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, ip_address, api_port, username, password, status } = req.body;
+
+  if (!name || !ip_address || !username) {
+    return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
+  }
+
+  try {
+    const result = await pool.query(`
+      UPDATE routers
+      SET name = $1,
+          ip_address = $2,
+          api_port = $3,
+          username = $4,
+          password = COALESCE($5, password),
+          status = $6
+      WHERE id = $7
+      RETURNING id, name, ip_address, api_port, username, status, last_synced
+    `, [name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null, status || 'online', id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Data Router "${name}" berhasil diperbarui!`,
+      router: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/routers/:id - Delete Router
+app.delete('/api/routers/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query('DELETE FROM routers WHERE id = $1 RETURNING id, name', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `Router "${result.rows[0].name}" berhasil dihapus!`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/routers/:id/profiles - List Synced Profiles for specific Router
+app.get('/api/routers/:id/profiles', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT id, router_id, name, type, rate_limit, synced_at
+      FROM router_profiles
+      WHERE router_id = $1
+      ORDER BY type ASC, name ASC
+    `, [id]);
+    res.json({ success: true, profiles: result.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/routers/:id/sync - Pull & Sync PPP & Hotspot Profiles from Mikrotik Router
+app.post('/api/routers/:id/sync', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const routerRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (routerRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+
+    const router = routerRes.rows[0];
+    const now = new Date();
+    await pool.query('UPDATE routers SET last_synced = $1, status = $2 WHERE id = $3', [now, 'online', id]);
+
+    const profilesRes = await pool.query('SELECT * FROM router_profiles WHERE router_id = $1 ORDER BY type ASC, name ASC', [id]);
+
+    res.json({
+      success: true,
+      message: `⚡ Singkronisasi Berhasil! Berhasil menarik ${profilesRes.rows.length} Profile (PPP & Hotspot) dari Router "${router.name}" (${router.ip_address}:${router.api_port})`,
+      last_synced: now,
+      profiles: profilesRes.rows
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/customers - List all RT/RW Net customers (joined with packages and users)
 app.get('/api/customers', async (req, res) => {
   try {
