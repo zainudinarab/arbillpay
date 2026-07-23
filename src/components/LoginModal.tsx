@@ -1,100 +1,39 @@
 import React, { useState } from 'react';
-import { QrCode, Lock, User, ArrowRight, AlertCircle, Shield, KeyRound, Sparkles } from 'lucide-react';
 import { UserAccount } from '../types';
+import { QrCode, ArrowRight, ShieldCheck, Lock, AlertCircle, Key, CheckCircle2 } from 'lucide-react';
 
 interface LoginModalProps {
-  onLoginSuccess: (account: UserAccount) => void;
+  onLoginSuccess: (user: UserAccount) => void;
   onClose?: () => void;
 }
 
-// Preset Database User Kredensial untuk Demo
-const demoAccounts: { [key: string]: { password: string; account: UserAccount } } = {
-  // 1. Akun Owner / Super Admin
-  'owner': {
-    password: '123',
-    account: {
-      id: 'u-1',
-      username: 'owner',
-      name: 'Ahmad Faisal (Owner)',
-      email: 'owner@arbil.id',
-      role: 'owner',
-      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-    }
-  },
-  'admin@arbil.id': {
-    password: '123',
-    account: {
-      id: 'u-1',
-      username: 'owner',
-      name: 'Ahmad Faisal (Owner)',
-      email: 'owner@arbil.id',
-      role: 'owner'
-    }
-  },
-  // 2. Akun Operator / Kasir
-  'kasir': {
-    password: '123',
-    account: {
-      id: 'u-2',
-      username: 'kasir',
-      name: 'Siti Rahma (Kasir Router 01)',
-      email: 'kasir@arbil.id',
-      role: 'kasir',
-      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
-    }
-  },
-  'kasir@arbil.id': {
-    password: '123',
-    account: {
-      id: 'u-2',
-      username: 'kasir',
-      name: 'Siti Rahma (Kasir Router 01)',
-      email: 'kasir@arbil.id',
-      role: 'kasir'
-    }
-  },
-  // 3. Akun Pelanggan / WiFi User
-  'user': {
-    password: '123',
-    account: {
-      id: 'u-3',
-      username: 'user',
-      name: 'Budi Pelanggan WiFi',
-      email: 'budi@gmail.com',
-      role: 'pelanggan'
-    }
-  },
-  'pelanggan@arbil.id': {
-    password: '123',
-    account: {
-      id: 'u-3',
-      username: 'user',
-      name: 'Budi Pelanggan WiFi',
-      email: 'budi@gmail.com',
-      role: 'pelanggan'
-    }
-  }
-};
-
 export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [showEmergencyAdmin, setShowEmergencyAdmin] = useState(false);
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleArabPayLogin = () => {
+    setIsLoading(true);
+    const redirectUri = encodeURIComponent(window.location.origin + '/#/oauth/callback');
+    const authUrl = `https://arabpay.my.id/oauth/authorize?client_id=AP24542931&response_type=code&redirect_uri=${redirectUri}`;
+    
+    // Redirect browser to real ArabPay OAuth Portal
+    window.location.href = authUrl;
+  };
+
+  const handleEmergencySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-
     if (!identity.trim() || !password.trim()) {
-      setErrorMsg('Silakan isi Username/Email dan Password Anda.');
+      setErrorMsg('Harap isi username dan password darurat.');
       return;
     }
 
     setIsLoading(true);
+    setErrorMsg('');
 
     try {
-      // Call PostgreSQL DB Backend API on Port 3006
       const res = await fetch('http://localhost:3006/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -104,55 +43,24 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
       const data = await res.json();
       if (res.ok && data.success && data.user) {
         setIsLoading(false);
-        onLoginSuccess({
-          id: data.user.id,
-          username: data.user.username,
-          name: data.user.name,
-          email: data.user.email,
-          role: data.user.role
-        });
+        onLoginSuccess(data.user);
         return;
+      } else {
+        setErrorMsg(data.message || 'Login darurat gagal.');
       }
     } catch (err) {
-      console.warn('Backend API offline, using preset accounts fallback.');
+      setErrorMsg('Gagal terhubung ke server.');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Fallback to preset local demo accounts if API offline or custom local user
-    setTimeout(() => {
-      const inputKey = identity.trim().toLowerCase();
-      const matched = demoAccounts[inputKey];
-
-      if (matched && (matched.password === password || password === '123' || password === '123456')) {
-        setIsLoading(false);
-        onLoginSuccess(matched.account);
-      } else if (inputKey.includes('owner') || inputKey.includes('admin')) {
-        setIsLoading(false);
-        onLoginSuccess(demoAccounts['owner'].account);
-      } else if (inputKey.includes('kasir') || inputKey.includes('pos')) {
-        setIsLoading(false);
-        onLoginSuccess(demoAccounts['kasir'].account);
-      } else if (inputKey.includes('user') || inputKey.includes('pelanggan')) {
-        setIsLoading(false);
-        onLoginSuccess(demoAccounts['user'].account);
-      } else {
-        setIsLoading(false);
-        setErrorMsg('Username/Password salah. Coba username: owner, kasir, atau user (Password: 123).');
-      }
-    }, 400);
-  };
-
-  const handleQuickFill = (presetUsername: string) => {
-    setIdentity(presetUsername);
-    setPassword('123');
-    setErrorMsg('');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-md animate-fade-in">
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden space-y-0">
         
         {/* Top Header Card */}
-        <div className="bg-gradient-to-br from-[#0066FF] to-blue-700 p-8 text-white text-center relative overflow-hidden">
+        <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800 p-8 text-white text-center relative overflow-hidden">
           {onClose && (
             <button 
               type="button"
@@ -163,18 +71,22 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
             </button>
           )}
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-blue-400/20 rounded-full blur-xl pointer-events-none" />
+          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-400/20 rounded-full blur-xl pointer-events-none" />
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center text-white mb-3 shadow-inner border border-white/20">
-              <QrCode size={30} className="stroke-[2.5]" />
+            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white mb-3 shadow-lg border border-white/30 font-black text-xl">
+              AP
             </div>
-            <h2 className="font-extrabold text-2xl tracking-tight">Arbil Billing SaaS</h2>
-            <p className="text-xs text-blue-100 mt-1 font-medium">Masuk untuk mengakses sistem manajemen hotspot & e-wallet</p>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-[10px] font-bold tracking-wider uppercase mb-1 border border-white/20">
+              <ShieldCheck size={12} />
+              Kemitraan Resmi ArabPay E-Wallet
+            </div>
+            <h2 className="font-extrabold text-2xl tracking-tight text-white">ArbilBaru Login Gateway</h2>
+            <p className="text-xs text-emerald-100 mt-1 font-medium max-w-xs">Semua pengguna wajib masuk & terautentikasi melalui sistem ArabPay E-Wallet SSO.</p>
           </div>
         </div>
 
-        {/* Form Area */}
+        {/* Form Area - ArabPay Primary SSO */}
         <div className="p-8 space-y-6">
           {errorMsg && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-700 text-xs font-semibold animate-shake">
@@ -183,114 +95,76 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Identity Input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Username / Email / Phone</label>
-              <div className="relative">
-                <User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={identity}
-                  onChange={(e) => setIdentity(e.target.value)}
-                  placeholder="Masukkan username atau email..."
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#0066FF] focus:bg-white focus:ring-4 focus:ring-blue-500/10 rounded-xl text-sm font-medium text-slate-800 transition-all outline-none"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Password Input */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">Password</label>
-                <span className="text-[11px] font-bold text-[#0066FF] hover:underline cursor-pointer">Lupa Password?</span>
-              </div>
-              <div className="relative">
-                <Lock size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan password..."
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 focus:border-[#0066FF] focus:bg-white focus:ring-4 focus:ring-blue-500/10 rounded-xl text-sm font-medium text-slate-800 transition-all outline-none"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Submit Button */}
+          {/* MAIN SOLE LOGIN BUTTON: ARABPAY SSO */}
+          <div className="space-y-4">
             <button
-              type="submit"
+              type="button"
+              onClick={handleArabPayLogin}
               disabled={isLoading}
-              className="w-full py-3.5 px-4 bg-[#0066FF] hover:bg-blue-700 disabled:opacity-70 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 cursor-pointer transition-all mt-2"
+              className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-base rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-emerald-500/25 cursor-pointer transition-all border border-emerald-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
             >
-              {isLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Memverifikasi Akun...</span>
-                </>
-              ) : (
-                <>
-                  <span>Masuk ke Dashboard</span>
-                  <ArrowRight size={18} />
-                </>
-              )}
+              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-sm shadow-inner">
+                AP
+              </div>
+              <span>{isLoading ? 'Mengarahkan ke ArabPay...' : 'Masuk dengan ArabPay (SSO)'}</span>
+              <ArrowRight size={18} />
             </button>
-          </form>
 
-          {/* Divider Or */}
-          <div className="relative flex items-center justify-center my-4">
-            <div className="border-t border-slate-200 w-full" />
-            <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider absolute">atau</span>
-          </div>
-
-          {/* ArabPay OAuth SSO Login Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsLoading(true);
-              const redirectUri = encodeURIComponent(window.location.origin + '/#/oauth/callback');
-              const authUrl = `https://arabpay.my.id/oauth/authorize?client_id=AP24542931&response_type=code&redirect_uri=${redirectUri}`;
-              
-              // Redirect browser to real ArabPay OAuth Portal
-              window.location.href = authUrl;
-            }}
-            className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/20 cursor-pointer transition-all border border-emerald-500/30"
-          >
-            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-xs">
-              AP
-            </div>
-            <span>Masuk dengan ArabPay (E-Wallet SSO)</span>
-          </button>
-
-          {/* Tester Helper Chips (Hanya bantuan isi teks cepat tanpa memilih role) */}
-          <div className="pt-2 border-t border-slate-100 space-y-2">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">Bantuan Uji Coba Kredensial:</span>
-            <div className="flex flex-wrap gap-2 justify-center">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('owner')}
-                className="px-3 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold rounded-lg transition-all"
-              >
-                owner (Pass: 123)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('kasir')}
-                className="px-3 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold rounded-lg transition-all"
-              >
-                kasir (Pass: 123)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickFill('user')}
-                className="px-3 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-600 text-xs font-semibold rounded-lg transition-all"
-              >
-                user (Pass: 123)
-              </button>
+            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-slate-800 text-xs font-bold">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Otentikasi Satu Pintu Terenkripsi</span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Login dan pendaftaran dilakukan otomatis via ArabPay. Anda akan diarahkan ke portal aman <strong>https://arabpay.my.id</strong> untuk otorisasi.
+              </p>
             </div>
           </div>
+
+          {/* Emergency Admin Recovery Mode (Accordion) */}
+          <div className="pt-3 border-t border-slate-100 text-center">
+            <button
+              type="button"
+              onClick={() => setShowEmergencyAdmin(!showEmergencyAdmin)}
+              className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-all cursor-pointer underline"
+            >
+              {showEmergencyAdmin ? 'Sembunyikan Mode Darurat Owner' : 'Mode Pemulihan Darurat Owner (Local Login)'}
+            </button>
+
+            {showEmergencyAdmin && (
+              <form onSubmit={handleEmergencySubmit} className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-left animate-fade-in">
+                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Akses Pemulihan Darurat Admin:</div>
+                
+                <div>
+                  <input
+                    type="text"
+                    value={identity}
+                    onChange={(e) => setIdentity(e.target.value)}
+                    placeholder="Username / Email..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  {isLoading ? 'Memverifikasi...' : 'Masuk Darurat (Owner Only)'}
+                </button>
+              </form>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
