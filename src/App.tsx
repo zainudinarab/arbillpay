@@ -39,13 +39,33 @@ export default function App() {
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
 
-  // Check URL query string or pathname for admin login route (e.g. /admin-login or #/admin-login)
+  // Check URL query string or pathname for admin login route or ArabPay OAuth callback
   useEffect(() => {
-    const handleHashAndRoute = () => {
+    const handleHashAndRoute = async () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
       const pathname = window.location.pathname.replace('/', '');
       const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
       
+      // Handle ArabPay OAuth SSO Callback
+      if (hash.includes('oauth/callback') || code) {
+        try {
+          const res = await fetch('http://localhost:3006/api/auth/arabpay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
+          });
+          const data = await res.json();
+          if (data.success && data.user) {
+            handleLoginSuccess(data.user);
+            window.location.hash = '#/overview';
+            return;
+          }
+        } catch (err) {
+          console.error('Failed to exchange ArabPay OAuth code:', err);
+        }
+      }
+
       if (hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin') {
         setShowAdminLoginModal(true);
       } else if (hash) {
