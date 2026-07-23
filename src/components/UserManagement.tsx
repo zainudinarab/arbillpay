@@ -11,7 +11,10 @@ import {
   CheckCircle2, 
   AlertCircle,
   RefreshCw,
-  Phone
+  Phone,
+  Wrench,
+  Megaphone,
+  Edit
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -23,7 +26,7 @@ interface UserItem {
   email: string;
   phone_number?: string;
   arabpay_user_id?: string;
-  role: 'owner' | 'kasir' | 'pelanggan';
+  role: 'owner' | 'teknisi' | 'marketing' | 'kasir' | 'pelanggan' | string;
   created_at?: string;
 }
 
@@ -38,21 +41,24 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Form State
+  // Form State (Add & Edit)
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [role, setRole] = useState<'owner' | 'kasir' | 'pelanggan'>('kasir');
+  const [role, setRole] = useState<string>('kasir');
   const [password, setPassword] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3006/api/users');
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/users`);
       const data = await res.json();
       if (data.success && Array.isArray(data.users)) {
         setUsers(data.users);
@@ -79,7 +85,8 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     setToastMsg(null);
 
     try {
-      const res = await fetch('http://localhost:3006/api/users', {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,15 +101,9 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setToastMsg({ type: 'success', text: `User "${data.user.name}" berhasil ditambahkan dengan UUID unik & enkripsi Bcrypt!` });
+        setToastMsg({ type: 'success', text: `User "${data.user.name}" (Role: ${data.user.role.toUpperCase()}) berhasil ditambahkan!` });
         setShowAddModal(false);
-        // Reset form
-        setName('');
-        setUsername('');
-        setEmail('');
-        setPhoneNumber('');
-        setPassword('');
-        setRole('kasir');
+        resetForm();
         fetchUsers();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal menambahkan user' });
@@ -112,6 +113,68 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  const openEditModal = (u: UserItem) => {
+    setEditingUser(u);
+    setName(u.name);
+    setUsername(u.username);
+    setEmail(u.email);
+    setPhoneNumber(u.phone_number || '');
+    setRole(u.role);
+    setPassword('');
+    setShowEditModal(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || !name.trim() || !email.trim()) {
+      setToastMsg({ type: 'error', text: 'Nama dan Email wajib diisi!' });
+      return;
+    }
+
+    setSubmitLoading(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          username: username.trim(),
+          email: email.trim(),
+          phone_number: phoneNumber.trim() || null,
+          role,
+          password: password.trim() || undefined
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setToastMsg({ type: 'success', text: data.message || `Jabatan user "${name}" berhasil diubah menjadi ${role.toUpperCase()}!` });
+        setShowEditModal(false);
+        setEditingUser(null);
+        resetForm();
+        fetchUsers();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui user' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal memperbarui user ke database.' });
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setName('');
+    setUsername('');
+    setEmail('');
+    setPhoneNumber('');
+    setPassword('');
+    setRole('kasir');
   };
 
   const filteredUsers = users.filter(u => 
@@ -129,6 +192,20 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
           <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full text-xs font-semibold">
             <ShieldCheck size={14} className="text-amber-600" />
             Owner (Super Admin)
+          </span>
+        );
+      case 'teknisi':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200/60 rounded-full text-xs font-semibold">
+            <Wrench size={14} className="text-indigo-600" />
+            Teknisi / Lapangan
+          </span>
+        );
+      case 'marketing':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200/60 rounded-full text-xs font-semibold">
+            <Megaphone size={14} className="text-purple-600" />
+            Marketing / Sales
           </span>
         );
       case 'kasir':
@@ -153,7 +230,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       {/* Header */}
       <HeaderBar
         title="Pengguna Sistem"
-        subtitle={`Total ${users.length} Akun Terdaftar di Database VPS`}
+        subtitle={`Total ${users.length} Akun Terdaftar (Owner, Teknisi, Marketing, Kasir, Pelanggan)`}
         profile={profile}
         t={t}
         onLogout={onLogout}
@@ -183,7 +260,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
             <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Cari nama, username, email, atau role..."
+              placeholder="Cari nama, username, email, atau role (teknisi, marketing...)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-0 rounded-xl text-sm font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white transition-all text-slate-700"
@@ -201,7 +278,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
             </button>
 
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => { resetForm(); setShowAddModal(true); }}
               className="py-2.5 px-5 bg-[#2563EB] hover:bg-blue-700 text-white font-sans font-semibold rounded-xl flex items-center gap-2 text-xs shadow-md shadow-blue-100 transition-all cursor-pointer shrink-0"
             >
               <UserPlus size={16} />
@@ -230,7 +307,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                     <th className="py-4 px-6">Kontak Email & HP</th>
                     <th className="py-4 px-6">Hak Akses (Role)</th>
                     <th className="py-4 px-6">ID System / ArabPay</th>
-                    <th className="py-4 px-6 text-right">Status Keamanan</th>
+                    <th className="py-4 px-6 text-right">Kelola / Angkat Jabatan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-sans">
@@ -271,7 +348,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(u.arabpay_user_id!);
-                                setToastMsg({ text: `ID ArabPay (${u.arabpay_user_id}) berhasil disalin! Masukkan ke ARABPAY_OWNER_USER_ID di .env`, type: 'success' });
+                                setToastMsg({ text: `ID ArabPay (${u.arabpay_user_id}) berhasil disalin!`, type: 'success' });
                               }}
                               className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded transition-all cursor-pointer border border-emerald-200 shrink-0"
                               title="Salin ID ArabPay ke clipboard"
@@ -284,12 +361,15 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                         )}
                       </td>
 
-                      {/* Password Security */}
+                      {/* Edit Role Button */}
                       <td className="py-4 px-6 text-right">
-                        <span className="inline-flex items-center gap-1 text-emerald-600 text-[11px] font-semibold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                          <Lock size={12} />
-                          Bcrypt Hashed
-                        </span>
+                        <button
+                          onClick={() => openEditModal(u)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-indigo-200/60 inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          <Edit size={13} />
+                          <span>Edit Role</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -311,8 +391,8 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   <UserPlus size={20} />
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-base text-slate-800">Tambah Pengguna / Staf Baru</h3>
-                  <p className="text-xs text-slate-400">Tersimpan otomatis ke database PostgreSQL VPS</p>
+                  <h3 className="font-sans font-bold text-base text-slate-800">Tambah Pengguna Baru</h3>
+                  <p className="text-xs text-slate-400">Pilih role Owner, Teknisi, Marketing, Kasir, atau Pelanggan</p>
                 </div>
               </div>
               <button 
@@ -385,15 +465,17 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Hak Akses (Role)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Hak Akses (Role Staf)</label>
                   <select
                     value={role}
-                    onChange={(e) => setRole(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all text-slate-700"
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all text-slate-700 font-bold"
                   >
-                    <option value="kasir">Kasir / Operator POS</option>
-                    <option value="owner">Owner (Super Admin)</option>
-                    <option value="pelanggan">Pelanggan WiFi</option>
+                    <option value="owner">👑 Owner (Super Admin)</option>
+                    <option value="teknisi">🔧 Teknisi / Staf Lapangan</option>
+                    <option value="marketing">📢 Marketing / Penjualan</option>
+                    <option value="kasir">🛒 Kasir / Operator POS</option>
+                    <option value="pelanggan">👤 Pelanggan WiFi</option>
                   </select>
                 </div>
 
@@ -413,12 +495,6 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                 </div>
               </div>
 
-              {/* Security Banner */}
-              <div className="p-3 bg-blue-50/80 border border-blue-100 rounded-xl flex items-center gap-2.5 text-[11px] text-blue-700 font-medium">
-                <Lock size={14} className="shrink-0 text-[#2563EB]" />
-                <span>Password akan dienkripsi otomatis dengan **Bcrypt Hash** & ID unik **UUID** saat disimpan ke database VPS.</span>
-              </div>
-
               {/* Form Buttons */}
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
@@ -434,7 +510,139 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   className="px-5 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md shadow-blue-100 cursor-pointer flex items-center gap-2"
                 >
                   {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>{submitLoading ? 'Menyimpan...' : 'Simpan User ke VPS'}</span>
+                  <span>{submitLoading ? 'Menyimpan...' : 'Simpan User'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit / Angkat Jabatan Staf */}
+      {showEditModal && editingUser && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up">
+            {/* Header Modal */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200">
+                  <Edit size={20} />
+                </div>
+                <div>
+                  <h3 className="font-sans font-bold text-base text-slate-800">Edit & Angkat Jabatan Pengguna</h3>
+                  <p className="text-xs text-slate-500">Ubah peran menjadi Teknisi, Marketing, Owner, Kasir, dll.</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowEditModal(false); setEditingUser(null); }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Form Modal Edit */}
+            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label>
+                <div className="relative">
+                  <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                  <div className="relative">
+                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp (Opsional)</label>
+                <div className="relative">
+                  <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Jabatan / Role Picker */}
+              <div>
+                <label className="block text-xs font-bold text-indigo-700 mb-1">👑 Angkat Jabatan Staf (Hak Akses Role)</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all text-indigo-900 font-extrabold"
+                >
+                  <option value="owner">👑 Owner (Super Admin)</option>
+                  <option value="teknisi">🔧 Teknisi / Staf Lapangan</option>
+                  <option value="marketing">📢 Marketing / Penjualan</option>
+                  <option value="kasir">🛒 Kasir / Operator POS</option>
+                  <option value="pelanggan">👤 Pelanggan WiFi</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional - Kosongkan jika tidak diubah)</label>
+                <div className="relative">
+                  <Key size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="password"
+                    placeholder="Kosongkan jika tidak ingin mengubah password..."
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Form Buttons */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setShowEditModal(false); setEditingUser(null); }}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitLoading}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-2"
+                >
+                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
+                  <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan Role'}</span>
                 </button>
               </div>
             </form>

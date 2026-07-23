@@ -88,6 +88,54 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
+// PUT /api/users/:id - Owner Update User Role & Profile Details (Promote Teknisi, Marketing, Owner, Kasir)
+app.put('/api/users/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, username, email, phone_number, role, password } = req.body;
+
+  if (!name || !email) {
+    return res.status(400).json({ success: false, message: 'Nama dan Email wajib diisi.' });
+  }
+
+  try {
+    const params: any[] = [name.trim(), email.trim().toLowerCase(), phone_number || null, role || 'pelanggan', id];
+
+    let queryStr = `
+      UPDATE users 
+      SET name = $1,
+          email = $2,
+          phone_number = $3,
+          role = $4`;
+
+    if (username && username.trim()) {
+      params.push(username.trim().toLowerCase());
+      queryStr += `, username = $${params.length}`;
+    }
+
+    if (password && password.trim().length >= 4) {
+      const passwordHash = await bcrypt.hash(password.trim(), 10);
+      params.push(passwordHash);
+      queryStr += `, password_hash = $${params.length}`;
+    }
+
+    queryStr += ` WHERE id = $5 OR arabpay_user_id = $5 RETURNING id, username, name, email, phone_number, arabpay_user_id, role, created_at`;
+
+    const result = await pool.query(queryStr, params);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+    }
+
+    res.json({
+      success: true,
+      message: `User "${result.rows[0].name}" berhasil diperbarui! Role baru: ${result.rows[0].role.toUpperCase()}`,
+      user: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/auth/login - Authenticate with Bcrypt Password Hash
 app.post('/api/auth/login', async (req, res) => {
   const { identity, password } = req.body;
