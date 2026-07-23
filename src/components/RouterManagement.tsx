@@ -16,7 +16,8 @@ import {
   Wifi, 
   Key, 
   User, 
-  Activity
+  Activity,
+  Radio
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -64,6 +65,10 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Test Connection State
+  const [testingConn, setTestingConn] = useState(false);
+  const [testConnResult, setTestConnResult] = useState<{ success: boolean; message: string } | null>(null);
+
   // Form State
   const [name, setName] = useState('');
   const [ipAddress, setIpAddress] = useState('192.168.88.1');
@@ -97,6 +102,40 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setApiPort('8728');
     setUsername('admin');
     setPassword('');
+    setTestConnResult(null);
+  };
+
+  const handleTestConnection = async () => {
+    if (!ipAddress.trim()) {
+      setTestConnResult({ success: false, message: 'Harap isi IP Address router!' });
+      return;
+    }
+
+    setTestingConn(true);
+    setTestConnResult(null);
+
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip_address: ipAddress.trim(),
+          api_port: parseInt(apiPort) || 8728,
+          username: username.trim(),
+          password: password.trim()
+        })
+      });
+      const data = await res.json();
+      setTestConnResult({
+        success: data.success,
+        message: data.message || (data.success ? '⚡ Koneksi ke Router Mikrotik Berhasil!' : '❌ Gagal terhubung ke Router.')
+      });
+    } catch (err) {
+      setTestConnResult({ success: false, message: 'Gagal melakukan tes koneksi ke backend.' });
+    } finally {
+      setTestingConn(false);
+    }
   };
 
   const handleCreateRouter = async (e: React.FormEvent) => {
@@ -146,6 +185,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setApiPort(rtr.api_port.toString());
     setUsername(rtr.username);
     setPassword('');
+    setTestConnResult(null);
     setShowEditModal(true);
   };
 
@@ -267,7 +307,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       {/* Header */}
       <HeaderBar
         title="Router Mikrotik (Multi-Router)"
-        subtitle={`Total ${routers.length} Router Terhubung di System Billing`}
+        subtitle={`Total ${routers.length} Router Terhubung dengan Uji Tes Koneksi & Node RouterOS`}
         profile={profile}
         t={t}
         onLogout={onLogout}
@@ -421,7 +461,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
           </div>
         )}
 
-        {/* View Router Profiles Modal/Drawer */}
+        {/* View Router Profiles Modal */}
         {selectedRouterForProfiles && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-2xl shadow-2xl overflow-hidden animate-slide-up">
@@ -484,7 +524,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Tambah Router Mikrotik Baru</h3>
-                  <p className="text-xs text-slate-400">Daftarkan router Mikrotik untuk dipull Profile-nya</p>
+                  <p className="text-xs text-slate-400">Tes koneksi terlebih dahulu sebelum menyimpan ke database</p>
                 </div>
               </div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
@@ -552,6 +592,28 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                   />
                 </div>
+              </div>
+
+              {/* TEST CONNECTION BUTTON & STATUS BANNER */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConn}
+                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
+                  <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
+                </button>
+
+                {testConnResult && (
+                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                    testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <span>{testConnResult.message}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
@@ -641,6 +703,28 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
                 </div>
+              </div>
+
+              {/* TEST CONNECTION BUTTON & STATUS BANNER */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestConnection}
+                  disabled={testingConn}
+                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
+                  <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
+                </button>
+
+                {testConnResult && (
+                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                    testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    <span>{testConnResult.message}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">

@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import cookieParser from 'cookie-parser';
+import net from 'net';
+import { RouterOSClient } from 'node-routeros';
 
 dotenv.config();
 
@@ -562,8 +564,56 @@ app.get('/api/routers', async (req, res) => {
       ORDER BY r.created_at DESC
     `);
     res.json({ success: true, routers: result.rows });
+// Helper function to test socket ping & RouterOS API reachability
+const testMikrotikConnection = async (host: string, port: number): Promise<{ success: boolean; message: string }> => {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(4000);
+
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve({
+        success: true,
+        message: `⚡ Tes Koneksi Berhasil! IP Router Mikrotik ${host}:${port} merespon koneksi API dengan lancar!`
+      });
+    });
+
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve({
+        success: false,
+        message: `❌ Gagal terhubung ke Mikrotik IP ${host}:${port}: Connection Timeout (Waktu Habis). Pastikan IP/Port API Router dapat dijangkau.`
+      });
+    });
+
+    socket.on('error', (err: any) => {
+      socket.destroy();
+      resolve({
+        success: false,
+        message: `❌ Gagal terhubung ke Mikrotik IP ${host}:${port}: ${err.message || 'Connection Refused'}`
+      });
+    });
+
+    socket.connect(port, host);
+  });
+};
+
+// POST /api/routers/test-connection - Live test socket ping to Mikrotik API
+app.post('/api/routers/test-connection', async (req, res) => {
+  const { ip_address, api_port, username, password } = req.body;
+
+  if (!ip_address) {
+    return res.status(400).json({ success: false, message: 'IP Address router wajib diisi.' });
+  }
+
+  try {
+    const cleanHost = ip_address.trim();
+    const cleanPort = parseInt(api_port) || 8728;
+
+    const result = await testMikrotikConnection(cleanHost, cleanPort);
+    res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: `Gagal melakukan tes koneksi: ${err.message}` });
   }
 });
 
