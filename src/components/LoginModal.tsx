@@ -139,7 +139,10 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
 
             {showEmergencyAdmin && (
               <form onSubmit={handleEmergencySubmit} className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-left animate-fade-in">
-                <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Akses Pemulihan Darurat Admin:</div>
+                <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                  <span>Akses Pemulihan Darurat Admin:</span>
+                  <span className="text-[10px] text-emerald-600 lowercase font-normal">(Default Pass: admin123)</span>
+                </div>
                 
                 <div>
                   <input
