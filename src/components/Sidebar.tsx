@@ -7,8 +7,7 @@ import {
   CreditCard, 
   Settings, 
   Plus, 
-  MoreVertical,
-  QrCode
+  UserCheck
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -46,6 +45,7 @@ export default function Sidebar({
   const allMenuItems = [
     { id: 'overview', label: t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
     { id: 'invoices', label: t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
+    { id: 'users', label: 'Pengguna System', icon: UserCheck, roles: ['owner'] },
     { id: 'clients', label: t.clients, icon: Users, roles: ['owner'] },
     { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
     { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },

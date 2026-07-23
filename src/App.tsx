@@ -20,6 +20,7 @@ import InvoiceDetails from './components/InvoiceDetails';
 import PaymentSimulator from './components/PaymentSimulator';
 import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
+import UserManagement from './components/UserManagement';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
@@ -329,6 +330,14 @@ export default function App() {
             setCurrentView={setCurrentView}
             setSelectedInvoice={setSelectedInvoice}
             onQuickInvoice={() => setCurrentView('new-invoice')}
+            onLogout={handleLogout}
+          />
+        );
+      case 'users':
+        return (
+          <UserManagement
+            profile={profile}
+            t={t}
             onLogout={handleLogout}
           />
         );
