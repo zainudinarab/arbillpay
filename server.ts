@@ -337,6 +337,33 @@ app.post('/api/auth/arabpay', async (req, res) => {
   }
 });
 
+// POST /api/auth/change-password - Change Owner Emergency Password
+app.post('/api/auth/change-password', async (req, res) => {
+  const { userId, newPassword } = req.body;
+
+  if (!newPassword || newPassword.trim().length < 4) {
+    return res.status(400).json({ success: false, message: 'Password darurat baru minimal 4 karakter.' });
+  }
+
+  try {
+    const newHash = await bcrypt.hash(newPassword.trim(), 10);
+    let result;
+    if (userId) {
+      result = await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2 OR arabpay_user_id = $2', [newHash, userId]);
+    } else {
+      result = await pool.query('UPDATE users SET password_hash = $1 WHERE role = $2', [newHash, 'owner']);
+    }
+
+    return res.json({ 
+      success: true, 
+      message: 'Password Pemulihan Darurat Owner berhasil diperbarui!',
+      updatedRows: result.rowCount 
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`ArbilBaru Database Backend API running on port ${port}`);
 });

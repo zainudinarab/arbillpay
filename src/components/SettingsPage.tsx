@@ -11,7 +11,11 @@ import {
   DollarSign, 
   Languages, 
   CheckCircle,
-  Database
+  Database,
+  Lock,
+  Key,
+  ShieldCheck,
+  AlertCircle
 } from 'lucide-react';
 import { BusinessProfile } from '../types';
 import HeaderBar from './HeaderBar';
@@ -41,6 +45,12 @@ export default function SettingsPage({
   const [themeColor, setThemeColor] = useState<'blue' | 'emerald' | 'violet' | 'rose' | 'amber' | 'dark'>(profile.themeColor || 'blue');
   const [success, setSuccess] = useState(false);
 
+  // Emergency Password Change State
+  const [newEmergencyPassword, setNewEmergencyPassword] = useState('');
+  const [confirmEmergencyPassword, setConfirmEmergencyPassword] = useState('');
+  const [passMsg, setPassMsg] = useState({ text: '', isError: false });
+  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const updatedProfile: BusinessProfile = {
@@ -59,6 +69,45 @@ export default function SettingsPage({
     onUpdateProfile(updatedProfile);
     setSuccess(true);
     setTimeout(() => setSuccess(false), 3000);
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassMsg({ text: '', isError: false });
+
+    if (!newEmergencyPassword || newEmergencyPassword.trim().length < 4) {
+      setPassMsg({ text: 'Password darurat baru minimal 4 karakter!', isError: true });
+      return;
+    }
+    if (newEmergencyPassword !== confirmEmergencyPassword) {
+      setPassMsg({ text: 'Konfirmasi password tidak cocok!', isError: true });
+      return;
+    }
+
+    setIsUpdatingPass(true);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: phone || '019f74af9fcdWDgDxM8g',
+          newPassword: newEmergencyPassword.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPassMsg({ text: data.message || 'Password Darurat Owner berhasil diperbarui!', isError: false });
+        setNewEmergencyPassword('');
+        setConfirmEmergencyPassword('');
+      } else {
+        setPassMsg({ text: data.message || 'Gagal mengubah password.', isError: true });
+      }
+    } catch (err: any) {
+      setPassMsg({ text: 'Gagal menghubungi server backend.', isError: true });
+    } finally {
+      setIsUpdatingPass(false);
+    }
   };
 
   return (
@@ -289,6 +338,65 @@ export default function SettingsPage({
               </div>
 
             </form>
+
+            {/* Owner Emergency Password Change Section */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 pt-6">
+              <div className="flex items-center gap-2 border-b border-slate-50 pb-3">
+                <ShieldCheck className="text-emerald-500" size={20} />
+                <div>
+                  <h3 className="font-sans font-bold text-sm text-slate-800">Password Pemulihan Darurat Owner</h3>
+                  <p className="text-[11px] text-slate-400">Atur/ubah password lokal untuk login darurat Owner jika terjadi kendala jaringan ArabPay</p>
+                </div>
+              </div>
+
+              {passMsg.text && (
+                <div className={`p-3 rounded-xl flex items-center gap-2 text-xs font-semibold animate-fade-in ${
+                  passMsg.isError ? 'bg-rose-50 border border-rose-100 text-rose-600' : 'bg-emerald-50 border border-emerald-100 text-emerald-700'
+                }`}>
+                  {passMsg.isError ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
+                  <span>{passMsg.text}</span>
+                </div>
+              )}
+
+              <form onSubmit={handlePasswordChange} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 block">Password Darurat Baru</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Masukkan password darurat baru..."
+                      value={newEmergencyPassword}
+                      onChange={(e) => setNewEmergencyPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border-0 rounded-xl text-xs font-sans focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-700"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 block">Konfirmasi Password Darurat</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Ulangi password darurat baru..."
+                      value={confirmEmergencyPassword}
+                      onChange={(e) => setConfirmEmergencyPassword(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border-0 rounded-xl text-xs font-sans focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-700"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={isUpdatingPass}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm transition-all"
+                  >
+                    <Key size={14} />
+                    <span>{isUpdatingPass ? 'Memperbarui...' : 'Perbarui Password Darurat'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
 
         </div>
