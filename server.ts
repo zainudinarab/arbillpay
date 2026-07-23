@@ -258,9 +258,15 @@ app.post('/api/auth/arabpay', async (req, res) => {
     return res.json({
       success: true,
       action: isNewUser ? 'auto_registered_new_user' : 'logged_in_existing_user',
-      message: isNewUser ? 'Akun ArabPay baru berhasil didaftarkan ke Database VPS!' : 'Login ArabPay berhasil!',
+      message: isNewUser ? 'Akun ArabPay baru berhasil didaftarkan ke Database VPS!' : 'Login akun ArabPay berhasil!',
       provider: 'arabpay_s2s_oauth',
       token: jwtToken,
+      jwtPayload: jwtPayload || {
+        user_id: finalUser?.id,
+        name: rawName,
+        email: rawEmail,
+        username: rawUsername
+      },
       balance: arabpayBalance,
       user: finalUser
     });
