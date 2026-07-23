@@ -60,8 +60,8 @@ app.post('/api/users', async (req, res) => {
   }
 
   try {
-    // 1. Generate Unique UUID for User ID
-    const userId = `usr_${crypto.randomUUID()}`;
+    // 1. Generate Standard Unique UUID for User ID (36 chars)
+    const userId = crypto.randomUUID();
 
     // 2. Encrypt Password using Bcrypt Hash (Salt Rounds: 10)
     const saltRounds = 10;
