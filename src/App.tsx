@@ -351,6 +351,7 @@ export default function App() {
             setSelectedInvoice={setSelectedInvoice}
             onQuickInvoice={() => setCurrentView('new-invoice')}
             onLogout={handleLogout}
+            userRole={currentUser?.role || 'owner'}
           />
         );
       case 'users':
@@ -406,6 +407,24 @@ export default function App() {
         );
       case 'new-invoice':
       case 'edit-invoice':
+        if (currentUser?.role === 'pelanggan') {
+          return (
+            <InvoiceList
+              invoices={invoices}
+              onArchiveInvoice={handleArchiveInvoice}
+              onRestoreInvoice={handleRestoreInvoice}
+              onDeleteInvoicePermanently={handleDeleteInvoicePermanently}
+              onEditInvoice={handleEditInvoice}
+              profile={profile}
+              t={t}
+              setCurrentView={setCurrentView}
+              setSelectedInvoice={setSelectedInvoice}
+              onQuickInvoice={() => setCurrentView('new-invoice')}
+              onLogout={handleLogout}
+              userRole="pelanggan"
+            />
+          );
+        }
         return (
           <InvoiceForm
             clients={clients}

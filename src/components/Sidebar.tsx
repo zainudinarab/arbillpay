@@ -7,7 +7,8 @@ import {
   CreditCard, 
   Settings, 
   Plus, 
-  UserCheck
+  UserCheck,
+  QrCode
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -43,8 +44,8 @@ export default function Sidebar({
 
   // Define full menu items
   const allMenuItems = [
-    { id: 'overview', label: t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
-    { id: 'invoices', label: t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
+    { id: 'overview', label: userRole === 'pelanggan' ? 'Ringkasan Saya' : t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
+    { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
     { id: 'users', label: 'Pengguna System', icon: UserCheck, roles: ['owner'] },
     { id: 'clients', label: t.clients, icon: Users, roles: ['owner'] },
     { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
@@ -66,14 +67,16 @@ export default function Sidebar({
           <span className="font-sans font-bold text-xl tracking-tight text-slate-800">Billava</span>
         </div>
 
-        {/* Quick Invoice Button */}
-        <button
-          onClick={onQuickInvoice}
-          className={`w-full py-3 px-4 ${themeStyles.btnBg} transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg cursor-pointer`}
-        >
-          <Plus size={18} />
-          <span>{t.quickInvoice}</span>
-        </button>
+        {/* Quick Invoice Button (Owner & Kasir Only) */}
+        {userRole !== 'pelanggan' && (
+          <button
+            onClick={onQuickInvoice}
+            className={`w-full py-3 px-4 ${themeStyles.btnBg} transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg cursor-pointer`}
+          >
+            <Plus size={18} />
+            <span>{t.quickInvoice}</span>
+          </button>
+        )}
 
         {/* Main Menu */}
         <div className="space-y-1 pt-2">

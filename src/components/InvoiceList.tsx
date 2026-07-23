@@ -29,6 +29,7 @@ interface InvoiceListProps {
   setSelectedInvoice: (invoice: Invoice) => void;
   onQuickInvoice: () => void;
   onLogout?: () => void;
+  userRole?: string;
 }
 
 type FilterStatus = 'all' | 'paid' | 'pending' | 'overdue' | 'archived';
@@ -44,7 +45,8 @@ export default function InvoiceList({
   setCurrentView,
   setSelectedInvoice,
   onQuickInvoice,
-  onLogout
+  onLogout,
+  userRole
 }: InvoiceListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
@@ -70,8 +72,8 @@ export default function InvoiceList({
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8">
       {/* Header */}
       <HeaderBar
-        title={t.invoices}
-        subtitle={profile.language === 'id' ? `Total ${invoices.length} tagihan tercatat` : `Total ${invoices.length} recorded invoices`}
+        title={userRole === 'pelanggan' ? 'Daftar Tagihan Saya' : t.invoices}
+        subtitle={userRole === 'pelanggan' ? `Total ${invoices.length} tagihan terdaftar untuk Anda` : (profile.language === 'id' ? `Total ${invoices.length} tagihan tercatat` : `Total ${invoices.length} recorded invoices`)}
         profile={profile}
         t={t}
         onLogout={onLogout}
