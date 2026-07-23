@@ -10,7 +10,8 @@ import {
   Lock, 
   CheckCircle2, 
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Phone
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -44,6 +45,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [role, setRole] = useState<'owner' | 'kasir' | 'pelanggan'>('kasir');
   const [password, setPassword] = useState('');
 
@@ -84,6 +86,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
           name: name.trim(),
           username: username.trim(),
           email: email.trim(),
+          phone_number: phoneNumber.trim() || null,
           role,
           password
         })
@@ -97,6 +100,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         setName('');
         setUsername('');
         setEmail('');
+        setPhoneNumber('');
         setPassword('');
         setRole('kasir');
         fetchUsers();
@@ -114,7 +118,8 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.role.toLowerCase().includes(searchTerm.toLowerCase())
+    u.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.phone_number && u.phone_number.includes(searchTerm))
   );
 
   const getRoleBadge = (userRole: string) => {
@@ -347,6 +352,20 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                     />
                   </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp (Opsional)</label>
+                <div className="relative">
+                  <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="tel"
+                    placeholder="Contoh: 085746520724"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                  />
                 </div>
               </div>
 
