@@ -302,7 +302,7 @@ export default function ClientList({
           </div>
         )}
 
-        {/* Search Bar & View Mode Toggle */}
+        {/* Search Bar & Actions Control Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
           {/* Search Bar */}
           <div className="relative flex-1 max-w-md">
@@ -316,29 +316,40 @@ export default function ClientList({
             />
           </div>
 
-          {/* View Mode Switcher */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center self-start sm:self-auto shrink-0 border border-slate-200/50">
+          <div className="flex items-center gap-3">
+            {/* View Mode Switcher */}
+            <div className="bg-slate-100 p-1 rounded-xl flex items-center self-start sm:self-auto shrink-0 border border-slate-200/50">
+              <button
+                onClick={() => setViewMode('card')}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'card' 
+                    ? 'bg-white text-slate-800 shadow-xs' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Tampilan Kartu Grid"
+              >
+                <LayoutGrid size={15} />
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  viewMode === 'table' 
+                    ? 'bg-white text-slate-800 shadow-xs' 
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Tampilan Tabel Rapi"
+              >
+                <List size={15} />
+              </button>
+            </div>
+
+            {/* Add New Client / Partner Button */}
             <button
-              onClick={() => setViewMode('card')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
-                viewMode === 'card' 
-                  ? 'bg-white text-slate-800 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
+              onClick={handleOpenAddForm}
+              className="py-2 px-4 bg-[#2563EB] hover:bg-blue-700 transition-all text-white font-sans font-semibold rounded-xl flex items-center gap-2 text-xs shadow-md shadow-blue-100 cursor-pointer shrink-0"
             >
-              <LayoutGrid size={14} />
-              <span>{profile.language === 'id' ? 'Kartu' : 'Card'}</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
-                viewMode === 'table' 
-                  ? 'bg-white text-slate-800 shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <List size={14} />
-              <span>{profile.language === 'id' ? 'Tabel' : 'Table'}</span>
+              <UserPlus size={16} />
+              <span>{t.addNewClientBtn}</span>
             </button>
           </div>
         </div>
