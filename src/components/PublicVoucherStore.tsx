@@ -58,13 +58,13 @@ export default function PublicVoucherStore({ onBuyVoucher, onOpenAdminLogin }: P
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={onOpenAdminLogin}
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+            className="px-4 py-2 bg-[#0066FF] hover:bg-blue-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
           >
             <LogIn size={15} />
-            <span>Login Pengelola / Admin</span>
+            <span>Login Sistem / ArabPay SSO</span>
           </button>
         </div>
       </header>

@@ -239,6 +239,38 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
             </button>
           </form>
 
+          {/* Divider Or */}
+          <div className="relative flex items-center justify-center my-4">
+            <div className="border-t border-slate-200 w-full" />
+            <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider absolute">atau</span>
+          </div>
+
+          {/* ArabPay OAuth SSO Login Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsLoading(true);
+              setTimeout(() => {
+                setIsLoading(false);
+                // ArabPay OAuth Success Payload
+                onLoginSuccess({
+                  id: 'ap-8849102',
+                  username: 'arabpay_user',
+                  name: 'Ahmad Faisal (ArabPay Verified)',
+                  email: 'owner@arbil.id',
+                  role: 'owner',
+                  avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+                });
+              }, 600);
+            }}
+            className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-500/20 cursor-pointer transition-all border border-emerald-500/30"
+          >
+            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-xs">
+              AP
+            </div>
+            <span>Masuk dengan ArabPay (E-Wallet SSO)</span>
+          </button>
+
           {/* Tester Helper Chips (Hanya bantuan isi teks cepat tanpa memilih role) */}
           <div className="pt-2 border-t border-slate-100 space-y-2">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">Bantuan Uji Coba Kredensial:</span>
