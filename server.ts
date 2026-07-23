@@ -224,33 +224,41 @@ app.post('/api/auth/arabpay', async (req, res) => {
       console.warn('ArabPay S2S API Exchange Warning:', apiErr);
     }
 
-    // Fallback payload if live token endpoint is in simulation mode
-    const userId = jwtPayload?.user_id || `ap_${code.substring(0, 8)}`;
-    const name = jwtPayload?.name || 'Ahmad Faisal (ArabPay Verified)';
-    const email = jwtPayload?.email || 'owner@arbil.id';
-    const username = jwtPayload?.username || 'arabpay_user';
+    // Extract ArabPay user profile details from JWT Token Payload or OAuth Exchange
+    const rawName = jwtPayload?.name || 'User ArabPay Verified';
+    const rawEmail = jwtPayload?.email || `user_${code.substring(0, 8)}@arabpay.id`;
+    const rawUsername = jwtPayload?.username || `arabpay_${code.substring(0, 8)}`;
+    const userRole = (rawEmail === 'owner@arbil.id' || rawUsername === 'owner') ? 'owner' : 'pelanggan';
 
-    // 2. Lookup existing user by email/username or insert into PostgreSQL arbil_db.users
-    const existingUser = await pool.query('SELECT id, username, name, email, role FROM users WHERE email = $1 OR username = $2', [email, username]);
+    // 2. AUTO-PROVISIONING / REGISTER USER TO POSTGRESQL VPS DATABASE
+    // Lookup existing user by email or username
+    const existingUser = await pool.query('SELECT id, username, name, email, role FROM users WHERE email = $1 OR username = $2', [rawEmail, rawUsername]);
 
     let finalUser = null;
+    let isNewUser = false;
+
     if (existingUser.rows.length > 0) {
       finalUser = existingUser.rows[0];
     } else {
+      // User does NOT exist in arbilbaru database yet -> AUTOMATICALLY REGISTER NEW USER!
+      isNewUser = true;
+      const newUserId = crypto.randomUUID();
       const saltRounds = 10;
-      const dummyHash = await bcrypt.hash('123', saltRounds);
+      const defaultEncryptedPassword = await bcrypt.hash('123', saltRounds);
 
       const result = await pool.query(
         `INSERT INTO users (id, username, name, email, role, password_hash)
-         VALUES ($1, $2, $3, $4, 'owner', $5)
-         RETURNING id, username, name, email, role`,
-        [crypto.randomUUID(), username, name, email, dummyHash]
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, username, name, email, role, created_at`,
+        [newUserId, rawUsername.toLowerCase(), rawName, rawEmail.toLowerCase(), userRole, defaultEncryptedPassword]
       );
       finalUser = result.rows[0];
     }
 
     return res.json({
       success: true,
+      action: isNewUser ? 'auto_registered_new_user' : 'logged_in_existing_user',
+      message: isNewUser ? 'Akun ArabPay baru berhasil didaftarkan ke Database VPS!' : 'Login ArabPay berhasil!',
       provider: 'arabpay_s2s_oauth',
       token: jwtToken,
       balance: arabpayBalance,
