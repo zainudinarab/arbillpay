@@ -634,11 +634,13 @@ app.post('/api/routers', async (req, res) => {
     `, [routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '']);
 
     // Auto-create initial default profiles for quick start
+    const p1 = `rp-${Date.now().toString(36)}-1`;
+    const p2 = `rp-${Date.now().toString(36)}-2`;
     await pool.query(`
       INSERT INTO router_profiles (id, router_id, name, type, rate_limit) VALUES
       ($1, $2, 'pppoe-profile-20m', 'pppoe', '20M/20M'),
-      ($3, $2, 'hs-profile-monthly', 'hotspot', '5M/5M')
-    `, [`rp-${Date.now().toString(36)}-1`, routerId, `rp-${Date.now().toString(36)}-2`]);
+      ($3, $4, 'hs-profile-monthly', 'hotspot', '5M/5M')
+    `, [p1, routerId, p2, routerId]);
 
     res.json({
       success: true,

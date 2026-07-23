@@ -163,7 +163,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil didaftarkan!` });
         setShowAddModal(false);
         resetForm();
@@ -171,8 +171,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal mendaftarkan router.' });
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal terhubung ke Database API.' });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal terhubung ke Database API: ${err?.message || 'Server error'}` });
     } finally {
       setSubmitLoading(false);
     }
