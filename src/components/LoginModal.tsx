@@ -82,7 +82,7 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -93,6 +93,31 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
 
     setIsLoading(true);
 
+    try {
+      // Call PostgreSQL DB Backend API on Port 3006
+      const res = await fetch('http://localhost:3006/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity: identity.trim(), password })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        setIsLoading(false);
+        onLoginSuccess({
+          id: data.user.id,
+          username: data.user.username,
+          name: data.user.name,
+          email: data.user.email,
+          role: data.user.role
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend API offline, using preset accounts fallback.');
+    }
+
+    // Fallback to preset local demo accounts if API offline or custom local user
     setTimeout(() => {
       const inputKey = identity.trim().toLowerCase();
       const matched = demoAccounts[inputKey];
@@ -101,7 +126,6 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
         setIsLoading(false);
         onLoginSuccess(matched.account);
       } else if (inputKey.includes('owner') || inputKey.includes('admin')) {
-        // Fallback auto detect by keyword if password default
         setIsLoading(false);
         onLoginSuccess(demoAccounts['owner'].account);
       } else if (inputKey.includes('kasir') || inputKey.includes('pos')) {
@@ -114,7 +138,7 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
         setIsLoading(false);
         setErrorMsg('Username/Password salah. Coba username: owner, kasir, atau user (Password: 123).');
       }
-    }, 600);
+    }, 400);
   };
 
   const handleQuickFill = (presetUsername: string) => {
