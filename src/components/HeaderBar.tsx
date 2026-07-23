@@ -26,6 +26,9 @@ export default function HeaderBar({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const savedUserStr = typeof window !== 'undefined' ? localStorage.getItem('arbil_current_user') : null;
+  const currentUser = savedUserStr ? JSON.parse(savedUserStr) : null;
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -96,6 +99,19 @@ export default function HeaderBar({
           </button>
         )}
 
+        {/* ArabPay E-Wallet Balance Badge */}
+        <div className="hidden sm:flex items-center gap-2 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
+          <div className="w-5 h-5 rounded-md bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center">
+            AP
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider leading-none">Saldo ArabPay</span>
+            <span className="text-xs font-black text-slate-800 leading-tight">
+              Rp {(currentUser?.arabpay_balance ?? 149800).toLocaleString('id-ID')}
+            </span>
+          </div>
+        </div>
+
         {/* Notifications Icon */}
         <button className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 text-slate-600 relative cursor-pointer">
           <Bell size={18} />
@@ -117,17 +133,31 @@ export default function HeaderBar({
 
           {/* User Dropdown Menu */}
           {showDropdown && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fade-in">
+            <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-fade-in">
               <div className="px-4 py-3 border-b border-slate-100">
                 <p className="text-xs font-bold text-slate-800 truncate">{profile.name}</p>
                 <p className="text-[11px] font-semibold text-slate-400 truncate mt-0.5">{profile.role}</p>
                 <p className="text-[10px] font-medium text-blue-600 truncate mt-0.5">{profile.email}</p>
               </div>
 
+              {/* ArabPay E-Wallet Card inside Dropdown */}
+              <div className="p-3 mx-2 my-2 bg-gradient-to-br from-emerald-600 to-teal-700 rounded-xl text-white shadow-sm">
+                <div className="flex items-center justify-between text-[10px] font-semibold text-emerald-100">
+                  <span className="flex items-center gap-1">💳 ArabPay E-Wallet</span>
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-[9px]">Verified</span>
+                </div>
+                <div className="text-base font-black tracking-tight mt-1">
+                  Rp {(currentUser?.arabpay_balance ?? 149800).toLocaleString('id-ID')}
+                </div>
+                <div className="text-[9px] text-emerald-100/80 font-mono mt-0.5">
+                  ID: {currentUser?.arabpay_user_id || 'AP-8849102'}
+                </div>
+              </div>
+
               <div className="py-1">
-                <div className="px-4 py-2 flex items-center gap-2 text-xs text-slate-500">
+                <div className="px-4 py-1.5 flex items-center gap-2 text-xs text-slate-500">
                   <Shield size={14} className="text-emerald-500" />
-                  <span>Sistem Aktif (Online)</span>
+                  <span>Sistem VPS (Online)</span>
                 </div>
               </div>
 

@@ -63,6 +63,9 @@ export interface UserAccount {
   email: string;
   role: UserRole;
   avatarUrl?: string;
+  phone_number?: string;
+  arabpay_user_id?: string;
+  arabpay_balance?: number;
 }
 
 export interface BusinessProfile {

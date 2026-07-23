@@ -155,7 +155,7 @@ export default function DashboardOverview({
         </div>
 
         {/* 1. KPI Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           
           {/* Card 1: Total Invoiced */}
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
@@ -219,9 +219,30 @@ export default function DashboardOverview({
             </div>
             <div className="flex items-center justify-between mt-4">
               <p className="text-xs text-slate-400 font-sans">
-                {profile.language === 'id' ? 'Rata-rata terlambat 14 hari' : 'Avg. 14 days late'}
+                {profile.language === 'id' ? 'Rata-rata 14 hari' : 'Avg. 14 days'}
               </p>
               <div className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white shadow-sm shadow-rose-200"></div>
+            </div>
+          </div>
+
+          {/* Card 5: ArabPay E-Wallet Live Balance Card */}
+          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-5 rounded-2xl border border-emerald-500/30 shadow-md text-white flex flex-col justify-between hover:shadow-lg transition-all relative overflow-hidden">
+            <div className="space-y-1">
+              <div className="flex justify-between items-start">
+                <span className="text-[10px] font-sans font-bold text-emerald-100/90 tracking-wider block uppercase">SALDO ARABPAY</span>
+                <span className="text-[10px] font-sans font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                  💳 E-Wallet
+                </span>
+              </div>
+              <h2 className="text-2xl font-sans font-black tracking-tight mt-1">
+                Rp {((typeof window !== 'undefined' && JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance) ?? 149800).toLocaleString('id-ID')}
+              </h2>
+            </div>
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-xs text-emerald-100/80 font-mono truncate max-w-[130px]">
+                {(typeof window !== 'undefined' && JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.email) || 'ketua11@gmail.com'}
+              </p>
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-ping"></div>
             </div>
           </div>
 
