@@ -618,6 +618,7 @@ export default function App() {
           setSelectedInvoice(null);
         }}
         onLogout={handleLogout}
+        userRole={currentUser?.role || 'owner'}
       />
 
       {/* 2. Main Viewing Pane */}
@@ -637,6 +638,7 @@ export default function App() {
           navigateToView('new-invoice');
           setSelectedInvoice(null);
         }}
+        userRole={currentUser?.role || 'owner'}
       />
 
       {/* 4. Payment Simulator Popup Overlay */}

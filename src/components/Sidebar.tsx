@@ -10,7 +10,7 @@ import {
   MoreVertical,
   QrCode
 } from 'lucide-react';
-import { BusinessProfile } from '../types';
+import { BusinessProfile, UserRole } from '../types';
 
 interface SidebarProps {
   currentView: string;
@@ -19,6 +19,7 @@ interface SidebarProps {
   t: any;
   onQuickInvoice: () => void;
   onLogout?: () => void;
+  userRole?: UserRole;
 }
 
 export default function Sidebar({ 
@@ -27,7 +28,8 @@ export default function Sidebar({
   profile, 
   t, 
   onQuickInvoice,
-  onLogout
+  onLogout,
+  userRole = 'owner'
 }: SidebarProps) {
   
   const theme = profile.themeColor || 'blue';
@@ -40,13 +42,17 @@ export default function Sidebar({
     dark: { bg: 'bg-slate-900', activeBg: 'bg-slate-100 text-slate-900', activeIcon: 'text-slate-900', btnBg: 'bg-slate-900 hover:bg-slate-800 shadow-slate-200' }
   }[theme];
 
-  const menuItems = [
-    { id: 'overview', label: t.overview, icon: LayoutGrid },
-    { id: 'invoices', label: t.invoices, icon: FileText },
-    { id: 'clients', label: t.clients, icon: Users },
-    { id: 'analytics', label: t.analytics, icon: TrendingUp },
-    { id: 'gateways', label: t.paymentMethods, icon: CreditCard },
+  // Define full menu items
+  const allMenuItems = [
+    { id: 'overview', label: t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
+    { id: 'invoices', label: t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
+    { id: 'clients', label: t.clients, icon: Users, roles: ['owner'] },
+    { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
+    { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },
   ];
+
+  // Filter menu items by current active user role
+  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
 
   return (
     <aside id="desktop-sidebar" className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-100 h-screen sticky top-0 p-6 shrink-0 justify-between">
