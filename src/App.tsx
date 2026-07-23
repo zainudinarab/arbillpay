@@ -341,6 +341,7 @@ export default function App() {
             onDeleteClient={handleDeleteClient}
             profile={profile}
             t={t}
+            onLogout={handleLogout}
           />
         );
       case 'analytics':
@@ -362,6 +363,7 @@ export default function App() {
             onUpdateGatewayDetails={handleUpdateGatewayDetails}
             profile={profile}
             t={t}
+            onLogout={handleLogout}
           />
         );
       case 'settings':
@@ -370,6 +372,7 @@ export default function App() {
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
             t={t}
+            onLogout={handleLogout}
           />
         );
       case 'new-invoice':

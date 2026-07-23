@@ -14,17 +14,20 @@ import {
   Database
 } from 'lucide-react';
 import { BusinessProfile } from '../types';
+import HeaderBar from './HeaderBar';
 
 interface SettingsPageProps {
   profile: BusinessProfile;
   onUpdateProfile: (profile: BusinessProfile) => void;
   t: any;
+  onLogout?: () => void;
 }
 
 export default function SettingsPage({
   profile,
   onUpdateProfile,
-  t
+  t,
+  onLogout
 }: SettingsPageProps) {
   const [name, setName] = useState(profile.name);
   const [role, setRole] = useState(profile.role);
@@ -61,12 +64,13 @@ export default function SettingsPage({
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8">
       {/* Header */}
-      <header className="sticky top-0 bg-white border-b border-slate-100 px-4 py-4 md:px-8 z-10 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="font-sans font-bold text-xl md:text-2xl text-slate-800">{t.settings}</h1>
-          <p className="text-xs text-slate-400 mt-0.5">Konfigurasi profile usaha dan regional</p>
-        </div>
-      </header>
+      <HeaderBar
+        title={t.settings}
+        subtitle="Konfigurasi profile usaha, preferensi tampilan dan tema warna"
+        profile={profile}
+        t={t}
+        onLogout={onLogout}
+      />
 
       {/* Main Container */}
       <main className="p-4 md:p-8 space-y-6 max-w-4xl mx-auto">
