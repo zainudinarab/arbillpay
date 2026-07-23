@@ -98,7 +98,19 @@ app.put('/api/users/:id', async (req, res) => {
   }
 
   try {
-    const params: any[] = [name.trim(), email.trim().toLowerCase(), phone_number || null, role || 'pelanggan', id];
+    // Owner Protection Check: Prevent demoting Owner role to non-owner
+    const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
+    const targetUserCheck = await pool.query('SELECT role, arabpay_user_id FROM users WHERE id = $1 OR arabpay_user_id = $1', [id]);
+    
+    let finalRole = role || 'pelanggan';
+    if (targetUserCheck.rows.length > 0) {
+      const existingRow = targetUserCheck.rows[0];
+      if (existingRow.role === 'owner' || existingRow.arabpay_user_id === ownerUserId) {
+        finalRole = 'owner'; // Enforce owner protection
+      }
+    }
+
+    const params: any[] = [name.trim(), email.trim().toLowerCase(), phone_number || null, finalRole, id];
 
     let queryStr = `
       UPDATE users 
@@ -128,7 +140,35 @@ app.put('/api/users/:id', async (req, res) => {
 
     res.json({
       success: true,
-      message: `User "${result.rows[0].name}" berhasil diperbarui! Role baru: ${result.rows[0].role.toUpperCase()}`,
+      message: `User "${result.rows[0].name}" berhasil diperbarui! Role: ${result.rows[0].role.toUpperCase()}`,
+      user: result.rows[0]
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/users/profile - Update Owner Profile Data (Name, Email, Phone) from Settings
+app.put('/api/users/profile', async (req, res) => {
+  const { userId, name, email, phone_number } = req.body;
+
+  try {
+    const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
+    const targetId = userId || ownerUserId;
+
+    const result = await pool.query(
+      `UPDATE users 
+       SET name = COALESCE($1, name),
+           email = COALESCE($2, email),
+           phone_number = COALESCE($3, phone_number)
+       WHERE id = $4 OR arabpay_user_id = $4 OR role = 'owner'
+       RETURNING id, username, name, email, phone_number, arabpay_user_id, role`,
+      [name?.trim(), email?.trim().toLowerCase(), phone_number?.trim(), targetId]
+    );
+
+    return res.json({
+      success: true,
+      message: 'Profil Owner di database VPS berhasil diperbarui!',
       user: result.rows[0]
     });
   } catch (err: any) {

@@ -51,7 +51,7 @@ export default function SettingsPage({
   const [passMsg, setPassMsg] = useState({ text: '', isError: false });
   const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const updatedProfile: BusinessProfile = {
       ...profile,
@@ -67,6 +67,23 @@ export default function SettingsPage({
       themeColor
     };
     onUpdateProfile(updatedProfile);
+
+    // Sync Owner profile changes (Nama, Email, Phone) directly to PostgreSQL VPS Database
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      await fetch(`${apiUrl}/api/users/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          phone_number: phone.trim()
+        })
+      });
+    } catch (err) {
+      console.warn('Failed to sync owner profile to DB:', err);
+    }
+
     setSuccess(true);
     setTimeout(() => setSuccess(false), 3000);
   };

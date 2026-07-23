@@ -600,17 +600,24 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
               {/* Jabatan / Role Picker */}
               <div>
                 <label className="block text-xs font-bold text-indigo-700 mb-1">👑 Angkat Jabatan Staf (Hak Akses Role)</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all text-indigo-900 font-extrabold"
-                >
-                  <option value="owner">👑 Owner (Super Admin)</option>
-                  <option value="teknisi">🔧 Teknisi / Staf Lapangan</option>
-                  <option value="marketing">📢 Marketing / Penjualan</option>
-                  <option value="kasir">🛒 Kasir / Operator POS</option>
-                  <option value="pelanggan">👤 Pelanggan WiFi</option>
-                </select>
+                {editingUser.role === 'owner' ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200/80 rounded-xl text-xs text-amber-900 font-bold flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-amber-600 shrink-0" />
+                    <span>🛡️ Akun Owner Utama Dilindungi: Role Owner (Super Admin) tidak dapat diturunkan demi keamanan sistem!</span>
+                  </div>
+                ) : (
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all text-indigo-900 font-extrabold"
+                  >
+                    <option value="owner">👑 Owner (Super Admin)</option>
+                    <option value="teknisi">🔧 Teknisi / Staf Lapangan</option>
+                    <option value="marketing">📢 Marketing / Penjualan</option>
+                    <option value="kasir">🛒 Kasir / Operator POS</option>
+                    <option value="pelanggan">👤 Pelanggan WiFi</option>
+                  </select>
+                )}
               </div>
 
               <div>
