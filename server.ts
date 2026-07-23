@@ -181,7 +181,7 @@ app.post('/api/auth/arabpay', async (req, res) => {
   }
 
   try {
-    const arabpayBaseUrl = process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+    const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
     
     // 1. STEP 1: Exchange OAuth Code → JWT Token via S2S API (HMAC Signature)
     // Endpoint: POST /api/v1/s2s/oauth/token
