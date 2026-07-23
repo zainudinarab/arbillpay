@@ -49,8 +49,12 @@ export default function App() {
       
       // Handle ArabPay OAuth SSO Callback
       if (hash.includes('oauth/callback') || code) {
+        // Instantly clean up ?code=xxx query string from browser URL to prevent duplicate re-exchange
+        window.history.replaceState({}, document.title, window.location.pathname + '#/overview');
+
         try {
-          const res = await fetch('http://localhost:3006/api/auth/arabpay', {
+          const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+          const res = await fetch(`${apiUrl}/api/auth/arabpay`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
@@ -58,7 +62,7 @@ export default function App() {
           const data = await res.json();
           if (data.success && data.user) {
             handleLoginSuccess(data.user);
-            window.location.hash = '#/overview';
+            setCurrentView('overview');
             return;
           }
         } catch (err) {

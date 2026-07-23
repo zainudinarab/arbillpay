@@ -16,8 +16,9 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
 
   const handleArabPayLogin = () => {
     setIsLoading(true);
+    const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
     const redirectUri = encodeURIComponent(window.location.origin + '/#/oauth/callback');
-    const authUrl = `https://arabpay.my.id/oauth/authorize?client_id=AP24542931&response_type=code&redirect_uri=${redirectUri}`;
+    const authUrl = `https://arabpay.my.id/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}`;
     
     // Redirect browser to real ArabPay OAuth Portal
     window.location.href = authUrl;
