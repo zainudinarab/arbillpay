@@ -86,8 +86,8 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
               <ShieldCheck size={12} />
               Kemitraan Resmi ArabPay E-Wallet
             </div>
-            <h2 className="font-extrabold text-2xl tracking-tight text-white">ArbilBaru Login Gateway</h2>
-            <p className="text-xs text-emerald-100 mt-1 font-medium max-w-xs">Semua pengguna wajib masuk & terautentikasi melalui sistem ArabPay E-Wallet SSO.</p>
+            <h2 className="font-extrabold text-2xl tracking-tight text-white">Arbill Login Gateway</h2>
+            <p className="text-xs text-emerald-100 mt-1 font-medium max-w-xs">Aplikasi Arbill dikunci eksklusif: Semua pengguna wajib terautentikasi via ArabPay SSO.</p>
           </div>
         </div>
 

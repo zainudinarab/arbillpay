@@ -60,11 +60,16 @@ export default function Sidebar({
       {/* Brand & Menu */}
       <div className="space-y-6">
         {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl ${themeStyles.bg} flex items-center justify-center text-white shadow-md transition-all`}>
-            <QrCode size={20} className="stroke-[2.5]" />
+        <div>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl ${themeStyles.bg} flex items-center justify-center text-white shadow-md transition-all font-black text-sm`}>
+              AP
+            </div>
+            <div>
+              <span className="font-sans font-extrabold text-xl tracking-tight text-slate-800 block leading-none">Arbill</span>
+              <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider block mt-0.5">🔒 ArabPay SSO Locked</span>
+            </div>
           </div>
-          <span className="font-sans font-bold text-xl tracking-tight text-slate-800">Billava</span>
         </div>
 
         {/* Quick Invoice Button (Owner & Kasir Only) */}

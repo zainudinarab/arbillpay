@@ -146,7 +146,7 @@ export default function DashboardOverview({
         {/* Mobile Header Title */}
         <div className="lg:hidden flex items-center justify-between pb-2">
           <div>
-            <h1 className="font-sans font-bold text-2xl text-slate-800">Billava</h1>
+            <h1 className="font-sans font-bold text-2xl text-slate-800">Arbill</h1>
             <p className="text-xs font-medium text-slate-400">{profile.companyName}</p>
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold px-2.5 py-1 bg-blue-50 text-[#2563EB] rounded-full">
