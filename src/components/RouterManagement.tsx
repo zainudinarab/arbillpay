@@ -76,12 +76,24 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
 
+  const parseJsonResponse = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        throw new Error('Server Express (port 3006) belum berjalan. Jalankan `npm run server` di terminal.');
+      }
+      throw new Error(`Respons server bukan JSON (HTTP ${res.status})`);
+    }
+    return await res.json();
+  };
+
   const fetchRouters = async () => {
     setLoading(true);
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/routers`);
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success && Array.isArray(data.routers)) {
         setRouters(data.routers);
       }
@@ -126,13 +138,13 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
           password: password.trim()
         })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       setTestConnResult({
         success: data.success,
         message: data.message || (data.success ? '⚡ Koneksi ke Router Mikrotik Berhasil!' : '❌ Gagal terhubung ke Router.')
       });
-    } catch (err) {
-      setTestConnResult({ success: false, message: 'Gagal melakukan tes koneksi ke backend.' });
+    } catch (err: any) {
+      setTestConnResult({ success: false, message: `Gagal tes koneksi: ${err?.message || 'Server offline'}` });
     } finally {
       setTestingConn(false);
     }
@@ -162,7 +174,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         })
       });
 
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil didaftarkan!` });
         setShowAddModal(false);
