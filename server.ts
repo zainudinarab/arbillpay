@@ -234,7 +234,9 @@ app.post('/api/auth/arabpay', async (req, res) => {
     const rawEmail = jwtPayload?.email || `user_${code.substring(0, 8)}@arabpay.id`;
     const rawPhone = jwtPayload?.phone_number || jwtPayload?.phone || null;
     const rawUsername = jwtPayload?.username || `arabpay_${code.substring(0, 8)}`;
-    const userRole = (rawEmail === 'owner@arbil.id' || rawUsername === 'owner') ? 'owner' : 'pelanggan';
+    
+    // Any user registering via ArabPay SSO is ALWAYS assigned the role 'pelanggan'
+    const userRole = 'pelanggan';
 
     // 2. SEARCH & MATCHING IN POSTGRESQL VPS DATABASE BY EMAIL, PHONE_NUMBER, OR ARABPAY_USER_ID
     const existingUser = await pool.query(
@@ -262,8 +264,10 @@ app.post('/api/auth/arabpay', async (req, res) => {
       // User does NOT exist in arbilbaru database yet -> AUTOMATICALLY REGISTER NEW USER!
       isNewUser = true;
       const newUserId = crypto.randomUUID();
-      const saltRounds = 10;
-      const defaultEncryptedPassword = await bcrypt.hash('123', saltRounds);
+      
+      // Generate a cryptographically random secure password hash for ArabPay users
+      const randomPassword = crypto.randomBytes(16).toString('hex');
+      const defaultEncryptedPassword = await bcrypt.hash(randomPassword, 10);
 
       const result = await pool.query(
         `INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash)
