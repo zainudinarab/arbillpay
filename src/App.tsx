@@ -12,6 +12,33 @@ import { translations } from './utils';
 import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import DashboardOverview from './components/DashboardOverview';
+import { getApiUrl } from './config/api';
+import { getInvoicesFromFirestore } from './services/firebaseService';
+
+// Inside OAuth handler:
+// try {
+//   const apiUrl = getApiUrl();
+//   if (apiUrl) { ... }
+// }
+
+// Inside fetchRealInvoices:
+// const fetchRealInvoices = async () => {
+//   try {
+//     const apiUrl = getApiUrl();
+//     let fetched = false;
+//     if (apiUrl) {
+//       try {
+//         const res = await fetch(`${apiUrl}/api/invoices`);
+//         const data = await res.json();
+//         if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) { ... fetched = true; }
+//       } catch (err) { ... }
+//     }
+//     if (!fetched) {
+//       const fbData = await getInvoicesFromFirestore();
+//       if (fbData.success && Array.isArray(fbData.invoices) && fbData.invoices.length > 0) { ... }
+//     }
+//   }
+// }
 import InvoiceList from './components/InvoiceList';
 import ClientList from './components/ClientList';
 import PaymentMethodsSettings from './components/PaymentMethodsSettings';
@@ -179,18 +206,20 @@ export default function App() {
     const checkCustomerPhoneMatch = async () => {
       if (currentUser && (currentUser.phone_number || currentUser.id)) {
         try {
-          const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-          const res = await fetch(`${apiUrl}/api/customers/check-phone`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              phone_number: currentUser.phone_number || currentUser.name,
-              userId: currentUser.id
-            })
-          });
-          const data = await res.json();
-          if (data.success && data.matchFound && !data.isLinked) {
-            setUnlinkedMatchCustomer(data.customer);
+          const apiUrl = getApiUrl();
+          if (apiUrl) {
+            const res = await fetch(`${apiUrl}/api/customers/check-phone`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                phone_number: currentUser.phone_number || currentUser.name,
+                userId: currentUser.id
+              })
+            });
+            const data = await res.json();
+            if (data.success && data.matchFound && !data.isLinked) {
+              setUnlinkedMatchCustomer(data.customer);
+            }
           }
         } catch (err) {
           console.warn('Failed to check customer phone match:', err);
@@ -198,49 +227,99 @@ export default function App() {
       }
     };
 
+    checkCustomerPhoneMatch();
   }, [currentUser]);
 
-  // --- FETCH REAL INVOICES FROM POSTGRESQL API ---
+  // --- FETCH REAL INVOICES FROM POSTGRESQL / FIRESTORE API ---
   const fetchRealInvoices = async () => {
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/invoices`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
-        const mapped: Invoice[] = data.invoices.map((inv: any) => ({
-          id: inv.id,
-          invoiceNumber: inv.invoice_number,
-          client: {
-            id: inv.customer_id || inv.id,
-            name: inv.customer_name_real || inv.customer_name || inv.client_name || 'Pelanggan',
-            email: inv.customer_email || 'client@example.com',
-            company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
-            address: inv.notes || '',
-            phone: inv.customer_phone_real || inv.customer_phone || ''
-          },
-          items: [
-            {
-              id: `item-${inv.id}`,
-              description: inv.notes || `Tagihan Internet (${inv.package_name || 'Broadband'})`,
-              quantity: 1,
-              price: Number(inv.total || inv.amount || 0),
-              unitPrice: Number(inv.total || inv.amount || 0),
-              amount: Number(inv.total || inv.amount || 0)
-            }
-          ],
-          subtotal: Number(inv.total || inv.amount || 0),
-          taxRate: 0,
-          taxAmount: 0,
-          discount: 0,
-          total: Number(inv.total || inv.amount || 0),
-          status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
-          issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-          dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
-          notes: inv.notes || '',
-          terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
-          isArchived: inv.is_archived || false
-        }));
-        setInvoices(mapped);
+      const apiUrl = getApiUrl();
+      let fetched = false;
+
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/invoices`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
+            const mapped: Invoice[] = data.invoices.map((inv: any) => ({
+              id: inv.id,
+              invoiceNumber: inv.invoice_number || inv.invoiceNumber || inv.id,
+              client: {
+                id: inv.customer_id || inv.id,
+                name: inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan',
+                email: inv.customer_email || inv.client?.email || 'client@example.com',
+                company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
+                address: inv.notes || '',
+                phone: inv.customer_phone_real || inv.customer_phone || ''
+              },
+              items: [
+                {
+                  id: `item-${inv.id}`,
+                  description: inv.notes || `Tagihan Internet (${inv.package_name || 'Broadband'})`,
+                  quantity: 1,
+                  price: Number(inv.total || inv.amount || 0),
+                  unitPrice: Number(inv.total || inv.amount || 0),
+                  amount: Number(inv.total || inv.amount || 0)
+                }
+              ],
+              subtotal: Number(inv.total || inv.amount || 0),
+              taxRate: 0,
+              taxAmount: 0,
+              discount: 0,
+              total: Number(inv.total || inv.amount || 0),
+              status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
+              issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+              dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
+              notes: inv.notes || '',
+              terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
+              isArchived: inv.is_archived || false
+            }));
+            setInvoices(mapped);
+            fetched = true;
+          }
+        } catch (err) {
+          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', err);
+        }
+      }
+
+      if (!fetched) {
+        const fbData = await getInvoicesFromFirestore();
+        if (fbData.success && Array.isArray(fbData.invoices) && fbData.invoices.length > 0) {
+          const mapped: Invoice[] = fbData.invoices.filter((inv: any) => inv.id !== '_init').map((inv: any) => ({
+            id: inv.id,
+            invoiceNumber: inv.invoice_number || inv.invoiceNumber || inv.id,
+            client: {
+              id: inv.customer_id || inv.id,
+              name: inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan',
+              email: inv.customer_email || inv.client?.email || 'client@example.com',
+              company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
+              address: inv.notes || '',
+              phone: inv.customer_phone_real || inv.customer_phone || ''
+            },
+            items: [
+              {
+                id: `item-${inv.id}`,
+                description: inv.notes || `Tagihan Internet (${inv.package_name || 'Broadband'})`,
+                quantity: 1,
+                price: Number(inv.total || inv.amount || 0),
+                unitPrice: Number(inv.total || inv.amount || 0),
+                amount: Number(inv.total || inv.amount || 0)
+              }
+            ],
+            subtotal: Number(inv.total || inv.amount || 0),
+            taxRate: 0,
+            taxAmount: 0,
+            discount: 0,
+            total: Number(inv.total || inv.amount || 0),
+            status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
+            issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+            dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
+            notes: inv.notes || '',
+            terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
+            isArchived: inv.is_archived || false
+          }));
+          setInvoices(mapped);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch real invoices:', err);

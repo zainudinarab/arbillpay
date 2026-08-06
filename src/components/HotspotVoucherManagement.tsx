@@ -109,30 +109,46 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const fetchData = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const [resVc, resRtr, resProf] = await Promise.all([
-        fetch(`${apiUrl}/api/vouchers`),
-        fetch(`${apiUrl}/api/routers`),
-        fetch(`${apiUrl}/api/router-profiles`)
-      ]);
+      const apiUrl = getApiUrl();
+      let fetched = false;
 
-      const dataVc = await parseJsonResponse(resVc);
-      const dataRtr = await parseJsonResponse(resRtr);
-      const dataProf = await parseJsonResponse(resProf);
+      if (apiUrl) {
+        try {
+          const [resVc, resRtr, resProf] = await Promise.all([
+            fetch(`${apiUrl}/api/vouchers`),
+            fetch(`${apiUrl}/api/routers`),
+            fetch(`${apiUrl}/api/router-profiles`)
+          ]);
 
-      if (dataVc.success && Array.isArray(dataVc.vouchers)) {
-        setVouchers(dataVc.vouchers);
-      }
+          const dataVc = await parseJsonResponse(resVc);
+          const dataRtr = await parseJsonResponse(resRtr);
+          const dataProf = await parseJsonResponse(resProf);
 
-      if (dataRtr.success && Array.isArray(dataRtr.routers)) {
-        setRouters(dataRtr.routers);
-        if (dataRtr.routers.length > 0 && !selectedRouterId) {
-          setSelectedRouterId(dataRtr.routers[0].id);
+          if (dataVc.success && Array.isArray(dataVc.vouchers)) {
+            setVouchers(dataVc.vouchers);
+            fetched = true;
+          }
+
+          if (dataRtr.success && Array.isArray(dataRtr.routers)) {
+            setRouters(dataRtr.routers);
+            if (dataRtr.routers.length > 0 && !selectedRouterId) {
+              setSelectedRouterId(dataRtr.routers[0].id);
+            }
+          }
+
+          if (dataProf.success && Array.isArray(dataProf.profiles)) {
+            setRouterProfiles(dataProf.profiles);
+          }
+        } catch (apiErr) {
+          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
         }
       }
 
-      if (dataProf.success && Array.isArray(dataProf.profiles)) {
-        setRouterProfiles(dataProf.profiles);
+      if (!fetched) {
+        const fbData = await getVouchersFromFirestore();
+        if (fbData.success && Array.isArray(fbData.vouchers)) {
+          setVouchers(fbData.vouchers as any);
+        }
       }
     } catch (err: any) {
       console.error('Failed to fetch vouchers:', err);
