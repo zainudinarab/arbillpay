@@ -208,17 +208,20 @@ export const defaultGateways: PaymentGateway[] = [
 ];
 
 export const defaultBusinessProfile: BusinessProfile = {
-  name: 'Budi Santoso',
-  role: 'Direktur Keuangan',
-  companyName: 'Nusa Karya Studio',
-  email: 'budi@nusakaryastudio.id',
+  name: 'zainudin arab',
+  role: 'Super Admin / Owner',
+  companyName: 'Arbill Telecom',
+  email: 'ketua11@gmail.com',
   phone: '081234567890',
-  address: 'Gedung Co-Working Space Lt. 3, Jl. Kemang Raya No. 10, Jakarta Selatan',
+  address: 'Jl. Raya Utama Arbill No. 1, Jawa Timur',
   logoUrl: '',
   taxId: '01.234.567.8-012.000', // NPWP
   currency: 'IDR',
   language: 'id',
   themeColor: 'blue',
+  mapLat: -7.2585,
+  mapLng: 112.7550,
+  mapZoom: 16,
   storageUsed: 6.4,
   storageMax: 10
 };

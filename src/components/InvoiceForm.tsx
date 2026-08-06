@@ -31,10 +31,37 @@ export default function InvoiceForm({
   onQuickAddClient,
   invoiceToEdit
 }: InvoiceFormProps) {
-  const [selectedClientId, setSelectedClientId] = useState(invoiceToEdit ? invoiceToEdit.client.id : (clients[0]?.id || ''));
-  const [issueDate, setIssueDate] = useState(invoiceToEdit ? invoiceToEdit.issueDate : new Date().toISOString().split('T')[0]);
+  const [customerList, setCustomerList] = useState<Client[]>(clients);
+  const [selectedClientId, setSelectedClientId] = useState(invoiceToEdit?.client?.id ? invoiceToEdit.client.id : (clients[0]?.id || ''));
+
+  React.useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+        const res = await fetch(`${apiUrl}/api/customers`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.customers)) {
+          const mapped: Client[] = data.customers.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            company: c.package_name || (c.pppoe_username ? `PPPoE: ${c.pppoe_username}` : 'Pelanggan'),
+            email: c.email || 'client@example.com',
+            phone: c.phone_number || ''
+          }));
+          setCustomerList(mapped);
+          if (!selectedClientId && mapped.length > 0) {
+            setSelectedClientId(mapped[0].id);
+          }
+        }
+      } catch (err) {}
+    };
+
+    fetchCustomers();
+  }, []);
+
+  const [issueDate, setIssueDate] = useState(invoiceToEdit?.issueDate ? invoiceToEdit.issueDate : new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(() => {
-    if (invoiceToEdit) return invoiceToEdit.dueDate;
+    if (invoiceToEdit?.dueDate) return invoiceToEdit.dueDate;
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 14); // Default 14 days payment term
     return nextWeek.toISOString().split('T')[0];
@@ -42,18 +69,24 @@ export default function InvoiceForm({
   
   // Line Items
   const [items, setItems] = useState<InvoiceItem[]>(() => {
-    if (invoiceToEdit) return invoiceToEdit.items;
+    if (invoiceToEdit?.items && Array.isArray(invoiceToEdit.items) && invoiceToEdit.items.length > 0) {
+      return invoiceToEdit.items;
+    }
     return [
-      { id: 'item-1', description: 'Jasa Pembuatan Website Kantor', quantity: 1, price: 10000000, amount: 10000000 }
+      { id: 'item-1', description: 'Tagihan Layanan Internet', quantity: 1, price: 100000, amount: 100000 }
     ];
   });
   
   // Tax / PPN configuration
-  const [taxRate, setTaxRate] = useState<number>(invoiceToEdit ? invoiceToEdit.taxRate : 11); // PPN 11% is standard in Indonesia
-  const [notes, setNotes] = useState(invoiceToEdit ? (invoiceToEdit.notes || '') : '');
+  const [taxRate, setTaxRate] = useState<number>(typeof invoiceToEdit?.taxRate === 'number' ? invoiceToEdit.taxRate : 0);
+  const [notes, setNotes] = useState(invoiceToEdit?.notes || '');
   
   // Selected Payment Methods for this invoice
-  const [selectedMethods, setSelectedMethods] = useState<string[]>(invoiceToEdit ? invoiceToEdit.enabledPaymentMethods : ['qris', 'gopay', 'ovo', 'dana', 'bank_transfer']);
+  const [selectedMethods, setSelectedMethods] = useState<string[]>(
+    Array.isArray(invoiceToEdit?.enabledPaymentMethods)
+      ? invoiceToEdit.enabledPaymentMethods
+      : ['qris', 'gopay', 'ovo', 'dana', 'bank_transfer']
+  );
 
   // Quick Client Add inside form
   const [showQuickClient, setShowQuickClient] = useState(false);
@@ -132,8 +165,12 @@ export default function InvoiceForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const client = clients.find(c => c.id === selectedClientId);
-    if (!client) return;
+    const client = customerList.find(c => c.id === selectedClientId) || clients.find(c => c.id === selectedClientId) || invoiceToEdit?.client || {
+      id: selectedClientId || 'cust-1',
+      name: 'Pelanggan',
+      email: 'client@example.com',
+      phone: ''
+    };
 
     // Validate items
     const invalidItem = items.some(it => !it.description || it.quantity <= 0 || it.price <= 0);
@@ -200,33 +237,50 @@ export default function InvoiceForm({
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               
-              {/* Client Selector Row */}
-              <div className="space-y-1.5 sm:col-span-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t.selectClient}</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickClient(true)}
-                    className="text-xs font-bold text-[#2563EB] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus size={14} />
-                    <span>{t.addNewClientBtn}</span>
-                  </button>
+              {/* Client Selector / Display Row */}
+              {invoiceToEdit ? (
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">PELANGGAN / PENERIMA TAGIHAN</label>
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div>
+                      <p className="font-sans font-extrabold text-sm text-slate-800">{invoiceToEdit.client.name}</p>
+                      {invoiceToEdit.client.company && (
+                        <p className="text-xs text-slate-500 font-medium">{invoiceToEdit.client.company}</p>
+                      )}
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-mono font-bold border border-blue-100">
+                      {invoiceToEdit.invoiceNumber}
+                    </span>
+                  </div>
                 </div>
-                
-                <select
-                  value={selectedClientId}
-                  onChange={(e) => setSelectedClientId(e.target.value)}
-                  className="w-full px-3.5 py-3 bg-slate-50 border-0 rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white transition-all text-slate-700"
-                >
-                  <option value="">-- Pilih Klien / Penerima --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} {c.company ? `(${c.company})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              ) : (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t.selectClient}</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickClient(true)}
+                      className="text-xs font-bold text-[#2563EB] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      <span>{t.addNewClientBtn}</span>
+                    </button>
+                  </div>
+                  
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full px-3.5 py-3 bg-slate-50 border-0 rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white transition-all text-slate-700 font-bold"
+                  >
+                    <option value="">-- Pilih Pelanggan --</option>
+                    {customerList.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.company ? `(${c.company})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Dates */}
               <div className="space-y-1.5">

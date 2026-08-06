@@ -230,6 +230,53 @@ export default function InvoiceDetails({
   const [isExporting, setIsExporting] = useState(false);
   const [showShareDropdown, setShowShareDropdown] = useState(false);
 
+  // ArabPay Payment Gateway Modal States
+  const [showArabPayModal, setShowArabPayModal] = useState(false);
+  const [arabpayLoading, setArabpayLoading] = useState(false);
+  const [arabpayData, setArabpayData] = useState<any>(null);
+
+  const handlePayArabPay = async () => {
+    setArabpayLoading(true);
+    setShowArabPayModal(true);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/${invoice.id}/pay-arabpay`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setArabpayData(data);
+      } else {
+        alert(data.message || 'Gagal memproses gateway ArabPay.');
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Gagal memproses gateway ArabPay.');
+    } finally {
+      setArabpayLoading(false);
+    }
+  };
+
+  const handleSendWaGateway = async () => {
+    setShowShareDropdown(false);
+    setShareFeedback('⏳ Sedang mengirim notifikasi WhatsApp via Gateway...');
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/${invoice.id}/send-wa`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShareFeedback(data.message || '📱 WhatsApp berhasil terkirim!');
+      } else {
+        setShareFeedback(data.message || '❌ Gagal mengirim WhatsApp.');
+      }
+    } catch (err: any) {
+      setShareFeedback(`❌ Gagal: ${err?.message || 'Error'}`);
+    } finally {
+      setTimeout(() => setShareFeedback(''), 4000);
+    }
+  };
+
   const handleCopyLink = () => {
     const simulatedUrl = `${window.location.origin}/?view=checkout&id=${invoice.id}`;
     navigator.clipboard.writeText(simulatedUrl);
@@ -418,7 +465,7 @@ export default function InvoiceDetails({
                     <span>{t.copyLink}</span>
                   </button>
 
-                  {/* Send to WhatsApp Option */}
+                  {/* Send to WhatsApp Option (Direct Web / App) */}
                   <a
                     href={waUrl}
                     target="_blank"
@@ -431,6 +478,17 @@ export default function InvoiceDetails({
                     </div>
                     <span>{t.sendWhatsApp}</span>
                   </a>
+
+                  {/* Send via WA Gateway Option (Server Auto-Send) */}
+                  <button
+                    onClick={handleSendWaGateway}
+                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer border-t border-slate-100"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white shrink-0">
+                      <MessageCircle size={14} className="fill-white stroke-[2.5]" />
+                    </div>
+                    <span>📱 Kirim WA Gateway & ArabPay</span>
+                  </button>
                 </div>
               </>
             )}
@@ -471,15 +529,24 @@ export default function InvoiceDetails({
             <span className="hidden sm:inline">{isExporting ? t.exporting : t.exportPDF}</span>
           </button>
 
-          {/* Pay Button */}
+          {/* Pay Buttons */}
           {invoice.status !== 'paid' ? (
-            <button
-              onClick={onPayNow}
-              className="px-3.5 py-2 bg-[#2563EB] hover:bg-blue-600 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 shadow-md shadow-blue-100 transition-all"
-            >
-              <CreditCard size={14} />
-              <span>{t.payNow}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePayArabPay}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-100 transition-all"
+              >
+                <span>💳</span>
+                <span>Bayar via ArabPay (QRIS)</span>
+              </button>
+              <button
+                onClick={onPayNow}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 shadow-md transition-all"
+              >
+                <CreditCard size={14} />
+                <span>{t.payNow}</span>
+              </button>
+            </div>
           ) : (
             <span className="px-3.5 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-xs font-bold flex items-center gap-1">
               <CheckCircle size={14} />
@@ -488,6 +555,60 @@ export default function InvoiceDetails({
           )}
         </div>
       </header>
+
+      {/* ArabPay QRIS Gateway Payment Modal */}
+      {showArabPayModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 w-full max-w-md space-y-5 text-center">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💳</span>
+                <h3 className="font-extrabold text-slate-900 text-sm">Pembayaran ArabPay Gateway</h3>
+              </div>
+              <button onClick={() => setShowArabPayModal(false)} className="w-6 h-6 rounded-lg bg-slate-100 text-slate-500 hover:text-slate-800 font-bold text-xs cursor-pointer">✕</button>
+            </div>
+
+            {arabpayLoading ? (
+              <div className="py-8 space-y-3">
+                <Loader2 size={32} className="animate-spin text-emerald-600 mx-auto" />
+                <p className="text-xs font-bold text-slate-600">Menyiapkan QRIS & Tautan ArabPay...</p>
+              </div>
+            ) : arabpayData ? (
+              <div className="space-y-4">
+                <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl">
+                  <span className="text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider">Total Tagihan ({invoice.invoiceNumber})</span>
+                  <div className="text-2xl font-black text-emerald-700 font-mono mt-0.5">
+                    Rp {Number(invoice.total || 0).toLocaleString('id-ID')}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                  <p className="text-xs font-extrabold text-slate-800">Scan QRIS Menggunakan ArabPay / Bank / E-Wallet Mana Saja:</p>
+                  <img 
+                    src={arabpayData.qr_image_url} 
+                    alt="QRIS ArabPay" 
+                    className="w-48 h-48 mx-auto rounded-2xl border border-slate-300 shadow-sm p-1.5 bg-white" 
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <a 
+                    href={arabpayData.payment_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl block shadow-md transition-all"
+                  >
+                    🚀 Buka Halaman Bayar ArabPay (1-Click)
+                  </a>
+                  <p className="text-[10.5px] text-slate-400">
+                    💡 Setelah pembayaran berhasil di ArabPay, sistem akan me-lunas-kan tagihan & meng-aktifkan internet secara otomatis!
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="p-4 md:p-8 max-w-4xl mx-auto space-y-6">
@@ -504,18 +625,19 @@ export default function InvoiceDetails({
           
           {/* Invoice Header */}
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-6 border-b border-slate-100 pb-6">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#0066FF] flex items-center justify-center text-white font-bold">B</div>
-                <span className="font-sans font-extrabold text-lg text-slate-800">Billava</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-lg shadow-sm shrink-0">
+                  {(profile.companyName || 'A').charAt(0).toUpperCase()}
+                </div>
+                <h2 className="font-sans font-extrabold text-xl text-slate-900 tracking-tight">
+                  {profile.companyName || 'Nama Perusahaan'}
+                </h2>
               </div>
-              <div>
-                <h2 className="font-sans font-bold text-lg text-slate-800">{profile.companyName}</h2>
-                <p className="text-xs text-slate-400 mt-0.5 leading-relaxed font-sans">{profile.address}</p>
-                {profile.taxId && (
-                  <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase">NPWP: {profile.taxId}</p>
-                )}
-              </div>
+              <p className="text-xs text-slate-400 leading-relaxed font-sans pt-1">{profile.address}</p>
+              {profile.taxId && (
+                <p className="text-[10px] font-mono text-slate-400 uppercase">NPWP: {profile.taxId}</p>
+              )}
             </div>
 
             <div className="space-y-3 text-left sm:text-right">
@@ -589,7 +711,7 @@ export default function InvoiceDetails({
                   <tr key={item.id}>
                     <td className="p-4 text-xs font-semibold text-slate-800 pl-6 leading-relaxed">{item.description}</td>
                     <td className="p-4 text-xs font-semibold text-center">{item.quantity}</td>
-                    <td className="p-4 text-xs font-semibold text-right">{formatCurrency(item.price, profile.currency)}</td>
+                    <td className="p-4 text-xs font-semibold text-right">{formatCurrency(item.unitPrice || item.price || item.amount || 0, profile.currency)}</td>
                     <td className="p-4 text-xs font-bold text-slate-800 text-right pr-6">{formatCurrency(item.amount, profile.currency)}</td>
                   </tr>
                 ))}

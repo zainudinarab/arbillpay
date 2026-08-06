@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "../arbiljs"
+		},
+		{
+			"path": "../wallet-service"
+		},
+		{
+			"path": "../wallet-panel-next"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../arbill"
+		}
+	],
+	"settings": {}
+}

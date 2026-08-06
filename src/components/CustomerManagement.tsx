@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { CustomerMapModal } from './CustomerMapModal';
+import { CustomerMapViewModal } from './CustomerMapViewModal';
 import { 
   Users, 
   UserPlus, 
+  Plus,
+  MapPin,
   Search, 
   Wifi, 
   Globe, 
@@ -9,12 +13,22 @@ import {
   AlertCircle, 
   RefreshCw, 
   Phone, 
-  MapPin, 
   Key, 
   Edit, 
   ShieldCheck, 
   Zap,
-  Tag
+  Tag,
+  Server,
+  Radio,
+  Package,
+  Link2,
+  Download,
+  Power,
+  Trash2,
+  Calendar,
+  Layers,
+  FileText,
+  Plug
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -28,23 +42,64 @@ interface PackageItem {
   validity_days: number;
 }
 
-interface CustomerItem {
+interface RouterItem {
+  id: string;
+  name: string;
+  ip_address: string;
+  api_port: number;
+}
+
+interface RouterProfileItem {
+  id: string;
+  router_id: string;
+  name: string;
+  type: string;
+  rate_limit?: string;
+  package_id?: string | null;
+}
+
+export interface CustomerItem {
   id: string;
   user_id?: string;
+  customer_code?: string;
   name: string;
-  phone_number: string;
+  phone_number?: string;
   address?: string;
+  dusun?: string;
+  desa?: string;
+  kecamatan?: string;
+  kabupaten?: string;
+  provinsi?: string;
   connection_type: 'pppoe' | 'hotspot';
   pppoe_username?: string;
   pppoe_password?: string;
+  static_ip?: string;
+  installation_date?: string;
+  expired_at?: string;
+  grace_until?: string;
+  odp_port?: string;
+  sn_onu?: string;
+  power_laser?: string;
+  teknisi?: string;
+  is_synced?: boolean;
+  is_voucher?: boolean;
   package_id: string;
+  router_id?: string | null;
+  router_profile_id?: string | null;
   package_name?: string;
   package_price?: number;
   package_type?: string;
   speed_limit?: string;
-  status: 'active' | 'isolated' | 'pending';
+  router_name?: string;
+  router_ip?: string;
+  router_profile_name?: string;
+  router_profile_type?: string;
+  status: 'active' | 'isolated' | 'non-active' | 'terminated' | string;
   linked_user_email?: string;
   arabpay_user_id?: string;
+  latitude?: string;
+  longitude?: string;
+  maps_url?: string;
   created_at?: string;
 }
 
@@ -57,46 +112,349 @@ interface CustomerManagementProps {
 export default function CustomerManagement({ profile, t, onLogout }: CustomerManagementProps) {
   const [customers, setCustomers] = useState<CustomerItem[]>([]);
   const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [routers, setRouters] = useState<RouterItem[]>([]);
+  const [routerProfiles, setRouterProfiles] = useState<RouterProfileItem[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPackageFilter, setSelectedPackageFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'non-active' | 'terminated'>('all');
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Modals State
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerItem | null>(null);
+
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Form State
+  // Map Location States
+  const [showGlobalMapModal, setShowGlobalMapModal] = useState<boolean>(false);
+  const [showMapPickerModal, setShowMapPickerModal] = useState<boolean>(false);
+  const [mapCustomer, setMapCustomer] = useState<CustomerItem | null>(null);
+
+  // Billing Detail Modal State
+  const [showBillingModal, setShowBillingModal] = useState(false);
+  const [billingCustomer, setBillingCustomer] = useState<CustomerItem | null>(null);
+  const [payLoading, setPayLoading] = useState(false);
+
+  // Live Mikrotik PPP Active Users & FTTH Map States
+  const [onlineUsernames, setOnlineUsernames] = useState<string[]>([]);
+  const [ftthNodes, setFtthNodes] = useState<any[]>([]);
+  const [ftthLines, setFtthLines] = useState<any[]>([]);
+
+  const isUserOnline = (c: CustomerItem) => {
+    if (!c.pppoe_username) return false;
+    return onlineUsernames.includes(c.pppoe_username.trim().toLowerCase());
+  };
+
+  const getFtthInfoForCustomer = (cust: CustomerItem) => {
+    if (!cust || ftthNodes.length === 0) return null;
+
+    // Match linked node on FTTH map by customer ID or username/name match
+    const linkedNode = ftthNodes.find(n => 
+      (n.customerId && String(n.customerId) === String(cust.id)) ||
+      (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
+      (n.name && cust.name && n.name.toLowerCase().trim() === cust.name.toLowerCase().trim())
+    );
+
+    if (!linkedNode) return null;
+
+    // Helper to trace parent ODP / ODC / Splitter for this linked node
+    const traceParentOdp = (nodeId: string, visited = new Set<string>()): { odpName: string; odpType: string; port: number } | null => {
+      if (visited.has(nodeId)) return null;
+      visited.add(nodeId);
+
+      const connectedCable = ftthLines.find(l => l.toId === nodeId || l.fromId === nodeId);
+      if (!connectedCable) return null;
+
+      const otherNodeId = connectedCable.fromId === nodeId ? connectedCable.toId : connectedCable.fromId;
+      const otherNode = ftthNodes.find(n => n.id === otherNodeId);
+      if (!otherNode) return null;
+
+      if (otherNode.type === 'ODP' || otherNode.type === 'ODC' || otherNode.type === 'OLT' || otherNode.type === 'SPLITTER') {
+        const portNum = connectedCable.fromId === otherNode.id ? (connectedCable.fromPort || 1) : (connectedCable.toPort || 1);
+        return { odpName: otherNode.name || `${otherNode.type} #${otherNode.id.slice(-4)}`, odpType: otherNode.type, port: portNum };
+      }
+
+      return traceParentOdp(otherNode.id, visited);
+    };
+
+    const parentOdp = traceParentOdp(linkedNode.id);
+    return {
+      nodeName: linkedNode.name || `${linkedNode.type} #${linkedNode.id.slice(-4)}`,
+      nodeType: linkedNode.type,
+      odpName: parentOdp?.odpName || 'Belum Terhubung ODP',
+      odpPort: parentOdp?.port || 1
+    };
+  };
+
+  const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
+
+  const fetchCustomerInvoices = async (cust: CustomerItem) => {
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`);
+      const data = await parseJsonResponse(res);
+      if (data.success && Array.isArray(data.invoices)) {
+        setCustomerInvoices(data.invoices);
+      }
+    } catch (err) {}
+  };
+
+  const openBillingModal = (cust: CustomerItem) => {
+    setBillingCustomer(cust);
+    setShowBillingModal(true);
+    fetchCustomerInvoices(cust);
+  };
+
+  const handlePayInvoiceById = async (invId: string) => {
+    setPayLoading(true);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/${invId}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_method: 'Kasir / Tunai' })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        if (billingCustomer) {
+          fetchCustomerInvoices(billingCustomer);
+        }
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal membayar invoice.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal bayar.' });
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  const handlePayBill = async () => {
+    if (!billingCustomer) return;
+    setPayLoading(true);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/customers/${billingCustomer.id}/pay-bill`, {
+        method: 'POST'
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        if (billingCustomer) {
+          fetchCustomerInvoices(billingCustomer);
+        }
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal melunasi tagihan.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal bayar: ${err?.message || 'Error'}` });
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  // Sync & Disconnect Handlers
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handleSyncCustomer = async (cust: CustomerItem) => {
+    setActionLoadingId(cust.id);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/customers/${cust.id}/sync-to-mikrotik`, {
+        method: 'POST'
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal sinkronisasi ke Mikrotik.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal Sync: ${err?.message || 'Error'}` });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleDisconnectCustomer = async (cust: CustomerItem) => {
+    if (!window.confirm(`Putuskan sesi koneksi aktif untuk "${cust.name}" (${cust.pppoe_username})?`)) return;
+    setActionLoadingId(cust.id);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/customers/${cust.id}/disconnect-ppp`, {
+        method: 'POST'
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal Diskonek: ${err?.message || 'Error'}` });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
+
+  const handleCreateBatchInvoices = async () => {
+    if (!confirm('Apakah Anda yakin ingin membuat tagihan masal untuk SELURUH pelanggan PPP aktif?')) return;
+    setInvoiceLoading(true);
+    setToastMsg(null);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/create-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connection_type: 'pppoe' })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal membuat tagihan masal.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal membuat tagihan masal.' });
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
+  const handleCreateManualInvoice = async (cust: CustomerItem) => {
+    setActionLoadingId(cust.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/create-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_id: cust.id, notes: `Tagihan Manual PPPoE - ${cust.name}` })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal membuat tagihan.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal membuat tagihan.' });
+    } finally {
+      setActionLoadingId(null);
+      openBillingModal(cust);
+    }
+  };
+
+  // Form State (Matching Screenshot 2 - Personal Data & FTTH Technical Config)
+  const [customerCode, setCustomerCode] = useState('');
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
-  const [connectionType, setConnectionType] = useState<'pppoe' | 'hotspot'>('pppoe');
+  const [dusun, setDusun] = useState('');
+  const [desa, setDesa] = useState('');
+  const [kecamatan, setKecamatan] = useState('');
+  const [kabupaten, setKabupaten] = useState('');
+  const [provinsi, setProvinsi] = useState('');
+  const [installationDate, setInstallationDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [status, setStatus] = useState<'active' | 'isolated' | 'non-active' | 'terminated'>('active');
+
   const [pppoeUsername, setPppoeUsername] = useState('');
   const [pppoePassword, setPppoePassword] = useState('');
-  const [packageId, setPackageId] = useState('');
-  const [status, setStatus] = useState<'active' | 'isolated' | 'pending'>('active');
+  const [selectedRouterId, setSelectedRouterId] = useState<string>('');
+  const [packageId, setPackageId] = useState<string>('');
+  const [staticIp, setStaticIp] = useState('');
+  const [connectionType, setConnectionType] = useState<'pppoe'>('pppoe');
+  const [expiredAt, setExpiredAt] = useState<string>('');
+  const [graceUntil, setGraceUntil] = useState<string>('');
+
+  const [odpPort, setOdpPort] = useState('');
+  const [snOnu, setSnOnu] = useState('');
+  const [powerLaser, setPowerLaser] = useState('-19.00');
+  const [teknisi, setTeknisi] = useState('');
+
+  // Import Modal State (Matching Screenshot 3)
+  const [importRouterId, setImportRouterId] = useState<string>('');
+  const [updateExistingImport, setUpdateExistingImport] = useState(true);
+
+  const parseJsonResponse = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        throw new Error('Server Express (port 3006) belum berjalan. Jalankan `npm run server` di terminal.');
+      }
+      throw new Error(`Respons server bukan JSON (HTTP ${res.status})`);
+    }
+    return await res.json();
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const [resCust, resPkg] = await Promise.all([
+      const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
         fetch(`${apiUrl}/api/customers`),
-        fetch(`${apiUrl}/api/packages`)
+        fetch(`${apiUrl}/api/packages`),
+        fetch(`${apiUrl}/api/routers`),
+        fetch(`${apiUrl}/api/router-profiles`),
+        fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null),
+        fetch(`${apiUrl}/api/ftth/map`).catch(() => null)
       ]);
-      const dataCust = await resCust.json();
-      const dataPkg = await resPkg.json();
+
+      const dataCust = await parseJsonResponse(resCust);
+      const dataPkg = await parseJsonResponse(resPkg);
+      const dataRtr = await parseJsonResponse(resRtr);
+      const dataProf = await parseJsonResponse(resProf);
 
       if (dataCust.success && Array.isArray(dataCust.customers)) {
-        setCustomers(dataCust.customers);
+        // Filter strictly ONLY PPPoE customers
+        setCustomers(dataCust.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
       }
       if (dataPkg.success && Array.isArray(dataPkg.packages)) {
-        setPackages(dataPkg.packages);
-        if (dataPkg.packages.length > 0 && !packageId) {
-          setPackageId(dataPkg.packages[0].id);
+        // Only PPPoE packages
+        setPackages(dataPkg.packages.filter((p: any) => p.type === 'pppoe'));
+      }
+      if (dataRtr.success && Array.isArray(dataRtr.routers)) {
+        setRouters(dataRtr.routers);
+        if (dataRtr.routers.length > 0 && !selectedRouterId) {
+          setSelectedRouterId(dataRtr.routers[0].id);
+          setImportRouterId(dataRtr.routers[0].id);
         }
       }
-    } catch (err) {
-      console.error('Failed to fetch customers/packages data:', err);
+      if (dataProf.success && Array.isArray(dataProf.profiles)) {
+        setRouterProfiles(dataProf.profiles);
+      }
+      if (resActive && resActive.ok) {
+        const dataActive = await parseJsonResponse(resActive);
+        if (dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
+          setOnlineUsernames(dataActive.onlineUsernames);
+        }
+      }
+      if (resMap && resMap.ok) {
+        const dataMap = await parseJsonResponse(resMap);
+        if (dataMap.success && dataMap.data) {
+          setFtthNodes(dataMap.data.nodes || []);
+          setFtthLines(dataMap.data.lines || []);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch customers:', err);
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal memuat data pelanggan PPPoE.' });
     } finally {
       setLoading(false);
     }
@@ -106,21 +464,81 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     fetchData();
   }, []);
 
+  // Auto-calculate Expired & Grace dates based on Tanggal Pasang/Aktif and Paket Internet
+  const autoCalculateDates = (instDateStr: string, pkgIdToUse: string) => {
+    const selectedPkg = packages.find(p => p.id === pkgIdToUse);
+    const baseDate = instDateStr ? new Date(instDateStr) : new Date();
+
+    if (isNaN(baseDate.getTime())) return;
+
+    let valDays = selectedPkg?.validity_days || 30;
+    const valUnit = (selectedPkg as any)?.validity_unit || 'month';
+    const valVal = (selectedPkg as any)?.validity_value || 1;
+    const graceDays = (selectedPkg as any)?.grace_period_days || 5;
+
+    const expDate = new Date(baseDate);
+    if (valUnit === 'month') {
+      expDate.setMonth(expDate.getMonth() + valVal);
+    } else {
+      expDate.setDate(expDate.getDate() + valDays);
+    }
+
+    const graceDate = new Date(expDate);
+    graceDate.setDate(graceDate.getDate() + graceDays);
+
+    setExpiredAt(expDate.toISOString().split('T')[0]);
+    setGraceUntil(graceDate.toISOString().split('T')[0]);
+  };
+
+  const handleInstallationDateChange = (newDateStr: string) => {
+    setInstallationDate(newDateStr);
+    autoCalculateDates(newDateStr, packageId);
+  };
+
+  const handlePackageChange = (newPkgId: string) => {
+    setPackageId(newPkgId);
+    autoCalculateDates(installationDate, newPkgId);
+  };
+
   const resetForm = () => {
+    const randomCode = `CUST-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const today = new Date().toISOString().split('T')[0];
+    const initialPkgId = packages.length > 0 ? packages[0].id : '';
+
+    setCustomerCode(randomCode);
     setName('');
     setPhoneNumber('');
+    setEmail('');
     setAddress('');
-    setConnectionType('pppoe');
+    setDusun('');
+    setDesa('');
+    setKecamatan('');
+    setKabupaten('');
+    setProvinsi('');
+    setInstallationDate(today);
+    setStatus('active');
+
     setPppoeUsername('');
     setPppoePassword('');
-    if (packages.length > 0) setPackageId(packages[0].id);
-    setStatus('active');
+    setStaticIp('');
+    setConnectionType('pppoe');
+    
+    setOdpPort('');
+    setSnOnu('');
+    setPowerLaser('-19.00');
+    setTeknisi('');
+
+    if (routers.length > 0) setSelectedRouterId(routers[0].id);
+    if (initialPkgId) {
+      setPackageId(initialPkgId);
+      autoCalculateDates(today, initialPkgId);
+    }
   };
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !phoneNumber.trim() || !packageId) {
-      setToastMsg({ type: 'error', text: 'Nama, Nomor HP, dan Paket Internet wajib diisi!' });
+    if (!name.trim() || !packageId) {
+      setToastMsg({ type: 'error', text: 'Nama Pelanggan dan Paket Internet wajib diisi!' });
       return;
     }
 
@@ -129,56 +547,93 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+
       const res = await fetch(`${apiUrl}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          customer_code: customerCode,
           name: name.trim(),
           phone_number: phoneNumber.trim(),
           address: address.trim(),
-          connection_type: connectionType,
-          pppoe_username: pppoeUsername.trim() || null,
-          pppoe_password: pppoePassword.trim() || null,
-          package_id: packageId
+          dusun: dusun.trim() || null,
+          desa: desa.trim() || null,
+          kecamatan: kecamatan.trim() || null,
+          kabupaten: kabupaten.trim() || null,
+          provinsi: provinsi.trim() || null,
+          connection_type: 'pppoe',
+          pppoe_username: pppoeUsername.trim() || name.toLowerCase().replace(/\s+/g, ''),
+          pppoe_password: pppoePassword.trim() || '123456',
+          static_ip: staticIp.trim() || null,
+          installation_date: installationDate,
+          expired_at: expiredAt || null,
+          grace_until: graceUntil || null,
+          odp_port: odpPort.trim() || null,
+          sn_onu: snOnu.trim() || null,
+          power_laser: powerLaser.trim() || null,
+          teknisi: teknisi.trim() || null,
+          package_id: packageId,
+          router_id: selectedRouterId || null,
+          router_profile_id: matchedProfile ? matchedProfile.id : null,
+          status
         })
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToastMsg({ 
-          type: 'success', 
-          text: `Pelanggan "${data.customer.name}" berhasil didaftarkan! ${data.autoLinkedArabPay ? '⚡ Akun ArabPay langsung terhubung!' : ' (Belum terhubung ArabPay).'}` 
-        });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
         setShowAddModal(false);
-        resetForm();
         fetchData();
       } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal mendaftarkan pelanggan.' });
+        setToastMsg({ type: 'error', text: data.message || 'Gagal merilis data pelanggan.' });
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal terhubung ke Database API.' });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal mendaftarkan pelanggan.' });
     } finally {
       setSubmitLoading(false);
     }
   };
 
-  const openEditModal = (c: CustomerItem) => {
-    setEditingCustomer(c);
-    setName(c.name);
-    setPhoneNumber(c.phone_number);
-    setAddress(c.address || '');
-    setConnectionType(c.connection_type || 'pppoe');
-    setPppoeUsername(c.pppoe_username || '');
-    setPppoePassword(c.pppoe_password || '');
-    setPackageId(c.package_id);
-    setStatus(c.status);
+  const openEditModal = (cust: CustomerItem) => {
+    setEditingCustomer(cust);
+    setCustomerCode(cust.customer_code || `CUST-${cust.id.substring(0, 5).toUpperCase()}`);
+    setName(cust.name);
+    setPhoneNumber(cust.phone_number || '');
+    setAddress(cust.address || '');
+    setDusun(cust.dusun || '');
+    setDesa(cust.desa || '');
+    setKecamatan(cust.kecamatan || '');
+    setKabupaten(cust.kabupaten || '');
+    setProvinsi(cust.provinsi || '');
+    setInstallationDate(cust.installation_date ? cust.installation_date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    setStatus((cust.status as any) || 'active');
+
+    setPppoeUsername(cust.pppoe_username || '');
+    setPppoePassword(cust.pppoe_password || '');
+    setStaticIp(cust.static_ip || '');
+
+    setExpiredAt(cust.expired_at ? cust.expired_at.split('T')[0] : '');
+    setGraceUntil(cust.grace_until ? cust.grace_until.split('T')[0] : '');
+    
+    const ftthConn = getFtthInfoForCustomer(cust);
+    const autoOdp = cust.odp_port || (ftthConn ? `${ftthConn.odpName} (Port ${ftthConn.odpPort})` : '');
+    setOdpPort(autoOdp);
+    
+    setSnOnu(cust.sn_onu || '');
+    setPowerLaser(cust.power_laser || '-19.00');
+    setTeknisi(cust.teknisi || '');
+
+    if (cust.router_id) setSelectedRouterId(cust.router_id);
+    if (cust.package_id) setPackageId(cust.package_id);
+
     setShowEditModal(true);
   };
 
   const handleUpdateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCustomer || !name.trim() || !phoneNumber.trim() || !packageId) {
-      setToastMsg({ type: 'error', text: 'Nama, Nomor HP, dan Paket Internet wajib diisi!' });
+    if (!editingCustomer || !name.trim() || !packageId) {
+      setToastMsg({ type: 'error', text: 'Nama dan Paket Internet wajib diisi!' });
       return;
     }
 
@@ -187,60 +642,145 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+
       const res = await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          customer_code: customerCode,
           name: name.trim(),
           phone_number: phoneNumber.trim(),
           address: address.trim(),
-          connection_type: connectionType,
-          pppoe_username: pppoeUsername.trim() || null,
-          pppoe_password: pppoePassword.trim() || null,
+          dusun: dusun.trim() || null,
+          desa: desa.trim() || null,
+          kecamatan: kecamatan.trim() || null,
+          kabupaten: kabupaten.trim() || null,
+          provinsi: provinsi.trim() || null,
+          connection_type: 'pppoe',
+          pppoe_username: pppoeUsername.trim(),
+          pppoe_password: pppoePassword.trim(),
+          static_ip: staticIp.trim() || null,
+          installation_date: installationDate,
+          expired_at: expiredAt || null,
+          grace_until: graceUntil || null,
+          odp_port: odpPort.trim() || null,
+          sn_onu: snOnu.trim() || null,
+          power_laser: powerLaser.trim() || null,
+          teknisi: teknisi.trim() || null,
           package_id: packageId,
+          router_id: selectedRouterId || null,
+          router_profile_id: matchedProfile ? matchedProfile.id : null,
           status
         })
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToastMsg({ type: 'success', text: `Data pelanggan "${name}" berhasil diperbarui!` });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
         setShowEditModal(false);
         setEditingCustomer(null);
-        resetForm();
         fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui data pelanggan.' });
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal memperbarui data pelanggan.' });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal memperbarui data pelanggan.' });
     } finally {
       setSubmitLoading(false);
     }
   };
 
-  const filteredCustomers = customers.filter(c =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone_number.includes(searchTerm) ||
-    (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (c.pppoe_username && c.pppoe_username.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (c.package_name && c.package_name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const handleImportSecrets = async () => {
+    if (!importRouterId) {
+      setToastMsg({ type: 'error', text: 'Pilih Server Mikrotik terlebih dahulu!' });
+      return;
+    }
+
+    setImportLoading(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/routers/${importRouterId}/import-ppp-secrets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ update_existing: updateExistingImport })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setShowImportModal(false);
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal impor secret PPP.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal impor: ${err?.message || 'Error'}` });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  // Status Filter counts (Matching Live Mikrotik Active PPP Connections)
+  const activeOnlineCount = customers.filter(c => c.status === 'active' && isUserOnline(c)).length;
+  const activeOfflineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
+  const nonActiveCount = customers.filter(c => c.status === 'isolated' || c.status === 'non-active' || c.status === 'off' || c.status === 'pending').length;
+  const terminatedCount = customers.filter(c => c.status === 'terminated').length;
+
+  // Package Distribution Counts (Right Card in Screenshot 1)
+  const packageCounts: { [pkgName: string]: number } = {};
+  customers.forEach(c => {
+    const pName = c.package_name || 'Default Package';
+    packageCounts[pName] = (packageCounts[pName] || 0) + 1;
+  });
+
+  // Filter Customers
+  const filteredCustomers = customers.filter(c => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = (c.name || '').toLowerCase().includes(term) ||
+                          (c.customer_code || '').toLowerCase().includes(term) ||
+                          (c.pppoe_username || '').toLowerCase().includes(term) ||
+                          (c.phone_number || '').includes(term) ||
+                          (c.address || '').toLowerCase().includes(term) ||
+                          (c.dusun || '').toLowerCase().includes(term) ||
+                          (c.desa || '').toLowerCase().includes(term) ||
+                          (c.kecamatan || '').toLowerCase().includes(term) ||
+                          (c.kabupaten || '').toLowerCase().includes(term) ||
+                          (c.provinsi || '').toLowerCase().includes(term);
+    const matchesPackage = selectedPackageFilter === 'all' || c.package_id === selectedPackageFilter;
+    const matchesStatus = statusFilter === 'all' || 
+                          (statusFilter === 'online' && c.status === 'active' && isUserOnline(c)) ||
+                          (statusFilter === 'offline' && c.status === 'active' && !isUserOnline(c)) ||
+                          (statusFilter === 'non-active' && (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off' || c.status === 'pending')) ||
+                          (statusFilter === 'terminated' && c.status === 'terminated');
+    return matchesSearch && matchesPackage && matchesStatus;
+  });
+
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedPackageFilter, statusFilter]);
+
+  const totalItems = filteredCustomers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
 
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8 min-h-screen">
-      {/* Header */}
       <HeaderBar
-        title="Pelanggan RT/RW Net"
-        subtitle={`Total ${customers.length} Pelanggan Terdaftar (PPPoE Bulanan & Hotspot)`}
+        title="Daftar Pelanggan"
+        subtitle="Manajemen Pelanggan FTTH/PPPoE, Penagihan Bulanan, dan Integrasi Mikrotik Secret"
         profile={profile}
         t={t}
         onLogout={onLogout}
       />
 
-      {/* Main Content */}
-      <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
-        {/* Toast */}
+      <main className="p-4 md:p-6 lg:p-8 space-y-6 w-full">
+        {/* Toast Notification */}
         {toastMsg && (
           <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm animate-fade-in ${
             toastMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
@@ -253,383 +793,1210 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           </div>
         )}
 
-        {/* Action & Filter Bar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
-          <div className="relative flex-1 max-w-md">
-            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Cari nama pelanggan, HP, alamat, atau username PPPoE..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border-0 rounded-xl text-sm font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white transition-all text-slate-700"
-            />
-          </div>
-
-          <div className="flex items-center gap-3">
+        {/* Top Header Controls (Title & Import from Mikrotik Button - Matching Screenshot 1) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h2 className="text-2xl font-black font-sans text-slate-800 tracking-tight">Daftar Pelanggan Rumah</h2>
+          <div className="flex items-center gap-3 flex-wrap">
             <button
-              onClick={fetchData}
-              className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all cursor-pointer"
-              title="Refresh Data"
+              onClick={() => { window.location.hash = '#/map-ftth'; }}
+              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-sky-100 flex items-center gap-2 transition-all cursor-pointer"
             >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              <MapPin size={15} />
+              <span>🗺️ Peta Jaringan FTTH</span>
+            </button>
+
+            <button
+              onClick={handleCreateBatchInvoices}
+              disabled={invoiceLoading}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-indigo-100 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <FileText size={15} className={invoiceLoading ? 'animate-spin' : ''} />
+              <span>{invoiceLoading ? 'Memproses Tagihan...' : '🧾 Buat Tagihan Masal'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-5 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-blue-100 flex items-center gap-2 transition-all cursor-pointer"
+            >
+              <Download size={15} />
+              <span>Impor dari Mikrotik</span>
             </button>
 
             <button
               onClick={() => { resetForm(); setShowAddModal(true); }}
-              className="py-2.5 px-5 bg-[#2563EB] hover:bg-blue-700 text-white font-sans font-semibold rounded-xl flex items-center gap-2 text-xs shadow-md shadow-blue-100 transition-all cursor-pointer shrink-0"
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-emerald-100 flex items-center gap-2 transition-all cursor-pointer"
             >
-              <UserPlus size={16} />
-              <span>+ Tambah Pelanggan RT/RW Net</span>
+              <UserPlus size={15} />
+              <span>+ Pelanggan Baru</span>
             </button>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden animate-fade-in">
-          {loading ? (
-            <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
-              <RefreshCw size={24} className="animate-spin text-[#2563EB]" />
-              <span className="text-xs font-semibold">Mengambil data pelanggan RT/RW Net...</span>
+        {/* Status Filter Badges (Matching Screenshot 1) */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setStatusFilter('online')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
+              statusFilter === 'online' 
+                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            <Globe size={14} />
+            <span>Active: Online</span>
+            <span className="px-2 py-0.5 rounded-full bg-white text-emerald-800 text-[11px] font-black">{activeOnlineCount}</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('offline')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
+              statusFilter === 'offline' 
+                ? 'bg-rose-600 text-white border-rose-600 shadow-sm' 
+                : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+            }`}
+          >
+            <Power size={14} />
+            <span>Active: Offline</span>
+            <span className="px-2 py-0.5 rounded-full bg-white text-rose-800 text-[11px] font-black">{activeOfflineCount}</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('non-active')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
+              statusFilter === 'non-active' 
+                ? 'bg-amber-600 text-white border-amber-600 shadow-sm' 
+                : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <AlertCircle size={14} />
+            <span>Non-Active</span>
+            <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[11px] font-black">{nonActiveCount}</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('terminated')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
+              statusFilter === 'terminated' 
+                ? 'bg-slate-700 text-white border-slate-700 shadow-sm' 
+                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+            }`}
+          >
+            <CloseIcon size={14} />
+            <span>Terminated</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-600 text-white text-[11px] font-black">{terminatedCount}</span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+              statusFilter === 'all' ? 'text-blue-600 underline' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Tampilkan Semua
+          </button>
+        </div>
+
+        {/* Main Grid: Full Width Left Customer Table + Right Package Statistics */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column (Customer Table - Expanded to col-span-9) */}
+          <div className="lg:col-span-9 space-y-4">
+            {/* Search & Package Filter Bar (Matching Screenshot 1) */}
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-xs flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  placeholder="Cari Nama/Kode/User..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:bg-white transition-all text-slate-800"
+                />
+              </div>
+
+              <select
+                value={selectedPackageFilter}
+                onChange={(e) => setSelectedPackageFilter(e.target.value)}
+                className="w-full sm:w-48 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Semua Paket</option>
+                {packages.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+
+              <button
+                onClick={fetchData}
+                className="w-full sm:w-auto px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0"
+              >
+                <Search size={14} />
+                <span>Cari</span>
+              </button>
+
+              <button
+                onClick={() => { setSearchTerm(''); setSelectedPackageFilter('all'); setStatusFilter('all'); }}
+                className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0"
+              >
+                <RefreshCw size={14} />
+                <span>Reset</span>
+              </button>
             </div>
-          ) : filteredCustomers.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              Belum ada pelanggan RT/RW Net yang terdaftar. Klik "+ Tambah Pelanggan" untuk mendaftarkan.
+
+            {/* Table (Matching Screenshot 1 Layout) */}
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+              {loading ? (
+                <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
+                  <RefreshCw size={24} className="animate-spin text-[#2563EB]" />
+                  <span className="text-xs font-semibold">Memuat daftar pelanggan PPPoE...</span>
+                </div>
+              ) : filteredCustomers.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 text-xs">
+                  Tidak ada pelanggan PPPoE yang cocok dengan kriteria pencarian.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] uppercase font-black tracking-wider text-slate-500">
+                        <th className="py-3 px-4">Pelanggan</th>
+                        <th className="py-3 px-4">Paket</th>
+                        <th className="py-3 px-4">Username / IP</th>
+                        <th className="py-3 px-4">Fisik Perangkat & Redaman FO & ODP LINK INFO</th>
+                        <th className="py-3 px-4 text-center">Mikrotik Sync</th>
+                        <th className="py-3 px-4 text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                      {paginatedCustomers.map(cust => (
+                        <tr key={cust.id} className="hover:bg-slate-50/80 transition-colors">
+                          {/* PELANGGAN (with integrated status dot) */}
+                          <td className="py-3.5 px-4 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${
+                                cust.status === 'active' 
+                                  ? (isUserOnline(cust) ? 'bg-emerald-500 shadow-xs shadow-emerald-300 animate-pulse' : 'bg-rose-500') 
+                                  : 'bg-amber-500'
+                              }`} title={cust.status === 'active' ? (isUserOnline(cust) ? 'Online di Mikrotik' : 'Offline') : cust.status} />
+                              <span className="font-extrabold text-slate-800 text-xs">{cust.name}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-mono pl-4.5 flex items-center gap-1.5 flex-wrap">
+                              <span>{cust.customer_code || `CUST-${cust.id.substring(0, 5).toUpperCase()}`}</span>
+                              {cust.latitude && cust.longitude && (
+                                <a
+                                  href={cust.maps_url || `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[9.5px] font-mono font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 hover:bg-sky-100 transition-all inline-flex items-center gap-1"
+                                  title="Klik untuk membuka titik GPS di Google Maps"
+                                >
+                                  <span>📍 {Number(cust.latitude).toFixed(5)}, {Number(cust.longitude).toFixed(5)}</span>
+                                </a>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* PAKET */}
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-bold text-[11px] text-slate-700 inline-block">
+                              {cust.package_name || 'Default Package'}
+                            </span>
+                          </td>
+
+                          {/* USERNAME / IP */}
+                          <td className="py-3.5 px-4 space-y-0.5 font-mono">
+                            <div className="text-pink-600 font-bold text-xs">{cust.pppoe_username || '-'}</div>
+                            <div className="text-slate-400 text-[11px]">{cust.static_ip || 'DHCP Pool'}</div>
+                          </td>
+
+                          {/* FISIK PERANGKAT & REDAMAN FO & ODP LINK INFO */}
+                          <td className="py-3.5 px-4 space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {isUserOnline(cust) ? (
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black inline-flex items-center gap-1 border border-emerald-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
+                                  <span>ONU ONLINE</span>
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-black inline-flex items-center gap-1 border border-rose-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
+                                  <span>ONU OFFLINE</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {/* ODP Induk Link Info */}
+                            {(() => {
+                              const ftthInfo = getFtthInfoForCustomer(cust);
+                              if (ftthInfo) {
+                                return (
+                                  <div className="text-[10px] font-mono font-extrabold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 inline-flex items-center gap-1 shadow-2xs" title={`Node: ${ftthInfo.nodeName} | Penyuplai ODP: ${ftthInfo.odpName} (Port #${ftthInfo.odpPort})`}>
+                                    <span>🏢 {ftthInfo.odpName}</span>
+                                    <span className="bg-purple-200 text-purple-950 px-1 py-0.2 rounded text-[9px] font-black">Port #{ftthInfo.odpPort}</span>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="text-[9.5px] font-mono text-slate-400 italic">
+                                  (Belum Ditautkan ke ODP Peta)
+                                </div>
+                              );
+                            })()}
+
+                            <div className="text-[10px] font-mono font-bold text-slate-600 flex items-center gap-1">
+                              <span>⚡ Redaman:</span>
+                              <span className={
+                                parseFloat(cust.power_laser || '-19.5') < -27
+                                  ? 'text-rose-600 font-extrabold'
+                                  : parseFloat(cust.power_laser || '-19.5') < -23
+                                  ? 'text-amber-600 font-extrabold'
+                                  : 'text-emerald-700 font-extrabold'
+                              }>
+                                {cust.power_laser || '-19.50'} dBm
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* MIKROTIK SYNC & DISCONNECT BUTTON COLUMN */}
+                          <td className="py-3.5 px-4 text-center">
+                            {!cust.is_synced ? (
+                              <button
+                                onClick={() => handleSyncCustomer(cust)}
+                                disabled={actionLoadingId === cust.id}
+                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Update / Push data PPPoE ke Mikrotik"
+                              >
+                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
+                                <span>Sync Mikrotik</span>
+                              </button>
+                            ) : isUserOnline(cust) ? (
+                              <button
+                                onClick={() => handleDisconnectCustomer(cust)}
+                                disabled={actionLoadingId === cust.id}
+                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                title="Koneksi Aktif (Online) - Klik untuk diskonek/putuskan agar reconnect ulang"
+                              >
+                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <Plug size={11} />}
+                                <span>Diskonek</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleSyncCustomer(cust)}
+                                disabled={actionLoadingId === cust.id}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer"
+                                title="Sudah ter-sync di Mikrotik - Klik untuk Update Sync ulang"
+                              >
+                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+                                <span>Synced</span>
+                              </button>
+                            )}
+                          </td>
+
+                          {/* AKSI */}
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              {Boolean(
+                                (cust as any).latitude || 
+                                cust.maps_url || 
+                                ftthNodes.some(n => 
+                                  (n.customerId && String(n.customerId) === String(cust.id)) ||
+                                  (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
+                                  (n.name && cust.name && n.name.toLowerCase().trim() === cust.name.toLowerCase().trim())
+                                )
+                              ) && (
+                                <button 
+                                  onClick={() => { window.location.hash = '#/map-ftth'; }}
+                                  className="p-1.5 text-sky-600 hover:text-sky-700 rounded-lg hover:bg-sky-50 transition-all cursor-pointer"
+                                  title="Lihat Lokasi Pelanggan di Peta FTTH"
+                                >
+                                  <MapPin size={14} />
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => openEditModal(cust)} 
+                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
+                                title="Edit Customer"
+                              >
+                                <Edit size={14} />
+                              </button>
+                              <button 
+                                onClick={() => openBillingModal(cust)}
+                                className="p-1.5 text-[#2563EB] hover:text-indigo-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
+                                title="Detail & Tagihan Pelanggan"
+                              >
+                                <FileText size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Pagination Footer */}
+                  <div className="px-5 py-4 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 font-sans">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 font-medium">Tampilkan</span>
+                      <select
+                        value={itemsPerPage}
+                        onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                        className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none"
+                      >
+                        <option value={5}>5</option>
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span className="text-slate-400 font-medium">per halaman</span>
+                      <span className="text-slate-400 font-medium ml-2">
+                        (Menampilkan <strong className="text-slate-700">{totalItems > 0 ? startIndex + 1 : 0}-{endIndex}</strong> dari <strong className="text-slate-700">{totalItems}</strong> data)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                      >
+                        ‹ Prev
+                      </button>
+
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                          .map((page, idx, arr) => (
+                            <React.Fragment key={page}>
+                              {idx > 0 && arr[idx - 1] !== page - 1 && (
+                                <span className="px-1 text-slate-400 font-bold">...</span>
+                              )}
+                              <button
+                                onClick={() => setCurrentPage(page)}
+                                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                                  currentPage === page
+                                    ? 'bg-[#2563EB] text-white shadow-sm'
+                                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            </React.Fragment>
+                          ))}
+                      </div>
+
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages || totalItems === 0}
+                        className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                      >
+                        Next ›
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                    <th className="py-4 px-6">Pelanggan & Alamat</th>
-                    <th className="py-4 px-6">Tipe Koneksi & PPPoE</th>
-                    <th className="py-4 px-6">Paket Internet & Tarif</th>
-                    <th className="py-4 px-6">Integrasi ArabPay</th>
-                    <th className="py-4 px-6">Status Layanan</th>
-                    <th className="py-4 px-6 text-right">Kelola</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-sans">
-                  {filteredCustomers.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/60 transition-all">
-                      <td className="py-4 px-6">
-                        <div className="font-bold text-slate-800 text-sm">{c.name}</div>
-                        <div className="text-emerald-600 font-mono font-semibold text-[11px]">📞 {c.phone_number}</div>
-                        {c.address && (
-                          <div className="text-slate-400 text-[11px] truncate max-w-[200px]" title={c.address}>📍 {c.address}</div>
-                        )}
-                      </td>
+          </div>
 
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                          c.connection_type === 'pppoe' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-sky-50 text-sky-700 border-sky-200'
-                        }`}>
-                          {c.connection_type === 'pppoe' ? <Globe size={12} /> : <Wifi size={12} />}
-                          {c.connection_type === 'pppoe' ? 'PPPoE Bulanan' : 'Hotspot Bulanan'}
-                        </span>
-                        {c.pppoe_username && (
-                          <div className="text-[11px] font-mono text-slate-600 mt-1">User: <span className="font-bold">{c.pppoe_username}</span></div>
-                        )}
-                      </td>
+          {/* Right Column (JUMLAH PER PAKET Summary Card) */}
+          <div className="lg:col-span-3 space-y-4">
+            <div className="bg-[#1E293B] text-white rounded-3xl p-5 shadow-sm border border-slate-800 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 pb-3 border-b border-slate-700">
+                JUMLAH PER PAKET
+              </h3>
 
-                      <td className="py-4 px-6">
-                        <div className="font-bold text-slate-800">{c.package_name || 'Paket Kustom'}</div>
-                        <div className="text-slate-500 font-mono text-[11px]">
-                          Rp {Number(c.package_price || 0).toLocaleString('id-ID')} / Bln 
-                          {c.speed_limit && <span className="ml-1.5 text-indigo-600 font-bold">({c.speed_limit})</span>}
-                        </div>
-                      </td>
-
-                      <td className="py-4 px-6">
-                        {c.user_id ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-bold">
-                            <ShieldCheck size={12} />
-                            Terhubung ArabPay SSO
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-500 border border-slate-200 rounded-xl text-[10px] font-semibold italic">
-                            Belum Terhubung SSO
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-4 px-6">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
-                          c.status === 'active' 
-                            ? 'bg-emerald-100 text-emerald-800' 
-                            : c.status === 'isolated' 
-                            ? 'bg-rose-100 text-rose-800' 
-                            : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {c.status === 'active' ? '● Aktif' : c.status === 'isolated' ? '🔒 Terisolir' : '⏳ Pending'}
-                        </span>
-                      </td>
-
-                      <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => openEditModal(c)}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200 inline-flex items-center gap-1.5"
-                        >
-                          <Edit size={13} />
-                          <span>Edit</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="space-y-2 text-xs">
+                {Object.keys(packageCounts).length === 0 ? (
+                  <div className="text-slate-400 text-xs py-2">Belum ada statistik paket.</div>
+                ) : (
+                  Object.entries(packageCounts).map(([pkgName, count]) => (
+                    <div key={pkgName} className="flex items-center justify-between py-2 border-b border-slate-700/50">
+                      <span className="font-semibold text-slate-200">{pkgName}</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-600 text-white font-black text-xs">
+                        {count}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </main>
 
-      {/* Modal Tambah Pelanggan RT/RW Net */}
-      {showAddModal && (
+      {/* Modal Tambah / Edit Pelanggan PPPoE (2-Columns Layout Matching Screenshot 2) */}
+      {(showAddModal || showEditModal) && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-5xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100">
                   <UserPlus size={20} />
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-base text-slate-800">Tambah Pelanggan RT/RW Net Baru</h3>
-                  <p className="text-xs text-slate-400">Daftarkan pelanggan tanpa perlu akun ArabPay awal</p>
+                  <h3 className="font-sans font-bold text-base text-slate-800">
+                    {showEditModal ? 'Edit Data Pelanggan PPPoE' : 'Tambah Pelanggan PPPoE Baru'}
+                  </h3>
+                  <p className="text-xs text-slate-400">Pengaturan Data Personal & Konfigurasi Teknis Mikrotik / FTTH</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
+              <button 
+                onClick={() => { setShowAddModal(false); setShowEditModal(false); setEditingCustomer(null); }} 
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
             </div>
 
-            <form onSubmit={handleCreateCustomer} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap Pelanggan</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Budi Santoso"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                />
-              </div>
+            {/* 2-Columns Form Body Matching Screenshot 2 */}
+            <form onSubmit={showEditModal ? handleUpdateCustomer : handleCreateCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Column Kiri: Data Personal & Penagihan (Matching Screenshot 2) */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-extrabold text-blue-900 uppercase tracking-wider pb-2 border-b border-slate-100 flex items-center gap-2">
+                    <Users size={14} className="text-blue-600" />
+                    Data Personal & Penagihan
+                  </h4>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp (Kunci Auto-Sync)</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="Contoh: 085746520724"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all font-mono"
-                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Kode Pelanggan</label>
+                      <input
+                        type="text"
+                        value={customerCode}
+                        onChange={(e) => setCustomerCode(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nama pelanggan..."
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">No. WhatsApp</label>
+                      <input
+                        type="text"
+                        placeholder="08123456789"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        placeholder="pelanggan@gmail.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Structured Address Block */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">📍 Detail Alamat Lengkap & Wilayah (Filter)</span>
+                    
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Dusun / RT RW / Alamat Jalan</label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
+                        value={dusun}
+                        onChange={(e) => setDusun(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Desa / Kelurahan</label>
+                        <input
+                          type="text"
+                          placeholder="Desa Sukamaju"
+                          value={desa}
+                          onChange={(e) => setDesa(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Kecamatan</label>
+                        <input
+                          type="text"
+                          placeholder="Kec. Majujaya"
+                          value={kecamatan}
+                          onChange={(e) => setKecamatan(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Kabupaten / Kota</label>
+                        <input
+                          type="text"
+                          placeholder="Kab. Bandung"
+                          value={kabupaten}
+                          onChange={(e) => setKabupaten(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Provinsi</label>
+                        <input
+                          type="text"
+                          placeholder="Jawa Barat"
+                          value={provinsi}
+                          onChange={(e) => setProvinsi(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pemasangan / Aktif *</label>
+                      <input
+                        type="date"
+                        required
+                        value={installationDate}
+                        onChange={(e) => handleInstallationDateChange(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-sans font-bold text-slate-800 focus:bg-white focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Status Pelanggan</label>
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as any)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      >
+                        <option value="active">Active</option>
+                        <option value="isolated">Isolated (Non-Active)</option>
+                        <option value="terminated">Terminated</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Koneksi Internet</label>
-                  <select
-                    value={connectionType}
-                    onChange={(e) => setConnectionType(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all font-bold text-slate-800"
-                  >
-                    <option value="pppoe">🌐 PPPoE Bulanan (Kabel/Radio)</option>
-                    <option value="hotspot">📶 Hotspot Bulanan (WiFi)</option>
-                  </select>
+                {/* Column Kanan: Konfigurasi Teknis Mikrotik / FTTH (Matching Screenshot 2) */}
+                <div className="space-y-4 bg-slate-50 p-5 rounded-3xl border border-slate-200/80">
+                  <h4 className="text-xs font-extrabold text-[#1E293B] uppercase tracking-wider pb-2 border-b border-slate-200 flex items-center gap-2">
+                    <Server size={14} className="text-blue-600" />
+                    Konfigurasi Teknis (Mikrotik/FTTH)
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-blue-600 mb-1">PPP Username *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="puskomnet"
+                        value={pppoeUsername}
+                        onChange={(e) => setPppoeUsername(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-blue-600 mb-1">PPP Password *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="password"
+                        value={pppoePassword}
+                        onChange={(e) => setPppoePassword(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-blue-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Mikrotik Server</label>
+                      <select
+                        value={selectedRouterId}
+                        onChange={(e) => setSelectedRouterId(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      >
+                        {routers.map(r => (
+                          <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Paket Internet *</label>
+                      <select
+                        value={packageId}
+                        onChange={(e) => handlePackageChange(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      >
+                        {packages.map(pkg => (
+                          <option key={pkg.id} value={pkg.id}>
+                            {pkg.name} (Rp {Number(pkg.price).toLocaleString('id-ID')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Auto Calculated Date & IP Pool Hint Box */}
+                  {(() => {
+                    const matchedPkg = packages.find(p => p.id === packageId);
+                    const matchedProf = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+                    return (
+                      <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl text-[11px] text-blue-900 space-y-1">
+                        <div className="font-extrabold flex items-center justify-between">
+                          <span>⚡ Auto-Calculated dari Tanggal Pasang + Paket:</span>
+                          <span className="font-mono text-blue-700">{matchedPkg?.speed_limit || 'Speed Auto'}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] font-semibold text-blue-800">
+                          <span>Masa Aktif: +{matchedPkg?.validity_days || 30} Hari</span>
+                          <span>Toleransi: +{(matchedPkg as any)?.grace_period_days || 5} Hari</span>
+                        </div>
+                        {matchedProf && (
+                          <div className="text-[10px] font-bold text-indigo-700 pt-0.5 flex items-center gap-2">
+                            <span>Profile: {matchedProf.name}</span>
+                            {(matchedProf as any).remote_address && <span>• IP Pool: {(matchedProf as any).remote_address}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">IP Statis (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="192.168.98.111"
+                        value={staticIp}
+                        onChange={(e) => setStaticIp(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Layanan</label>
+                      <input
+                        type="text"
+                        disabled
+                        value="PPPOE"
+                        className="w-full px-3.5 py-2 bg-slate-200 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-700"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Expiration dates matching Screenshot 2 */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-rose-600 mb-1">Masa Aktif Hingga (Expired)</label>
+                      <input
+                        type="date"
+                        value={expiredAt}
+                        onChange={(e) => setExpiredAt(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-mono font-bold text-rose-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-amber-600 mb-1">Batas Toleransi (Grace Until)</label>
+                      <input
+                        type="date"
+                        value={graceUntil}
+                        onChange={(e) => setGraceUntil(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900"
+                      />
+                    </div>
+                  </div>
+
+                  {/* FTTH ODP & ONU Details */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs font-bold text-slate-700">ODP Port</label>
+                        {editingCustomer && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const conn = getFtthInfoForCustomer(editingCustomer);
+                              if (conn) {
+                                setOdpPort(`${conn.odpName} (Port ${conn.odpPort})`);
+                                alert(`✅ ODP Port berhasil disinkronkan dari Peta FTTH:\n\n${conn.odpName} (Port ${conn.odpPort})`);
+                              } else {
+                                alert('⚠️ Belum ada koneksi jalur kabel ODP yang terhubung ke titik rumah pelanggan ini di Peta FTTH.');
+                              }
+                            }}
+                            className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+                            title="Ambil data ODP terhubung otomatis dari Peta FTTH"
+                          >
+                            <Zap size={11} />
+                            <span>Sync Peta FTTH</span>
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Contoh: ODP-RUANG-01 (Port 4)"
+                        value={odpPort}
+                        onChange={(e) => setOdpPort(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">SN ONU / Modem</label>
+                      <input
+                        type="text"
+                        placeholder="ZTEGCxxxxxx"
+                        value={snOnu}
+                        onChange={(e) => setSnOnu(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Power Laser (dBm)</label>
+                      <input
+                        type="text"
+                        placeholder="-19.00"
+                        value={powerLaser}
+                        onChange={(e) => setPowerLaser(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Teknisi</label>
+                      <input
+                        type="text"
+                        placeholder="Nama teknisi..."
+                        value={teknisi}
+                        onChange={(e) => setTeknisi(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Paket Internet</label>
-                <select
-                  value={packageId}
-                  onChange={(e) => setPackageId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all font-extrabold text-blue-900"
+              {/* Submit Button (Matching Screenshot 2: Simpan & Push Mikrotik) */}
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
+                <button 
+                  type="button" 
+                  onClick={() => { setShowAddModal(false); setShowEditModal(false); setEditingCustomer(null); }} 
+                  className="px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
                 >
-                  {packages.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — Rp {Number(p.price).toLocaleString('id-ID')} / Bln ({p.speed_limit})
+                  Batal
+                </button>
+
+                <button 
+                  type="submit" 
+                  disabled={submitLoading} 
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
+                  <span>💾 Simpan & Push Mikrotik</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Impor dari Mikrotik (Matching Screenshot 3) */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-md shadow-2xl overflow-hidden animate-slide-up">
+            <div className="p-6 bg-[#1E293B] text-white flex justify-between items-center">
+              <h3 className="font-sans font-bold text-base">Pilih Server Mikrotik</h3>
+              <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-white font-bold text-xl cursor-pointer">
+                &times;
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">PILIH SUMBER DATA</label>
+                <select
+                  value={importRouterId}
+                  onChange={(e) => setImportRouterId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                >
+                  {routers.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.ip_address})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {connectionType === 'pppoe' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-indigo-50/60 border border-indigo-100 rounded-2xl">
-                  <div>
-                    <label className="block text-[11px] font-bold text-indigo-900 mb-1">PPPoE Username</label>
-                    <input
-                      type="text"
-                      placeholder="budi_home"
-                      value={pppoeUsername}
-                      onChange={(e) => setPppoeUsername(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-indigo-900 mb-1">PPPoE Password</label>
-                    <input
-                      type="password"
-                      placeholder="password..."
-                      value={pppoePassword}
-                      onChange={(e) => setPppoePassword(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Pemasangan / Blok Rumah</label>
-                <textarea
-                  rows={2}
-                  placeholder="Jl. Merdeka No. 12, RT 02/RW 05..."
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                />
+              <div className="p-3.5 bg-cyan-50 border border-cyan-200 rounded-2xl text-xs text-cyan-900 flex items-start gap-2.5">
+                <InfoIcon size={18} className="text-cyan-600 shrink-0 mt-0.5" />
+                <span>Sistem akan mengambil data Secret PPP dan menyesuaikannya dengan database lokal.</span>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2">
-                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>{submitLoading ? 'Menyimpan...' : 'Simpan Pelanggan'}</span>
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="chkUpdate"
+                  checked={updateExistingImport}
+                  onChange={(e) => setUpdateExistingImport(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600"
+                />
+                <label htmlFor="chkUpdate" className="text-xs text-slate-700 font-semibold cursor-pointer">
+                  Update data pelanggan yang sudah ada jika ditemukan
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowImportModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleImportSecrets}
+                  disabled={importLoading}
+                  className="px-5 py-2 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {importLoading ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                  <span>Mulai Impor</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal Edit Pelanggan */}
-      {showEditModal && editingCustomer && (
+      {/* Modal Detail & Tagihan Pelanggan */}
+      {showBillingModal && billingCustomer && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-2xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-blue-600 to-indigo-700 text-white shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-100">
-                  <Edit size={20} />
+                <div className="w-10 h-10 rounded-2xl bg-white/20 text-white flex items-center justify-center border border-white/20">
+                  <FileText size={20} />
                 </div>
                 <div>
-                  <h3 className="font-sans font-bold text-base text-slate-800">Edit Pelanggan RT/RW Net</h3>
-                  <p className="text-xs text-slate-400">Ubah paket internet, status isolir, atau data koneksi</p>
+                  <h3 className="font-sans font-bold text-base text-white">
+                    Detail & Tagihan Pelanggan
+                  </h3>
+                  <p className="text-xs text-blue-100">{billingCustomer.name} ({billingCustomer.customer_code || 'CUST'})</p>
                 </div>
               </div>
-              <button onClick={() => { setShowEditModal(false); setEditingCustomer(null); }} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
+              <button 
+                onClick={() => { setShowBillingModal(false); setBillingCustomer(null); }} 
+                className="text-blue-100 hover:text-white font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
             </div>
 
-            <form onSubmit={handleUpdateCustomer} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap Pelanggan</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp</label>
-                  <input
-                    type="tel"
-                    required
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all font-mono"
-                  />
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 overflow-y-auto flex-1 bg-slate-50/50">
+              {/* Card Customer Info */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">NAMA PELANGGAN</span>
+                    <span className="text-sm font-extrabold text-slate-800">{billingCustomer.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">KODE PELANGGAN</span>
+                    <span className="text-xs font-mono font-bold text-blue-600">{billingCustomer.customer_code || '-'}</span>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Status Layanan Internet</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all font-bold text-slate-800"
-                  >
-                    <option value="active">● Aktif (Layanan Berjalan)</option>
-                    <option value="isolated">🔒 Terisolir (Belum Bayar / Suspend)</option>
-                    <option value="pending">⏳ Pending (Menunggu Pemasangan)</option>
-                  </select>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">PPP USERNAME</span>
+                    <span className="font-mono font-bold text-pink-600">{billingCustomer.pppoe_username || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">IP STATIS</span>
+                    <span className="font-mono font-bold text-slate-700">{billingCustomer.static_ip || 'DHCP Pool'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">ROUTER SERVER</span>
+                    <span className="font-bold text-slate-700">{billingCustomer.router_name || 'Puskomnet'}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Koneksi</label>
-                  <select
-                    value={connectionType}
-                    onChange={(e) => setConnectionType(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all font-bold text-slate-800"
-                  >
-                    <option value="pppoe">🌐 PPPoE Bulanan</option>
-                    <option value="hotspot">📶 Hotspot Bulanan</option>
-                  </select>
+              {/* Card Paket & Penagihan */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center justify-between pb-2 border-b border-slate-100">
+                  <span>RINCIAN PAKET & TEMPO TAGIHAN</span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                    {billingCustomer.package_name || 'Paket Internet PPPoE'}
+                  </span>
+                </h4>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">TARIF BULANAN</span>
+                    <span className="text-sm font-black text-slate-900">
+                      Rp {Number(billingCustomer.package_price || 100000).toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">TANGGAL PASANG</span>
+                    <span className="font-bold text-slate-700">
+                      {billingCustomer.installation_date ? billingCustomer.installation_date.split('T')[0] : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">EXPIRED HINGGA</span>
+                    <span className="font-bold text-rose-600">
+                      {billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}
+                    </span>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Paket Internet</label>
-                  <select
-                    value={packageId}
-                    onChange={(e) => setPackageId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all font-extrabold text-indigo-900"
+                {/* Status Penagihan Card */}
+                {(() => {
+                  const hasPending = customerInvoices.some((inv: any) => inv.status === 'pending');
+                  const isExpired = billingCustomer.expired_at && new Date(billingCustomer.expired_at) < new Date();
+
+                  if (hasPending) {
+                    return (
+                      <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50/60 rounded-2xl border border-amber-200 flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">STATUS PEMBAYARAN PERIODE INI</span>
+                          <div className="text-sm font-black text-amber-900 flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span>Belum Lunas / Dalam Tagihan</span>
+                          </div>
+                          <p className="text-[11px] text-amber-700/90 font-medium">
+                            Batas Toleransi (Grace Until): <strong>{billingCustomer.grace_until ? billingCustomer.grace_until.split('T')[0] : '-'}</strong>
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (!isExpired) {
+                    return (
+                      <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50/60 rounded-2xl border border-emerald-200 flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider">STATUS PEMBAYARAN PERIODE INI</span>
+                          <div className="text-sm font-black text-emerald-900 flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            <span>Lunas / Tidak Ada Tagihan Pending</span>
+                          </div>
+                          <p className="text-[11px] text-emerald-700/90 font-medium">
+                            Masa aktif langganan terbayar lunas hingga <strong>{billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}</strong>
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="p-4 bg-gradient-to-r from-rose-50 to-red-50/60 rounded-2xl border border-rose-200 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <span className="text-[10px] font-extrabold text-rose-800 uppercase tracking-wider">STATUS PEMBAYARAN PERIODE INI</span>
+                        <div className="text-sm font-black text-rose-900 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                          <span>Masa Aktif Habis (Isolir)</span>
+                        </div>
+                        <p className="text-[11px] text-rose-700/90 font-medium">
+                          Masa aktif telah berakhir pada <strong>{billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}</strong>
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* DAFTAR INVOICE & RIWAYAT TAGIHAN PELANGGAN */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      DAFTAR INVOICE & RIWAYAT TAGIHAN PELANGGAN
+                    </h4>
+                    <p className="text-[11px] text-slate-400">Daftar faktur tagihan resmi untuk {billingCustomer.name}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateManualInvoice(billingCustomer)}
+                    disabled={actionLoadingId === billingCustomer.id}
+                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
                   >
-                    {packages.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — Rp {Number(p.price).toLocaleString('id-ID')} ({p.speed_limit})
-                      </option>
+                    <Plus size={14} />
+                    <span>⚡ + Buat Invoice Baru</span>
+                  </button>
+                </div>
+
+                {customerInvoices.length === 0 ? (
+                  <div className="p-4 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    Belum ada invoice yang diterbitkan untuk pelanggan ini. Klik <strong>"⚡ + Buat Invoice Baru"</strong> di atas untuk membuat invoice baru.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                    {customerInvoices.map((inv) => (
+                      <div key={inv.id} className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 text-xs transition-all">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-blue-700">{inv.invoice_number}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                              inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
+                              {inv.status === 'paid' ? '✅ Lunas' : '⏳ Belum Lunas'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Issued: {inv.issue_date ? inv.issue_date.split('T')[0] : '-'} | Due: <strong className="text-slate-700">{inv.due_date ? inv.due_date.split('T')[0] : '-'}</strong>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-black text-sm text-slate-800">
+                            Rp {Number(inv.amount || 0).toLocaleString('id-ID')}
+                          </span>
+                          {inv.status !== 'paid' && (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handlePayInvoiceById(inv.id)}
+                                disabled={payLoading}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer transition-all disabled:opacity-50"
+                              >
+                                💳 Bayar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+                                    const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' });
+                                    const data = await parseJsonResponse(res);
+                                    setToastMsg({ type: data.success ? 'success' : 'error', text: data.message });
+                                  } catch (err: any) {
+                                    setToastMsg({ type: 'error', text: `Gagal WA: ${err?.message}` });
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg shadow-xs cursor-pointer transition-all flex items-center gap-1"
+                                title="Kirim Pesan WA & Link Bayar ArabPay (1-Click)"
+                              >
+                                <span>📱 WA</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     ))}
-                  </select>
-                </div>
-              </div>
-
-              {connectionType === 'pppoe' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-indigo-50/60 border border-indigo-100 rounded-2xl">
-                  <div>
-                    <label className="block text-[11px] font-bold text-indigo-900 mb-1">PPPoE Username</label>
-                    <input
-                      type="text"
-                      value={pppoeUsername}
-                      onChange={(e) => setPppoeUsername(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono focus:outline-none"
-                    />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-indigo-900 mb-1">PPPoE Password</label>
-                    <input
-                      type="password"
-                      value={pppoePassword}
-                      onChange={(e) => setPppoePassword(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Alamat Pemasangan</label>
-                <textarea
-                  rows={2}
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                />
+                )}
               </div>
+            </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => { setShowEditModal(false); setEditingCustomer(null); }} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2">
-                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan'}</span>
+            {/* Footer Buttons */}
+            <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => { setShowBillingModal(false); setBillingCustomer(null); }}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+              >
+                Tutup
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>🖨️ Cetak Struk</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePayBill}
+                  disabled={payLoading}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2"
+                >
+                  {payLoading && <RefreshCw size={14} className="animate-spin" />}
+                  <span>{payLoading ? 'Memproses...' : '💳 Tandai Lunas / Bayar'}</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Global Customer Map View Modal */}
+      {showGlobalMapModal && (
+        <CustomerMapViewModal
+          customers={customers}
+          onClose={() => setShowGlobalMapModal(false)}
+        />
+      )}
+
+      {/* Single Customer Map Location Picker Modal */}
+      {showMapPickerModal && mapCustomer && (
+        <CustomerMapModal
+          customer={mapCustomer}
+          onClose={() => { setShowMapPickerModal(false); setMapCustomer(null); }}
+          onSaved={() => { fetchData(); }}
+        />
+      )}
     </div>
+  );
+}
+
+function PauseIcon(props: any) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="6" y="4" width="4" height="16"></rect>
+      <rect x="14" y="4" width="4" height="16"></rect>
+    </svg>
+  );
+}
+
+function CloseIcon(props: any) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="15" y1="9" x2="9" y2="15"></line>
+      <line x1="9" y1="9" x2="15" y2="15"></line>
+    </svg>
+  );
+}
+
+function InfoIcon(props: any) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="16" x2="12" y2="12"></line>
+      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
   );
 }

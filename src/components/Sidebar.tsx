@@ -1,17 +1,27 @@
-import React from 'react';
-import { 
-  LayoutGrid, 
-  FileText, 
-  Users, 
-  TrendingUp, 
-  CreditCard, 
-  Settings, 
-  Plus, 
+import React, { useState, useEffect } from 'react';
+import {
+  LayoutGrid,
+  FileText,
+  Users,
+  TrendingUp,
+  CreditCard,
+  Settings,
+  Plus,
   UserCheck,
-  QrCode,
   Globe,
   Router,
-  Server
+  Server,
+  Zap,
+  Ticket,
+  Network,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  ShieldCheck,
+  LogOut,
+  Radio,
+  MapPin,
+  Wifi
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -25,16 +35,29 @@ interface SidebarProps {
   userRole?: UserRole;
 }
 
-export default function Sidebar({ 
-  currentView, 
-  setCurrentView, 
-  profile, 
-  t, 
+interface MenuGroup {
+  id: string;
+  label: string;
+  icon: any;
+  roles: string[];
+  items: {
+    id: string;
+    label: string;
+    icon: any;
+    roles: string[];
+  }[];
+}
+
+export default function Sidebar({
+  currentView,
+  setCurrentView,
+  profile,
+  t,
   onQuickInvoice,
   onLogout,
   userRole = 'owner'
 }: SidebarProps) {
-  
+
   const theme = profile.themeColor || 'blue';
   const themeStyles = {
     blue: { bg: 'bg-[#0066FF]', activeBg: 'bg-blue-50 text-blue-600', activeIcon: 'text-blue-600', btnBg: 'bg-[#2563EB] hover:bg-blue-700 shadow-blue-100' },
@@ -45,30 +68,98 @@ export default function Sidebar({
     dark: { bg: 'bg-slate-900', activeBg: 'bg-slate-100 text-slate-900', activeIcon: 'text-slate-900', btnBg: 'bg-slate-900 hover:bg-slate-800 shadow-slate-200' }
   }[theme];
 
-  // Define full menu items
-  const allMenuItems = [
-    { id: 'overview', label: userRole === 'pelanggan' ? 'Ringkasan Saya' : t.overview, icon: LayoutGrid, roles: ['owner', 'pelanggan'] },
-    { id: 'routers', label: 'Router Mikrotik', icon: Server, roles: ['owner', 'teknisi'] },
-    { id: 'packages', label: 'Paket & Profile Mikrotik', icon: Router, roles: ['owner', 'teknisi'] },
-    { id: 'customers', label: 'Pelanggan RT/RW Net', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
-    { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
-    { id: 'users', label: 'Pengguna System', icon: UserCheck, roles: ['owner'] },
-    { id: 'clients', label: t.clients, icon: Users, roles: ['owner'] },
-    { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
-    { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },
+  // Grouped Menu Definitions
+  const menuGroups: MenuGroup[] = [
+    {
+      id: 'ftth_group',
+      label: 'Manajemen FTTH',
+      icon: Network,
+      roles: ['owner', 'teknisi', 'marketing', 'kasir'],
+      items: [
+        { id: 'map-ftth', label: 'Peta FTTH', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'ftth-splitter', label: 'Master Splitter', icon: Settings, roles: ['owner', 'teknisi'] },
+        { id: 'ftth-devices', label: 'Tabel Perangkat', icon: Server, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+      ]
+    },
+    {
+      id: 'network_group',
+      label: 'Jaringan & Router',
+      icon: Server,
+      roles: ['owner', 'teknisi'],
+      items: [
+        { id: 'routers', label: 'Daftar Router', icon: Server, roles: ['owner', 'teknisi'] },
+        { id: 'ip-pools', label: 'Address Pool', icon: Network, roles: ['owner', 'teknisi'] },
+        { id: 'profiles', label: 'Profile Mikrotik', icon: Zap, roles: ['owner', 'teknisi'] },
+        { id: 'genieacs', label: 'GenieACS OLT', icon: Radio, roles: ['owner', 'teknisi'] },
+      ]
+    },
+    {
+      id: 'billing_group',
+      label: 'Layanan & Billing',
+      icon: Package,
+      roles: ['owner', 'teknisi', 'marketing', 'kasir', 'pelanggan'],
+      items: [
+        { id: 'packages', label: 'Paket Internet', icon: Router, roles: ['owner', 'teknisi'] },
+        { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'vouchers', label: 'Voucher Hotspot', icon: Ticket, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
+      ]
+    },
+    {
+      id: 'system_group',
+      label: 'Pengguna & Akses',
+      icon: Users,
+      roles: ['owner'],
+      items: [
+        { id: 'users', label: 'Pengguna System', icon: UserCheck, roles: ['owner'] },
+        { id: 'clients', label: t.clients, icon: Users, roles: ['owner'] },
+      ]
+    },
+    {
+      id: 'reports_group',
+      label: 'Laporan & Metode',
+      icon: TrendingUp,
+      roles: ['owner'],
+      items: [
+        { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
+        { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },
+      ]
+    }
   ];
 
-  // Filter menu items by current active user role
-  const menuItems = allMenuItems.filter(item => item.roles.includes(userRole));
+  // State to track open/closed accordion groups (default ALL CLOSED, except the active group)
+  const [openGroups, setOpenGroups] = useState<{ [key: string]: boolean }>(() => {
+    const initial: { [key: string]: boolean } = {};
+    menuGroups.forEach(group => {
+      if (group.items.some(item => item.id === currentView)) {
+        initial[group.id] = true;
+      }
+    });
+    return initial;
+  });
+
+  // Expand group containing active view when currentView changes
+  useEffect(() => {
+    menuGroups.forEach(group => {
+      if (group.items.some(item => item.id === currentView)) {
+        setOpenGroups(prev => ({ ...prev, [group.id]: true }));
+      }
+    });
+  }, [currentView]);
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
 
   return (
-    <aside id="desktop-sidebar" className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-100 h-screen sticky top-0 p-6 shrink-0 justify-between">
+    <aside id="desktop-sidebar" className="hidden lg:flex flex-col w-64 bg-white border-r border-slate-100 h-screen sticky top-0 p-6 shrink-0 justify-between overflow-y-auto">
       {/* Brand & Menu */}
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Brand */}
         <div>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl ${themeStyles.bg} flex items-center justify-center text-white shadow-md transition-all font-black text-sm`}>
+            <div className={`w-10 h-10 rounded-xl ${themeStyles.bg} flex items-center justify-center text-white shadow-md transition-all font-black text-sm shrink-0`}>
               AP
             </div>
             <div>
@@ -82,58 +173,100 @@ export default function Sidebar({
         {userRole !== 'pelanggan' && (
           <button
             onClick={onQuickInvoice}
-            className={`w-full py-3 px-4 ${themeStyles.btnBg} transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg cursor-pointer`}
+            className={`w-full py-2.5 px-4 ${themeStyles.btnBg} transition-all text-white font-sans font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md text-xs cursor-pointer`}
           >
-            <Plus size={18} />
+            <Plus size={16} />
             <span>{t.quickInvoice}</span>
           </button>
         )}
 
-        {/* Main Menu */}
-        <div className="space-y-1 pt-2">
-          <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase block px-3 mb-2">{t.overview ? 'MENU' : 'MENU'}</span>
-          {menuItems.map((item) => {
-            const IconComponent = item.icon;
-            const isActive = currentView === item.id;
+        {/* Overview Top Item */}
+        <div className="space-y-1">
+          <button
+            onClick={() => setCurrentView('overview')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer ${currentView === 'overview'
+              ? themeStyles.activeBg
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+          >
+            <LayoutGrid size={17} className={currentView === 'overview' ? themeStyles.activeIcon : 'text-slate-400'} />
+            <span>{userRole === 'pelanggan' ? 'Ringkasan Saya' : t.overview}</span>
+          </button>
+        </div>
+
+        {/* Grouped Submenus */}
+        <div className="space-y-3 pt-1">
+          {menuGroups.map(group => {
+            const groupFilteredItems = group.items.filter(item => item.roles.includes(userRole));
+            if (groupFilteredItems.length === 0) return null;
+
+            const isOpen = openGroups[group.id];
+            const isGroupActive = groupFilteredItems.some(item => item.id === currentView);
+            const GroupIcon = group.icon;
+
             return (
-              <button
-                key={item.id}
-                onClick={() => setCurrentView(item.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-sans font-medium transition-all cursor-pointer ${
-                  isActive 
-                    ? themeStyles.activeBg 
-                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-                }`}
-              >
-                <IconComponent size={18} className={isActive ? themeStyles.activeIcon : 'text-slate-400'} />
-                <span>{item.label}</span>
-              </button>
+              <div key={group.id} className="space-y-1">
+                {/* Group Header Button */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${isGroupActive ? 'text-slate-900 bg-slate-50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/60'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <GroupIcon size={16} className={isGroupActive ? themeStyles.activeIcon : 'text-slate-400'} />
+                    <span className="uppercase text-[10px] tracking-wider font-extrabold">{group.label}</span>
+                  </div>
+                  {isOpen ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
+                </button>
+
+                {/* Submenu Items list */}
+                {isOpen && (
+                  <div className="pl-4 space-y-1 border-l-2 border-slate-100 ml-3.5 pt-1">
+                    {groupFilteredItems.map(item => {
+                      const ItemIcon = item.icon;
+                      const isActive = currentView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setCurrentView(item.id)}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer ${isActive
+                            ? themeStyles.activeBg
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                            }`}
+                        >
+                          <ItemIcon size={15} className={isActive ? themeStyles.activeIcon : 'text-slate-400'} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
 
-        {/* General */}
-        <div className="space-y-1 pt-2">
-          <span className="text-xs font-semibold text-slate-400 tracking-wider uppercase block px-3 mb-2">{t.settings ? 'GENERAL' : 'GENERAL'}</span>
+        {/* General Settings */}
+        <div className="space-y-1 pt-2 border-t border-slate-100">
           <button
             onClick={() => setCurrentView('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-sans font-medium transition-all cursor-pointer ${
-              currentView === 'settings' 
-                ? themeStyles.activeBg 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-            }`}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer ${currentView === 'settings'
+              ? themeStyles.activeBg
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
           >
-            <Settings size={18} className={currentView === 'settings' ? themeStyles.activeIcon : 'text-slate-400'} />
+            <Settings size={17} className={currentView === 'settings' ? themeStyles.activeIcon : 'text-slate-400'} />
             <span>{t.settings}</span>
           </button>
         </div>
       </div>
 
       {/* User Profile Footer */}
-      <div className="border-t border-slate-100 pt-5 space-y-4">
+      <div className="border-t border-slate-100 pt-4 space-y-3 mt-6 shrink-0">
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className={`w-9 h-9 rounded-full ${themeStyles.activeBg} font-black flex items-center justify-center text-xs shrink-0 shadow-sm border border-slate-100`}>
+            <div className={`w-8 h-8 rounded-full ${themeStyles.activeBg} font-black flex items-center justify-center text-xs shrink-0 shadow-xs border border-slate-100`}>
               {profile.name.replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -142,27 +275,24 @@ export default function Sidebar({
             </div>
           </div>
           {onLogout && (
-            <button 
+            <button
               onClick={onLogout}
               title="Keluar dari Akun"
               className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all font-semibold text-[11px] shrink-0 cursor-pointer"
             >
-              <span>Keluar</span>
+              <LogOut size={15} />
             </button>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <div className="flex justify-between text-[11px] font-sans font-medium">
-            <span className="text-slate-400">{t.teamPlan}: <span className="text-slate-700 font-semibold">{t.business}</span></span>
-          </div>
-          <div className="flex justify-between text-[11px] font-sans font-medium">
+          <div className="flex justify-between text-[10px] font-sans font-medium">
             <span className="text-slate-400">{t.storageUsed}</span>
-            <span className="text-slate-700 font-semibold">{profile.storageUsed} / {profile.storageMax} GB</span>
+            <span className="text-slate-700 font-bold">{profile.storageUsed} / {profile.storageMax} GB</span>
           </div>
           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-            <div 
-              className={`${themeStyles.bg} h-full rounded-full transition-all duration-500`} 
+            <div
+              className={`${themeStyles.bg} h-full rounded-full transition-all duration-500`}
               style={{ width: `${(profile.storageUsed / profile.storageMax) * 100}%` }}
             />
           </div>

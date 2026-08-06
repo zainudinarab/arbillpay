@@ -22,8 +22,15 @@ import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
+import HotspotCustomerManagement from './components/HotspotCustomerManagement';
 import PackageManagement from './components/PackageManagement';
 import RouterManagement from './components/RouterManagement';
+import ProfileManagement from './components/ProfileManagement';
+import HotspotVoucherManagement from './components/HotspotVoucherManagement';
+import IpPoolManagement from './components/IpPoolManagement';
+import GenieAcsManagement from './components/GenieAcsManagement';
+// MapViewPage removed — use LaravelFtthMapPage at #/map-ftth instead
+import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
@@ -31,6 +38,7 @@ import { formatCurrency, formatDate } from './utils';
 
 import LoginModal from './components/LoginModal';
 import PublicVoucherStore from './components/PublicVoucherStore';
+import CustomerPortal from './components/CustomerPortal';
 import { UserAccount } from './types';
 
 export default function App() {
@@ -64,7 +72,11 @@ export default function App() {
           });
           const data = await res.json();
           if (data.success && data.user) {
-            handleLoginSuccess(data.user);
+            const userWithBalance = {
+              ...data.user,
+              arabpay_balance: data.user.arabpay_balance ?? data.balance ?? 150000
+            };
+            handleLoginSuccess(userWithBalance);
             setCurrentView('overview');
             return;
           }
@@ -96,10 +108,7 @@ export default function App() {
   });
 
   // --- STATE PERSISTENCE ---
-  const [invoices, setInvoices] = useState<Invoice[]>(() => {
-    const local = localStorage.getItem('billava_invoices');
-    return local ? JSON.parse(local) : defaultInvoices;
-  });
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
 
   const [clients, setClients] = useState<Client[]>(() => {
     const local = localStorage.getItem('billava_clients');
@@ -189,8 +198,58 @@ export default function App() {
       }
     };
 
-    checkCustomerPhoneMatch();
   }, [currentUser]);
+
+  // --- FETCH REAL INVOICES FROM POSTGRESQL API ---
+  const fetchRealInvoices = async () => {
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
+        const mapped: Invoice[] = data.invoices.map((inv: any) => ({
+          id: inv.id,
+          invoiceNumber: inv.invoice_number,
+          client: {
+            id: inv.customer_id || inv.id,
+            name: inv.customer_name_real || inv.customer_name || inv.client_name || 'Pelanggan',
+            email: inv.customer_email || 'client@example.com',
+            company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
+            address: inv.notes || '',
+            phone: inv.customer_phone_real || inv.customer_phone || ''
+          },
+          items: [
+            {
+              id: `item-${inv.id}`,
+              description: inv.notes || `Tagihan Internet (${inv.package_name || 'Broadband'})`,
+              quantity: 1,
+              price: Number(inv.total || inv.amount || 0),
+              unitPrice: Number(inv.total || inv.amount || 0),
+              amount: Number(inv.total || inv.amount || 0)
+            }
+          ],
+          subtotal: Number(inv.total || inv.amount || 0),
+          taxRate: 0,
+          taxAmount: 0,
+          discount: 0,
+          total: Number(inv.total || inv.amount || 0),
+          status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
+          issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+          dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
+          notes: inv.notes || '',
+          terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
+          isArchived: inv.is_archived || false
+        }));
+        setInvoices(mapped);
+      }
+    } catch (err) {
+      console.error('Failed to fetch real invoices:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRealInvoices();
+  }, [currentView]);
 
   const handleLinkArabPayAccount = async () => {
     if (!unlinkedMatchCustomer || !currentUser) return;
@@ -477,6 +536,14 @@ export default function App() {
             onLogout={handleLogout}
           />
         );
+      case 'hotspot-customers':
+        return (
+          <HotspotCustomerManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
       case 'packages':
         return (
           <PackageManagement
@@ -488,6 +555,64 @@ export default function App() {
       case 'routers':
         return (
           <RouterManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'ip-pools':
+        return (
+          <IpPoolManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'profiles':
+        return (
+          <ProfileManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'genieacs':
+        return (
+          <GenieAcsManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'map-ftth':
+        return (
+          <LaravelFtthMapPage
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'ftth-splitter':
+        return (
+          <LaravelFtthMapPage
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+            initialOpenModal="splitter"
+          />
+        );
+      case 'ftth-devices':
+        return (
+          <LaravelFtthMapPage
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+            initialOpenModal="devices"
+          />
+        );
+      case 'vouchers':
+        return (
+          <HotspotVoucherManagement
             profile={profile}
             t={t}
             onLogout={handleLogout}
@@ -710,31 +835,16 @@ export default function App() {
 
 
 
-  // 1. PUBLIC LANDING STORE (Jika belum terautentikasi)
-  if (!currentUser) {
+  // 1. CUSTOMER PORTAL (Untuk Pengunjung Belum Login ATAU Role Pelanggan)
+  if (!currentUser || currentUser.role === 'pelanggan') {
     return (
-      <div className="min-h-screen bg-[#F8FAFC]">
-        <PublicVoucherStore
-          onBuyVoucher={(pkg) => {
-            setSelectedPublicPackage(pkg);
-            setShowAdminLoginModal(true);
-          }}
-          onOpenAdminLogin={() => setShowAdminLoginModal(true)}
-        />
-
-        {showAdminLoginModal && (
-          <LoginModal 
-            onLoginSuccess={handleLoginSuccess}
-            onClose={() => {
-              setShowAdminLoginModal(false);
-              // Clean URL
-              if (window.location.hash === '#/admin-login') {
-                window.location.hash = '#/';
-              }
-            }}
-          />
-        )}
-      </div>
+      <CustomerPortal
+        currentUser={currentUser}
+        onLoginSuccess={handleLoginSuccess}
+        onLogout={handleLogout}
+        showLoginModal={showAdminLoginModal}
+        setShowLoginModal={setShowAdminLoginModal}
+      />
     );
   }
 

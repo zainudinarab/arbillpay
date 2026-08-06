@@ -11,7 +11,9 @@ import {
   FileDown,
   Pencil,
   Archive,
-  RotateCcw
+  RotateCcw,
+  Eye,
+  MessageCircle
 } from 'lucide-react';
 import { Invoice, BusinessProfile } from '../types';
 import { formatCurrency, formatDate } from '../utils';
@@ -51,6 +53,49 @@ export default function InvoiceList({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Auto-Billing State & Action
+  const [autoBillingLoading, setAutoBillingLoading] = useState(false);
+  const [autoBillingResult, setAutoBillingResult] = useState<string | null>(null);
+
+  const parseJsonResponse = async (res: Response) => {
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+        throw new Error('Server Express belum berjalan.');
+      }
+      throw new Error(`Respons server bukan JSON (${res.status})`);
+    }
+    return await res.json();
+  };
+
+  const handleRunAutoBillingNow = async () => {
+    setAutoBillingLoading(true);
+    setAutoBillingResult(null);
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/invoices/auto-generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days_before_due: 5 })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setAutoBillingResult(data.message);
+      } else {
+        setAutoBillingResult(`Gagal: ${data.message}`);
+      }
+    } catch (err: any) {
+      setAutoBillingResult(`Error: ${err?.message}`);
+    } finally {
+      setAutoBillingLoading(false);
+    }
+  };
+
   // Filter invoices logic
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = 
@@ -68,6 +113,17 @@ export default function InvoiceList({
     return matchesSearch && inv.status === statusFilter;
   });
 
+  // Reset page on filter change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+
+  const totalItems = filteredInvoices.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedInvoices = filteredInvoices.slice(startIndex, endIndex);
+
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8">
       {/* Header */}
@@ -81,7 +137,37 @@ export default function InvoiceList({
 
       {/* Main Container */}
       <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
-        
+        {/* Auto-Billing Scheduler Status Banner (Only for admin/owner) */}
+        {userRole !== 'pelanggan' && (
+          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 rounded-3xl border border-indigo-900/50 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold text-lg shrink-0">
+                🤖
+              </div>
+              <div>
+                <h4 className="font-extrabold text-sm text-slate-100 flex items-center gap-2">
+                  <span>Jadwal Auto-Billing Otomatis Harian</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] uppercase font-mono">AKTIF (H-5 Expired)</span>
+                </h4>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Sistem otomatis mengecek seluruh pelanggan PPP & Hotspot setiap hari dan menerbitkan tagihan sebelum tanggal expired.
+                </p>
+                {autoBillingResult && (
+                  <p className="text-xs text-emerald-300 mt-1 font-bold animate-fade-in">{autoBillingResult}</p>
+                )}
+              </div>
+            </div>
+
+            <button
+              onClick={handleRunAutoBillingNow}
+              disabled={autoBillingLoading}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-indigo-900/40 flex items-center gap-2 cursor-pointer transition-all shrink-0 disabled:opacity-50"
+            >
+              <span>{autoBillingLoading ? 'Memproses Scan...' : '⚡ Jalankan Auto-Billing Scan Now'}</span>
+            </button>
+          </div>
+        )}
+
         {/* Controls: Search and Filters */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
           {/* Search Box */}
@@ -178,7 +264,7 @@ export default function InvoiceList({
                     </td>
                   </tr>
                 ) : (
-                  filteredInvoices.map((inv) => (
+                  paginatedInvoices.map((inv) => (
                     <tr 
                       key={inv.id}
                       className="hover:bg-slate-50/60 transition-all cursor-pointer group"
@@ -193,22 +279,17 @@ export default function InvoiceList({
                         </span>
                       </td>
                       <td className="p-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-blue-50 text-[#2563EB] font-bold text-xs flex items-center justify-center shrink-0">
-                            {inv.client.name.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-sans font-semibold text-xs text-slate-700 leading-tight">{inv.client.name}</p>
-                            {inv.client.company && (
-                              <p className="text-[10px] text-slate-400 mt-0.5">{inv.client.company}</p>
-                            )}
-                          </div>
+                        <div>
+                          <p className="font-sans font-medium text-sm text-slate-700">{inv.client.name}</p>
+                          {inv.client.company && (
+                            <p className="text-xs text-slate-400 font-normal">{inv.client.company}</p>
+                          )}
                         </div>
                       </td>
-                      <td className="p-4 text-xs font-medium text-slate-500">
+                      <td className="p-4 text-xs font-sans text-slate-500 font-medium">
                         {formatDate(inv.issueDate, profile.language)}
                       </td>
-                      <td className="p-4 text-xs font-medium text-slate-500">
+                      <td className="p-4 text-xs font-sans text-slate-500 font-medium">
                         {formatDate(inv.dueDate, profile.language)}
                       </td>
                       <td className="p-4 font-sans font-bold text-sm text-slate-800">
@@ -222,31 +303,35 @@ export default function InvoiceList({
                             ? 'bg-amber-50 text-amber-600'
                             : 'bg-rose-50 text-rose-600'
                         }`}>
-                          {inv.status === 'paid' ? (
-                            <CheckCircle size={12} />
-                          ) : inv.status === 'pending' ? (
-                            <Clock size={12} />
-                          ) : (
-                            <AlertCircle size={12} />
-                          )}
-                          <span>
-                            {inv.status === 'paid' ? t.paid : inv.status === 'pending' ? t.pending : t.overdue}
-                          </span>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            inv.status === 'paid' 
+                              ? 'bg-emerald-500' 
+                              : inv.status === 'pending'
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                          }`} />
+                          {inv.status === 'paid' ? t.paid : inv.status === 'pending' ? t.pending : t.overdue}
                         </span>
                       </td>
                       <td className="p-4 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1">
                           {inv.isArchived ? (
                             <>
                               <button
-                                onClick={() => onRestoreInvoice(inv.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRestoreInvoice(inv.id);
+                                }}
                                 className="p-1.5 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all cursor-pointer"
                                 title={profile.language === 'id' ? "Kembalikan dari Arsip" : "Restore from Archive"}
                               >
                                 <RotateCcw size={16} />
                               </button>
                               <button
-                                onClick={() => onDeleteInvoicePermanently(inv.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteInvoicePermanently(inv.id);
+                                }}
                                 className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-all cursor-pointer"
                                 title={profile.language === 'id' ? "Hapus Permanen" : "Delete Permanently"}
                               >
@@ -256,14 +341,48 @@ export default function InvoiceList({
                           ) : (
                             <>
                               <button
-                                onClick={() => onEditInvoice(inv)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedInvoice(inv);
+                                  setCurrentView('invoice-detail');
+                                }}
+                                className="p-1.5 hover:bg-sky-50 text-slate-400 hover:text-sky-600 rounded-lg transition-all cursor-pointer"
+                                title="Lihat Detail & Bayar via ArabPay (QRIS)"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+                                    const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' });
+                                    const data = await res.json();
+                                    alert(data.message || (data.success ? '📱 WA terkirim!' : 'Gagal kirim WA'));
+                                  } catch (err: any) {
+                                    alert(`Gagal: ${err?.message || 'Error'}`);
+                                  }
+                                }}
+                                className="p-1.5 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all cursor-pointer"
+                                title="Kirim Pesan WA & Link Bayar ArabPay (1-Click)"
+                              >
+                                <MessageCircle size={16} />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditInvoice(inv);
+                                }}
                                 className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition-all cursor-pointer"
                                 title={profile.language === 'id' ? "Edit Tagihan" : "Edit Invoice"}
                               >
                                 <Pencil size={16} />
                               </button>
                               <button
-                                onClick={() => onArchiveInvoice(inv.id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onArchiveInvoice(inv.id);
+                                }}
                                 className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
                                 title={profile.language === 'id' ? "Arsipkan" : "Archive"}
                               >
@@ -278,6 +397,67 @@ export default function InvoiceList({
                 )}
               </tbody>
             </table>
+
+            {/* Pagination Footer */}
+            <div className="px-5 py-4 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 font-sans">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-medium">Tampilkan</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                  className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-slate-400 font-medium">per halaman</span>
+                <span className="text-slate-400 font-medium ml-2">
+                  (Menampilkan <strong className="text-slate-700">{totalItems > 0 ? startIndex + 1 : 0}-{endIndex}</strong> dari <strong className="text-slate-700">{totalItems}</strong> data)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                >
+                  ‹ Prev
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1)
+                    .map((page, idx, arr) => (
+                      <React.Fragment key={page}>
+                        {idx > 0 && arr[idx - 1] !== page - 1 && (
+                          <span className="px-1 text-slate-400 font-bold">...</span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                            currentPage === page
+                              ? 'bg-[#2563EB] text-white shadow-sm'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    ))}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalItems === 0}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                >
+                  Next ›
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -43,6 +43,10 @@ export default function SettingsPage({
   const [currency, setCurrency] = useState<'IDR' | 'USD'>(profile.currency);
   const [language, setLanguage] = useState<'id' | 'en'>(profile.language);
   const [themeColor, setThemeColor] = useState<'blue' | 'emerald' | 'violet' | 'rose' | 'amber' | 'dark'>(profile.themeColor || 'blue');
+  const [mapLat, setMapLat] = useState<number>(profile.mapLat !== undefined ? profile.mapLat : -7.2585);
+  const [mapLng, setMapLng] = useState<number>(profile.mapLng !== undefined ? profile.mapLng : 112.7550);
+  const [mapZoom, setMapZoom] = useState<number>(profile.mapZoom !== undefined ? profile.mapZoom : 16);
+  const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
   const [success, setSuccess] = useState(false);
 
   // Emergency Password Change State
@@ -64,7 +68,10 @@ export default function SettingsPage({
       taxId,
       currency,
       language,
-      themeColor
+      themeColor,
+      mapLat,
+      mapLng,
+      mapZoom
     };
     onUpdateProfile(updatedProfile);
 
@@ -338,6 +345,80 @@ export default function SettingsPage({
                         <span className="text-[10px] font-bold text-slate-700 leading-tight text-center">{thm.name}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Map Coordinates & Initial Session Location Card */}
+                <div className="sm:col-span-2 pt-4 border-t border-slate-100 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-blue-600" />
+                        <span>📍 Koordinat Lokasi Pusat & Zoom Sesi Peta FTTH Perusahaan</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400">Titik lokasi pusat acuan awal ketika Peta FTTH dibuka pertama kali</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isGettingGps}
+                      onClick={() => {
+                        if (!navigator.geolocation) {
+                          alert('Browser Anda tidak mendukung fitur lokasi GPS.');
+                          return;
+                        }
+                        setIsGettingGps(true);
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            setMapLat(Number(pos.coords.latitude.toFixed(6)));
+                            setMapLng(Number(pos.coords.longitude.toFixed(6)));
+                            setIsGettingGps(false);
+                          },
+                          (err) => {
+                            alert(`Gagal mengambil lokasi GPS: ${err.message}`);
+                            setIsGettingGps(false);
+                          }
+                        );
+                      }}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <span>{isGettingGps ? '⏳ Mengambil GPS...' : '🎯 Gunakan Lokasi GPS Saya Saat Ini'}</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 block">Latitude (Lintang)</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={mapLat}
+                        onChange={(e) => setMapLat(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 block">Longitude (Bujur)</label>
+                      <input
+                        type="number"
+                        step="0.000001"
+                        value={mapLng}
+                        onChange={(e) => setMapLng(parseFloat(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 block">Zoom Sesi Awal</label>
+                      <select
+                        value={mapZoom}
+                        onChange={(e) => setMapZoom(parseInt(e.target.value))}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value={12}>12 - Zoom Kota (Sangat Luas)</option>
+                        <option value={14}>14 - Zoom Kecamatan (Sedang)</option>
+                        <option value={16}>16 - Zoom Desa / Komplek (Default)</option>
+                        <option value={18}>18 - Zoom Mikro (Sangat Dekat)</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 

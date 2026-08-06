@@ -67,6 +67,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
   // Test Connection State
   const [testingConn, setTestingConn] = useState(false);
+  const [testingCardId, setTestingCardId] = useState<string | null>(null);
   const [testConnResult, setTestConnResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Form State
@@ -86,6 +87,46 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       throw new Error(`Respons server bukan JSON (HTTP ${res.status})`);
     }
     return await res.json();
+  };
+
+  const handleDirectTestConnection = async (rtr: RouterItem) => {
+    setTestingCardId(rtr.id);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip_address: rtr.ip_address,
+          api_port: rtr.api_port,
+          username: rtr.username,
+          password: rtr.password || '',
+          router_id: rtr.id
+        })
+      });
+      const data = await parseJsonResponse(res);
+
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: `⚡ Tes Koneksi Berhasil! Identity Mikrotik: "${data.identity || rtr.name}" (${rtr.ip_address}:${rtr.api_port}) | ${data.board || 'CCR Series'} (${data.version || 'RouterOS v7'})`
+        });
+      } else {
+        setToastMsg({
+          type: 'error',
+          text: `⚠️ Gagal Tes Koneksi Router "${rtr.name}" (${rtr.ip_address}:${rtr.api_port}): ${data.message || 'API Port tidak merespon'}`
+        });
+      }
+    } catch (err: any) {
+      setToastMsg({
+        type: 'error',
+        text: `⚠️ Gagal Tes Koneksi: ${err?.message || 'Server Express offline'}`
+      });
+    } finally {
+      setTestingCardId(null);
+    }
   };
 
   const fetchRouters = async () => {
@@ -135,14 +176,25 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
           ip_address: ipAddress.trim(),
           api_port: parseInt(apiPort) || 8728,
           username: username.trim(),
-          password: password.trim()
+          password: password.trim(),
+          router_id: editingRouter?.id || null
         })
       });
       const data = await parseJsonResponse(res);
-      setTestConnResult({
-        success: data.success,
-        message: data.message || (data.success ? '⚡ Koneksi ke Router Mikrotik Berhasil!' : '❌ Gagal terhubung ke Router.')
-      });
+      if (data.success) {
+        if (data.identity) {
+          setName(data.identity);
+        }
+        setTestConnResult({
+          success: true,
+          message: data.message || `⚡ Tes Koneksi Live Berhasil! Identity Mikrotik Asli: "${data.identity}" | ${data.board} (${data.version})`
+        });
+      } else {
+        setTestConnResult({
+          success: false,
+          message: data.message || '❌ Gagal terhubung ke Router.'
+        });
+      }
     } catch (err: any) {
       setTestConnResult({ success: false, message: `Gagal tes koneksi: ${err?.message || 'Server offline'}` });
     } finally {
@@ -262,15 +314,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     }
   };
 
-  const handleSyncRouterProfiles = async (rtr: RouterItem) => {
-    setSyncingId(rtr.id);
+  const handleSyncRouterProfiles = async (rtr: RouterItem, syncType: 'pppoe' | 'hotspot' | 'all' = 'all') => {
+    setSyncingId(`${rtr.id}-${syncType}`);
     setToastMsg(null);
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/sync`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sync_type: syncType })
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
         fetchRouters();
@@ -280,8 +334,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal menyingkronkan profile dari router.' });
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal terhubung ke Router Mikrotik API.' });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal terhubung ke Router Mikrotik API: ${err?.message || 'Error'}` });
     } finally {
       setSyncingId(null);
     }
@@ -442,16 +496,38 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                 {/* Actions */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => handleSyncRouterProfiles(rtr)}
-                    disabled={syncingId === rtr.id}
-                    className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
-                  >
-                    <Zap size={14} className={syncingId === rtr.id ? 'animate-spin' : ''} />
-                    <span>{syncingId === rtr.id ? 'Tarik Profile dari Mikrotik...' : '⚡ Singkron Profile dari Router'}</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleSyncRouterProfiles(rtr, 'pppoe')}
+                      disabled={syncingId === `${rtr.id}-pppoe`}
+                      className="py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                      title="Hanya menarik PPP Profiles (PPPoE Bulanan) dari Mikrotik"
+                    >
+                      <Globe size={13} className={syncingId === `${rtr.id}-pppoe` ? 'animate-spin' : ''} />
+                      <span>{syncingId === `${rtr.id}-pppoe` ? 'Menarik...' : '🌐 Tarik PPP Profile'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleSyncRouterProfiles(rtr, 'hotspot')}
+                      disabled={syncingId === `${rtr.id}-hotspot`}
+                      className="py-2.5 px-3 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                      title="Hanya menarik Hotspot User Profiles (Voucher / Member) dari Mikrotik"
+                    >
+                      <Wifi size={13} className={syncingId === `${rtr.id}-hotspot` ? 'animate-spin' : ''} />
+                      <span>{syncingId === `${rtr.id}-hotspot` ? 'Menarik...' : '📶 Tarik Hotspot Profile'}</span>
+                    </button>
+                  </div>
 
                   <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      onClick={() => handleDirectTestConnection(rtr)}
+                      disabled={testingCardId === rtr.id}
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-emerald-200 inline-flex items-center gap-1.5"
+                      title="Tes koneksi live ke IP & Port Router API Mikrotik"
+                    >
+                      <Activity size={13} className={testingCardId === rtr.id ? 'animate-spin text-emerald-600' : 'text-emerald-600'} />
+                      <span>{testingCardId === rtr.id ? 'Menguji...' : 'Tes Koneksi'}</span>
+                    </button>
                     <button
                       onClick={() => openEditModal(rtr)}
                       className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200 inline-flex items-center gap-1"

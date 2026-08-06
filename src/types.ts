@@ -17,6 +17,7 @@ export interface InvoiceItem {
   description: string;
   quantity: number;
   price: number; // in IDR
+  unitPrice?: number;
   amount: number;
 }
 
@@ -80,6 +81,9 @@ export interface BusinessProfile {
   currency: 'IDR' | 'USD';
   language: 'id' | 'en';
   themeColor?: 'blue' | 'emerald' | 'violet' | 'rose' | 'amber' | 'dark';
+  mapLat?: number;
+  mapLng?: number;
+  mapZoom?: number;
   storageUsed: number; // in GB
   storageMax: number; // in GB
 }
