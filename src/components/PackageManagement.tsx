@@ -212,7 +212,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
+      if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
       const res = await fetch(`${apiUrl}/api/packages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,7 +286,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
+      if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
       const res = await fetch(`${apiUrl}/api/packages/${editingPackage.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -327,7 +329,8 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     if (!confirm(`Apakah Anda yakin ingin menghapus Paket Internet "${pkg.name}"?`)) return;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
+      if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
       const res = await fetch(`${apiUrl}/api/packages/${pkg.id}`, {
         method: 'DELETE'
       });
