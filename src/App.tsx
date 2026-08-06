@@ -154,27 +154,34 @@ export default function App() {
           let userObj: any = null;
 
           if (uData) {
-            console.log('🎯 [OAUTH SSO LOG] Successfully extracted exact ArabPay user data from token:', uData);
-            const uId = String(uData.user_id || uData.sub || uData.id || `user_${Date.now()}`);
-            const rawEmail = uData.email || uData.user_email || '';
-            const rawPhone = uData.phone_number || uData.phone || uData.mobile || '';
-            const rawName = uData.name || uData.full_name || uData.username || 'Pengguna ArabPay';
-            const rawUsername = uData.username || uData.name || `user_${uId.slice(-6)}`;
-            
+            console.log('🎯 [OAUTH SSO LOG] Extracted ArabPay user data payload:', uData);
+            const uId = String(uData.user_id || uData.sub || uData.id || '');
+            const rawEmail = (uData.email || uData.user_email || '').trim();
+            const rawPhone = (uData.phone_number || uData.phone || uData.mobile || '').trim();
+            const rawName = (uData.name || uData.full_name || uData.username || '').trim();
+            const rawUsername = (uData.username || rawName || (uId ? `user_${uId.slice(-6)}` : '')).trim();
+
             const isOwner = (uId === '019f74af9fcdWDgDxM8g' || rawEmail === 'ketua11@gmail.com' || rawPhone === '085746520724');
 
-            userObj = {
-              id: uId,
-              username: rawUsername,
-              name: rawName,
-              email: rawEmail,
-              phone_number: rawPhone,
-              role: isOwner ? 'owner' : 'pelanggan',
-              arabpay_user_id: uId,
-              arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
-            };
+            // Strict Validation Rule: User MUST have Name AND (Phone Number OR Email)
+            if (isOwner || (rawName && (rawPhone || rawEmail))) {
+              userObj = {
+                id: uId || `usr_${Date.now()}`,
+                username: rawUsername || `user_${Date.now().toString().slice(-6)}`,
+                name: rawName || 'Pelanggan ArabPay',
+                email: rawEmail,
+                phone_number: rawPhone,
+                role: isOwner ? 'owner' : 'pelanggan',
+                arabpay_user_id: uId || `usr_${Date.now()}`,
+                arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
+              };
+            } else {
+              console.warn('❌ [OAUTH SSO REJECT] Incomplete ArabPay user profile. Missing Name/Phone/Email:', uData);
+              alert('⚠️ Login ArabPay Gagal: Profil akun ArabPay Anda belum lengkap. Silakan lengkapi Nama dan Nomor WhatsApp/Email di akun ArabPay Anda terlebih dahulu.');
+              return;
+            }
           } else {
-            console.log('ℹ️ [OAUTH SSO LOG] Establishing user session from ArabPay OAuth code:', code);
+            // Check if code matches known Owner account
             const isOwnerSession = code === '019f74af9fcdWDgDxM8g' || (code && code.toLowerCase().includes('owner'));
             if (isOwnerSession) {
               userObj = {
@@ -188,21 +195,14 @@ export default function App() {
                 arabpay_balance: 150000
               };
             } else {
-              const cleanCode = (code || `user_${Date.now()}`).slice(0, 10);
-              userObj = {
-                id: `usr_${cleanCode}`,
-                username: `user_${cleanCode}`,
-                name: `Pelanggan WiFi (${cleanCode})`,
-                email: '',
-                phone_number: '',
-                role: 'pelanggan',
-                arabpay_user_id: `usr_${cleanCode}`,
-                arabpay_balance: 0
-              };
+              // REJECT: Data profil dari ArabPay kosong atau tidak terverifikasi -> TIDAK BUAT USER DUMMY!
+              console.warn('❌ [OAUTH SSO REJECT] Data profil ArabPay tidak ditemukan atau tidak lengkap untuk code:', code);
+              alert('⚠️ Login ArabPay Gagal: Data akun dari ArabPay tidak lengkap. Pastikan Nama & Nomor HP/Email terisi di profil ArabPay Anda.');
+              return;
             }
           }
 
-          console.log('🎉 [OAUTH SSO LOG] User created dynamically from ArabPay data:', userObj.name, `| Role: ${userObj.role.toUpperCase()}`);
+          console.log('🎉 [OAUTH SSO LOG] User validated & logged in:', userObj.name, `| Role: ${userObj.role.toUpperCase()}`);
           handleLoginSuccess(userObj);
           setCurrentView('overview');
         } catch (clientOAuthErr) {
