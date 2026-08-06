@@ -101,7 +101,7 @@ export default function CustomerPortal({
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
 
-  const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+  const apiUrl = getApiUrl();
 
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
@@ -170,38 +170,41 @@ export default function CustomerPortal({
     }
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
 
-  // Fetch logged in customer's live profile & invoices from PostgreSQL
+  // Fetch logged in customer's live profile & invoices from PostgreSQL / Firestore
   const fetchCustomerProfile = async () => {
     if (!currentUser) return;
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/customers/check-phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone_number: currentUser.phone_number || currentUser.name,
-          userId: currentUser.id
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.customer) {
-        setCustomerData(data.customer);
-        if (data.autoLinked) {
-          setToastMsg({
-            type: 'success',
-            text: `✨ Akun ArabPay Anda otomatis dihubungkan & dikunci dengan data pelanggan internet "${data.customer.name}"!`
-          });
-        }
-        setMyRegistrations(prev => {
-          const updated = [data.customer, ...prev.filter((r: any) => r.id !== data.customer.id)];
-          localStorage.setItem('my_member_registrations', JSON.stringify(updated));
-          return updated;
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/check-phone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone_number: currentUser.phone_number || currentUser.name,
+            userId: currentUser.id
+          })
         });
-        const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${data.customer.id}`);
-        if (invRes.ok) {
-          const invData = await invRes.json();
-          if (invData.success) {
-            setInvoices(invData.invoices || []);
+        const data = await res.json();
+        if (data.success && data.customer) {
+          setCustomerData(data.customer);
+          if (data.autoLinked) {
+            setToastMsg({
+              type: 'success',
+              text: `✨ Akun ArabPay Anda otomatis dihubungkan & dikunci dengan data pelanggan internet "${data.customer.name}"!`
+            });
+          }
+          setMyRegistrations(prev => {
+            const updated = [data.customer, ...prev.filter((r: any) => r.id !== data.customer.id)];
+            localStorage.setItem('my_member_registrations', JSON.stringify(updated));
+            return updated;
+          });
+          const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${data.customer.id}`);
+          if (invRes.ok) {
+            const invData = await invRes.json();
+            if (invData.success) {
+              setInvoices(invData.invoices || []);
+            }
           }
         }
       }
@@ -216,63 +219,59 @@ export default function CustomerPortal({
   const fetchAvailableVouchers = async () => {
     setVoucherLoading(true);
     try {
-      let fetched = false;
+      const apiUrl = getApiUrl();
       if (apiUrl) {
         try {
           const res = await fetch(`${apiUrl}/api/vouchers/available`);
           const data = await res.json();
           if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
             setVoucherGroups(data.groups);
-            fetched = true;
+            setVoucherLoading(false);
+            return;
           }
-        } catch (apiErr) {
-          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
+        } catch (apiErr) { }
+      }
+
+      // Direct Firebase Firestore
+      const fbData = await getVouchersFromFirestore();
+      if (fbData.success && Array.isArray(fbData.vouchers) && fbData.vouchers.length > 0) {
+        const groupsMap: any = {};
+        fbData.vouchers.forEach((v: any) => {
+          const pName = v.profile_name || 'Voucher Hotspot';
+          if (!groupsMap[pName]) {
+            groupsMap[pName] = {
+              profile_id: v.id,
+              package_name: pName,
+              rate_limit: v.speed_limit || '10 Mbps',
+              price: Number(v.price) || 5000,
+              validity_value: 1,
+              validity_unit: 'day',
+              color: 'violet',
+              mode: 'ondemand',
+              stock: 0
+            };
+          }
+          if (v.status === 'available') {
+            groupsMap[pName].stock += 1;
+          }
+        });
+        const groupList = Object.values(groupsMap);
+        if (groupList.length > 0) {
+          setVoucherGroups(groupList as any);
+          setVoucherLoading(false);
+          return;
         }
       }
 
-      if (!fetched) {
-        const fbData = await getVouchersFromFirestore();
-        if (fbData.success && Array.isArray(fbData.vouchers) && fbData.vouchers.length > 0) {
-          // Group vouchers by profile_name
-          const groupsMap: any = {};
-          fbData.vouchers.forEach((v: any) => {
-            const pName = v.profile_name || 'Voucher Hotspot';
-            if (!groupsMap[pName]) {
-              groupsMap[pName] = {
-                profile_id: v.id,
-                package_name: pName,
-                rate_limit: v.speed_limit || '10 Mbps',
-                price: Number(v.price) || 5000,
-                validity_value: 1,
-                validity_unit: 'day',
-                color: 'violet',
-                mode: 'ondemand',
-                stock: 0
-              };
-            }
-            if (v.status === 'available') {
-              groupsMap[pName].stock += 1;
-            }
-          });
-          const groupList = Object.values(groupsMap);
-          if (groupList.length > 0) {
-            setVoucherGroups(groupList as any);
-            fetched = true;
-          }
-        }
-      }
-
-      if (!fetched) {
-        // Fallback default packages if both API and Firestore return empty
-        setVoucherGroups([
-          { profile_id: 'pkg-1h', package_name: '1 Jam', rate_limit: '5 Mbps', price: 3000, validity_value: 1, validity_unit: 'hour', color: 'cyan', mode: 'ondemand', stock: 999 },
-          { profile_id: 'pkg-3h', package_name: '3 Jam', rate_limit: '10 Mbps', price: 5000, validity_value: 3, validity_unit: 'hour', color: 'blue', mode: 'ondemand', stock: 999 },
-          { profile_id: 'pkg-6h', package_name: '6 Jam', rate_limit: '15 Mbps', price: 8000, validity_value: 6, validity_unit: 'hour', color: 'violet', popular: true, mode: 'ondemand', stock: 999 },
-          { profile_id: 'pkg-12h', package_name: '12 Jam', rate_limit: '20 Mbps', price: 12000, validity_value: 12, validity_unit: 'hour', color: 'indigo', mode: 'ondemand', stock: 999 },
-          { profile_id: 'pkg-1d', package_name: '1 Hari', rate_limit: '25 Mbps', price: 15000, validity_value: 24, validity_unit: 'hour', color: 'emerald', popular: true, mode: 'ondemand', stock: 999 },
-          { profile_id: 'pkg-7d', package_name: '7 Hari', rate_limit: '30 Mbps', price: 50000, validity_value: 7, validity_unit: 'day', color: 'amber', mode: 'ondemand', stock: 999 }
-        ]);
-      }
+      // Fallback default packages if both API and Firestore return empty
+      setVoucherGroups([
+        { profile_id: 'pkg-1h', package_name: '1 Jam', rate_limit: '5 Mbps', price: 3000, validity_value: 1, validity_unit: 'hour', color: 'cyan', mode: 'ondemand', stock: 999 },
+        { profile_id: 'pkg-3h', package_name: '3 Jam', rate_limit: '10 Mbps', price: 5000, validity_value: 3, validity_unit: 'hour', color: 'blue', mode: 'ondemand', stock: 999 },
+        { profile_id: 'pkg-6h', package_name: '6 Jam', rate_limit: '15 Mbps', price: 8000, validity_value: 6, validity_unit: 'hour', color: 'violet', popular: true, mode: 'ondemand', stock: 999 },
+        { profile_id: 'pkg-12h', package_name: '12 Jam', rate_limit: '20 Mbps', price: 12000, validity_value: 12, validity_unit: 'hour', color: 'indigo', mode: 'ondemand', stock: 999 },
+        { profile_id: 'pkg-1d', package_name: '1 Hari', rate_limit: '25 Mbps', price: 15000, validity_value: 24, validity_unit: 'hour', color: 'emerald', popular: true, mode: 'ondemand', stock: 999 },
+        { profile_id: 'pkg-7d', package_name: '7 Hari', rate_limit: '30 Mbps', price: 50000, validity_value: 7, validity_unit: 'day', color: 'amber', mode: 'ondemand', stock: 999 }
+      ]);
     } catch (err) {
       console.warn('Failed to load vouchers:', err);
     } finally {
@@ -283,7 +282,7 @@ export default function CustomerPortal({
   // Fetch monthly member packages (Hotspot Monthly & PPPoE)
   const fetchMonthlyMemberPackages = async () => {
     try {
-      let fetched = false;
+      const apiUrl = getApiUrl();
       if (apiUrl) {
         try {
           const res = await fetch(`${apiUrl}/api/packages`);
@@ -291,19 +290,16 @@ export default function CustomerPortal({
           if (data.success && Array.isArray(data.packages)) {
             const filtered = data.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
             setMonthlyPackages(filtered);
-            fetched = true;
+            return;
           }
-        } catch (apiErr) {
-          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
-        }
+        } catch (apiErr) { }
       }
 
-      if (!fetched) {
-        const fbData = await getPackagesFromFirestore();
-        if (fbData.success && Array.isArray(fbData.packages)) {
-          const filtered = fbData.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
-          setMonthlyPackages(filtered as any);
-        }
+      // Direct Firebase Firestore
+      const fbData = await getPackagesFromFirestore();
+      if (fbData.success && Array.isArray(fbData.packages)) {
+        const filtered = fbData.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
+        setMonthlyPackages(filtered as any);
       }
     } catch (err) {
       console.warn('Failed to load monthly member packages:', err);
