@@ -8,6 +8,8 @@ import {
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info
 } from 'lucide-react';
 import LoginModal from './LoginModal';
+import { getApiUrl } from '../config/api';
+import { getPackagesFromFirestore, getVouchersFromFirestore } from '../services/firebaseService';
 
 interface CustomerPortalProps {
   currentUser: UserAccount | null;
@@ -214,12 +216,54 @@ export default function CustomerPortal({
   const fetchAvailableVouchers = async () => {
     setVoucherLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/api/vouchers/available`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
-        setVoucherGroups(data.groups);
-      } else {
-        // Fallback default packages if API returns empty
+      let fetched = false;
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/vouchers/available`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
+            setVoucherGroups(data.groups);
+            fetched = true;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
+        }
+      }
+
+      if (!fetched) {
+        const fbData = await getVouchersFromFirestore();
+        if (fbData.success && Array.isArray(fbData.vouchers) && fbData.vouchers.length > 0) {
+          // Group vouchers by profile_name
+          const groupsMap: any = {};
+          fbData.vouchers.forEach((v: any) => {
+            const pName = v.profile_name || 'Voucher Hotspot';
+            if (!groupsMap[pName]) {
+              groupsMap[pName] = {
+                profile_id: v.id,
+                package_name: pName,
+                rate_limit: v.speed_limit || '10 Mbps',
+                price: Number(v.price) || 5000,
+                validity_value: 1,
+                validity_unit: 'day',
+                color: 'violet',
+                mode: 'ondemand',
+                stock: 0
+              };
+            }
+            if (v.status === 'available') {
+              groupsMap[pName].stock += 1;
+            }
+          });
+          const groupList = Object.values(groupsMap);
+          if (groupList.length > 0) {
+            setVoucherGroups(groupList as any);
+            fetched = true;
+          }
+        }
+      }
+
+      if (!fetched) {
+        // Fallback default packages if both API and Firestore return empty
         setVoucherGroups([
           { profile_id: 'pkg-1h', package_name: '1 Jam', rate_limit: '5 Mbps', price: 3000, validity_value: 1, validity_unit: 'hour', color: 'cyan', mode: 'ondemand', stock: 999 },
           { profile_id: 'pkg-3h', package_name: '3 Jam', rate_limit: '10 Mbps', price: 5000, validity_value: 3, validity_unit: 'hour', color: 'blue', mode: 'ondemand', stock: 999 },
@@ -239,11 +283,27 @@ export default function CustomerPortal({
   // Fetch monthly member packages (Hotspot Monthly & PPPoE)
   const fetchMonthlyMemberPackages = async () => {
     try {
-      const res = await fetch(`${apiUrl}/api/packages`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.packages)) {
-        const filtered = data.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
-        setMonthlyPackages(filtered);
+      let fetched = false;
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/packages`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.packages)) {
+            const filtered = data.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
+            setMonthlyPackages(filtered);
+            fetched = true;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
+        }
+      }
+
+      if (!fetched) {
+        const fbData = await getPackagesFromFirestore();
+        if (fbData.success && Array.isArray(fbData.packages)) {
+          const filtered = fbData.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
+          setMonthlyPackages(filtered as any);
+        }
       }
     } catch (err) {
       console.warn('Failed to load monthly member packages:', err);

@@ -230,6 +230,15 @@ export default function App() {
     checkCustomerPhoneMatch();
   }, [currentUser]);
 
+const safeFormatDate = (val: any): string => {
+  if (!val) return new Date().toISOString().split('T')[0];
+  if (typeof val === 'string') return val.split('T')[0];
+  if (typeof val === 'number') return new Date(val).toISOString().split('T')[0];
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  if (typeof val === 'object' && typeof val.toDate === 'function') return val.toDate().toISOString().split('T')[0];
+  return String(val).split('T')[0];
+};
+
   // --- FETCH REAL INVOICES FROM POSTGRESQL / FIRESTORE API ---
   const fetchRealInvoices = async () => {
     try {
@@ -268,8 +277,8 @@ export default function App() {
               discount: 0,
               total: Number(inv.total || inv.amount || 0),
               status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
-              issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-              dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
+              issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
+              dueDate: safeFormatDate(inv.due_date || inv.dueDate),
               notes: inv.notes || '',
               terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
               isArchived: inv.is_archived || false
@@ -312,8 +321,8 @@ export default function App() {
             discount: 0,
             total: Number(inv.total || inv.amount || 0),
             status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
-            issueDate: inv.issue_date ? inv.issue_date.split('T')[0] : (inv.created_at ? inv.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-            dueDate: inv.due_date ? inv.due_date.split('T')[0] : new Date().toISOString().split('T')[0],
+            issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
+            dueDate: safeFormatDate(inv.due_date || inv.dueDate),
             notes: inv.notes || '',
             terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
             isArchived: inv.is_archived || false
