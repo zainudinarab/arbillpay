@@ -91,24 +91,26 @@ export default function App() {
         window.history.replaceState({}, document.title, window.location.pathname + '#/overview');
 
         try {
-          const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-          const res = await fetch(`${apiUrl}/api/auth/arabpay`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
-          });
-          const data = await res.json();
-          if (data.success && data.user) {
-            const userWithBalance = {
-              ...data.user,
-              arabpay_balance: data.user.arabpay_balance ?? data.balance ?? 150000
-            };
-            handleLoginSuccess(userWithBalance);
-            setCurrentView('overview');
-            return;
+          const apiUrl = getApiUrl();
+          if (apiUrl) {
+            const res = await fetch(`${apiUrl}/api/auth/arabpay`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
+            });
+            const data = await res.json();
+            if (data.success && data.user) {
+              const userWithBalance = {
+                ...data.user,
+                arabpay_balance: data.user.arabpay_balance ?? data.balance ?? 150000
+              };
+              handleLoginSuccess(userWithBalance);
+              setCurrentView('overview');
+              return;
+            }
           }
         } catch (err) {
-          console.error('Failed to exchange ArabPay OAuth code:', err);
+          console.warn('Failed to exchange ArabPay OAuth code:', err);
         }
       }
 
