@@ -146,7 +146,7 @@ export default function CustomerPortal({
                   arabpay_balance: Number(data.balance)
                 });
               }
-            } catch (err) {}
+            } catch (err) { }
           });
 
           eventSource.addEventListener('checkout_status', (e: any) => {
@@ -155,7 +155,7 @@ export default function CustomerPortal({
               if (data && data.status === 'PAID') {
                 fetchAvailableVouchers();
               }
-            } catch (err) {}
+            } catch (err) { }
           });
         } catch (sseErr) {
           console.warn('SSE EventSource setup warning:', sseErr);
@@ -345,7 +345,7 @@ export default function CustomerPortal({
                 allInvoices.push(...invData.invoices);
               }
             }
-          } catch (e) {}
+          } catch (e) { }
         }
         setInvoices(allInvoices);
       }
@@ -358,7 +358,7 @@ export default function CustomerPortal({
   const handleSubmitMemberRegistration = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!registerPkg) return;
-    
+
     if (!regForm.name || !regForm.phone_number) {
       setRegError('Nama Pelanggan dan Nomor WhatsApp wajib diisi.');
       return;
@@ -819,7 +819,7 @@ export default function CustomerPortal({
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased flex flex-col justify-between">
-      
+
       {/* ==================== NAVBAR (Persis arbiljs Vouchers.vue) ==================== */}
       <nav className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -921,9 +921,8 @@ export default function CustomerPortal({
 
         {/* Toast Alert Notification */}
         {toastMsg && (
-          <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-lg animate-slide-down ${
-            toastMsg.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
-          }`}>
+          <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-lg animate-slide-down ${toastMsg.type === 'success' ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+            }`}>
             <div className="flex items-center gap-3">
               {toastMsg.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
               <span className="text-xs md:text-sm font-bold">{toastMsg.text}</span>
@@ -943,63 +942,60 @@ export default function CustomerPortal({
                 const isOff = reg.status === 'off' || reg.status === 'pending' || !reg.status;
                 const isActive = reg.status === 'active' || reg.status === 'on';
 
-              return (
-                <div
-                  key={reg.id || idx}
-                  className={`p-5 rounded-3xl border shadow-xl backdrop-blur-md transition-all ${
-                    isActive
-                      ? 'bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-emerald-500/40 shadow-emerald-500/10'
-                      : 'bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border-amber-500/40 shadow-amber-500/10'
-                  }`}
-                >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-start gap-3.5">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
-                        isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
-                      }`}>
-                        {isActive ? <CheckCircle2 size={24} /> : <Clock size={24} />}
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Status Permohonan Member:</span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider border ${
-                            isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                return (
+                  <div
+                    key={reg.id || idx}
+                    className={`p-5 rounded-3xl border shadow-xl backdrop-blur-md transition-all ${isActive
+                        ? 'bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-emerald-500/40 shadow-emerald-500/10'
+                        : 'bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border-amber-500/40 shadow-amber-500/10'
+                      }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex items-start gap-3.5">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
                           }`}>
-                            {isActive ? '🟢 Aktif (Berlangganan)' : '🟡 Non-Aktif (Pending Verifikasi Admin)'}
-                          </span>
+                          {isActive ? <CheckCircle2 size={24} /> : <Clock size={24} />}
                         </div>
-                        <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                          <span>{reg.package_name || reg.package?.name || 'Paket Member Bulanan'}</span>
-                          <span className="text-xs text-amber-400 font-mono font-normal">({reg.pppoe_username || reg.name})</span>
-                        </h4>
-                        <p className="text-xs text-slate-300">
-                          {isActive
-                            ? 'Layanan internet bulanan Anda telah aktif. Tagihan invoice otomatis terbit setiap bulan.'
-                            : 'Pendaftaran Anda telah berhasil tercatat dengan status Non-Aktif (Off/Pending). Admin/Teknisi sedang memproses verifikasi & aktivasi.'}
-                        </p>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Status Permohonan Member:</span>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider border ${isActive
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              }`}>
+                              {isActive ? '🟢 Aktif (Berlangganan)' : '🟡 Non-Aktif (Pending Verifikasi Admin)'}
+                            </span>
+                          </div>
+                          <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                            <span>{reg.package_name || reg.package?.name || 'Paket Member Bulanan'}</span>
+                            <span className="text-xs text-amber-400 font-mono font-normal">({reg.pppoe_username || reg.name})</span>
+                          </h4>
+                          <p className="text-xs text-slate-300">
+                            {isActive
+                              ? 'Layanan internet bulanan Anda telah aktif. Tagihan invoice otomatis terbit setiap bulan.'
+                              : 'Pendaftaran Anda telah berhasil tercatat dengan status Non-Aktif (Off/Pending). Admin/Teknisi sedang memproses verifikasi & aktivasi.'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-3 self-end md:self-center shrink-0">
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-500 font-bold block uppercase">Speed</span>
-                        <span className="text-xs font-mono font-bold text-amber-400">{reg.speed_limit || 'Dedicated'}</span>
+                      <div className="flex items-center gap-3 self-end md:self-center shrink-0">
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 font-bold block uppercase">Speed</span>
+                          <span className="text-xs font-mono font-bold text-amber-400">{reg.speed_limit || 'Dedicated'}</span>
+                        </div>
+                        <button
+                          onClick={fetchLiveMemberRegistrationsStatus}
+                          className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-700 active:scale-95"
+                        >
+                          <RefreshCw size={13} />
+                          <span>Cek Status</span>
+                        </button>
                       </div>
-                      <button
-                        onClick={fetchLiveMemberRegistrationsStatus}
-                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-700 active:scale-95"
-                      >
-                        <RefreshCw size={13} />
-                        <span>Cek Status</span>
-                      </button>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
           );
         })()}
 
@@ -1007,11 +1003,10 @@ export default function CustomerPortal({
         <div className="flex items-center justify-center gap-3 flex-wrap">
           <button
             onClick={() => setActiveTab('buy')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${
-              activeTab === 'buy'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'buy'
                 ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             <ShoppingCart className="w-4 h-4" />
             <span>Beli Voucher</span>
@@ -1022,11 +1017,10 @@ export default function CustomerPortal({
               setActiveTab('register_member');
               fetchMonthlyMemberPackages();
             }}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${
-              activeTab === 'register_member'
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'register_member'
                 ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-500/20'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
+              }`}
           >
             <Zap className="w-4 h-4 text-amber-400" />
             <span>Daftar Member Bulanan</span>
@@ -1035,11 +1029,10 @@ export default function CustomerPortal({
           {currentUser && (
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${
-                activeTab === 'history'
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'history'
                   ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
                   : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
             >
               <Clock className="w-4 h-4" />
               <span>Voucher Saya ({localPurchasedVouchers.length})</span>
@@ -1049,11 +1042,10 @@ export default function CustomerPortal({
           {currentUser && (
             <button
               onClick={() => setActiveTab('invoices')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${
-                activeTab === 'invoices'
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'invoices'
                   ? 'bg-sky-600 border-sky-500 text-white shadow-lg shadow-sky-500/20'
                   : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+                }`}
             >
               <FileText className="w-4 h-4" />
               <span>Tagihan Bulanan RT/RW Net</span>
@@ -1099,27 +1091,25 @@ export default function CustomerPortal({
                       )}
 
                       {/* Card Top Colored Bar */}
-                      <div className={`h-1.5 w-full ${
-                        color === 'cyan' ? 'bg-gradient-to-r from-cyan-500 to-cyan-400' :
-                        color === 'blue' ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
-                        color === 'violet' ? 'bg-gradient-to-r from-violet-500 to-violet-400' :
-                        color === 'indigo' ? 'bg-gradient-to-r from-indigo-500 to-indigo-400' :
-                        color === 'emerald' ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
-                        'bg-gradient-to-r from-amber-500 to-amber-400'
-                      }`} />
+                      <div className={`h-1.5 w-full ${color === 'cyan' ? 'bg-gradient-to-r from-cyan-500 to-cyan-400' :
+                          color === 'blue' ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
+                            color === 'violet' ? 'bg-gradient-to-r from-violet-500 to-violet-400' :
+                              color === 'indigo' ? 'bg-gradient-to-r from-indigo-500 to-indigo-400' :
+                                color === 'emerald' ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
+                                  'bg-gradient-to-r from-amber-500 to-amber-400'
+                        }`} />
 
                       <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                         {/* Icon + Title */}
                         <div>
                           <div className="flex items-start gap-3.5 mb-3">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                              color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
-                              color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
-                              color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
-                              color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
-                              color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
-                              'bg-amber-500/10 text-amber-400'
-                            }`}>
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
+                                color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
+                                  color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
+                                    color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
+                                      color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
+                                        'bg-amber-500/10 text-amber-400'
+                              }`}>
                               <Zap className="w-6 h-6" />
                             </div>
                             <div>
@@ -1296,9 +1286,8 @@ export default function CustomerPortal({
                           <span className="font-extrabold text-sm text-slate-100">
                             Tagihan #{inv.invoice_number || inv.id.substring(0, 8)}
                           </span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                            isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                          }`}>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${isPaid ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                            }`}>
                             {inv.status}
                           </span>
                         </div>
@@ -1607,7 +1596,7 @@ export default function CustomerPortal({
 
                 <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
                   <span className="text-[11px] font-bold text-amber-400 block uppercase tracking-wider">📍 Detail Alamat Lengkap & Wilayah</span>
-                  
+
                   <div>
                     <label className="text-[11px] font-bold text-slate-400 block mb-1">Dusun / RT RW / Alamat Jalan *</label>
                     <input
@@ -1711,7 +1700,7 @@ export default function CustomerPortal({
           <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => paymentStep !== 'processing' && setShowPaymentModal(false)}></div>
 
           <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in text-slate-100">
-            
+
             {/* STEP 1: CONFIRM (SAMA PERSIS PERSIS DENGAN SCREENSHOT ARBILJS) */}
             {paymentStep === 'confirm' && (
               <>
@@ -1767,17 +1756,15 @@ export default function CustomerPortal({
                       {/* Option 1: ArabPay E-Wallet */}
                       <div
                         onClick={() => setPaymentMethod('balance')}
-                        className={`relative p-4 rounded-2xl border transition duration-200 cursor-pointer flex items-start gap-3.5 ${
-                          paymentMethod === 'balance'
+                        className={`relative p-4 rounded-2xl border transition duration-200 cursor-pointer flex items-start gap-3.5 ${paymentMethod === 'balance'
                             ? 'bg-indigo-950/40 border-indigo-500/90 shadow-lg ring-1 ring-indigo-500/50'
                             : 'bg-slate-950 border-slate-800 hover:border-slate-700/80'
-                        }`}
+                          }`}
                       >
                         {/* Radio Indicator */}
                         <div className="pt-0.5">
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition duration-200 ${
-                            paymentMethod === 'balance' ? 'border-indigo-500' : 'border-slate-700'
-                          }`}>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition duration-200 ${paymentMethod === 'balance' ? 'border-indigo-500' : 'border-slate-700'
+                            }`}>
                             {paymentMethod === 'balance' && <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />}
                           </div>
                         </div>
@@ -1807,17 +1794,15 @@ export default function CustomerPortal({
                       {/* Option 2: Bayar Langsung via Gateway (QRIS / VA) */}
                       <div
                         onClick={() => setPaymentMethod('direct')}
-                        className={`relative p-4 rounded-2xl border transition duration-200 cursor-pointer flex items-start gap-3.5 ${
-                          paymentMethod === 'direct'
+                        className={`relative p-4 rounded-2xl border transition duration-200 cursor-pointer flex items-start gap-3.5 ${paymentMethod === 'direct'
                             ? 'bg-indigo-950/40 border-indigo-500/90 shadow-lg ring-1 ring-indigo-500/50'
                             : 'bg-slate-950 border-slate-800 hover:border-slate-700/80'
-                        }`}
+                          }`}
                       >
                         {/* Radio Indicator */}
                         <div className="pt-0.5">
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition duration-200 ${
-                            paymentMethod === 'direct' ? 'border-indigo-500' : 'border-slate-700'
-                          }`}>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition duration-200 ${paymentMethod === 'direct' ? 'border-indigo-500' : 'border-slate-700'
+                            }`}>
                             {paymentMethod === 'direct' && <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />}
                           </div>
                         </div>
@@ -1852,15 +1837,13 @@ export default function CustomerPortal({
                                     <div
                                       key={ch.id}
                                       onClick={() => setSelectedChannel(ch)}
-                                      className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${
-                                        selectedChannel?.id === ch.id
+                                      className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${selectedChannel?.id === ch.id
                                           ? 'bg-indigo-600/10 border-indigo-500 text-white'
                                           : 'bg-slate-900 border-slate-800/80 text-slate-400 hover:text-slate-200'
-                                      }`}
+                                        }`}
                                     >
-                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                        selectedChannel?.id === ch.id ? 'border-indigo-500' : 'border-slate-700'
-                                      }`}>
+                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedChannel?.id === ch.id ? 'border-indigo-500' : 'border-slate-700'
+                                        }`}>
                                         {selectedChannel?.id === ch.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                                       </div>
                                       <div className="flex-grow min-w-0">
@@ -1876,15 +1859,13 @@ export default function CustomerPortal({
                                     <div
                                       key={ch.id}
                                       onClick={() => setSelectedChannel(ch)}
-                                      className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${
-                                        selectedChannel?.id === ch.id
+                                      className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${selectedChannel?.id === ch.id
                                           ? 'bg-indigo-600/10 border-indigo-500 text-white'
                                           : 'bg-slate-900 border-slate-800/80 text-slate-400 hover:text-slate-200'
-                                      }`}
+                                        }`}
                                     >
-                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                        selectedChannel?.id === ch.id ? 'border-indigo-500' : 'border-slate-700'
-                                      }`}>
+                                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${selectedChannel?.id === ch.id ? 'border-indigo-500' : 'border-slate-700'
+                                        }`}>
                                         {selectedChannel?.id === ch.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                                       </div>
                                       <div className="flex-grow min-w-0">
@@ -1943,11 +1924,10 @@ export default function CustomerPortal({
                   {[0, 1, 2, 3, 4, 5].map((idx) => (
                     <div
                       key={idx}
-                      className={`w-10 h-12 rounded-xl border-2 flex items-center justify-center text-lg font-black font-mono transition ${
-                        pinCode[idx]
+                      className={`w-10 h-12 rounded-xl border-2 flex items-center justify-center text-lg font-black font-mono transition ${pinCode[idx]
                           ? 'border-indigo-500 bg-indigo-950/40 text-indigo-300'
                           : 'border-slate-800 bg-slate-950 text-slate-600'
-                      }`}
+                        }`}
                     >
                       {pinCode[idx] ? '●' : ''}
                     </div>
@@ -2084,7 +2064,7 @@ export default function CustomerPortal({
                     <button
                       type="button"
                       onClick={() => {
-                        navigator.clipboard?.writeText(voucherResult.code).catch(() => {});
+                        navigator.clipboard?.writeText(voucherResult.code).catch(() => { });
                         setShowPaymentModal(false);
                         setActiveTab('history');
                       }}
@@ -2124,11 +2104,10 @@ export default function CustomerPortal({
                     key={amt}
                     type="button"
                     onClick={() => setTopupAmount(amt)}
-                    className={`py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                      topupAmount === amt
+                    className={`py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${topupAmount === amt
                         ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300'
                         : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
-                    }`}
+                      }`}
                   >
                     {formatRupiah(amt)}
                   </button>
