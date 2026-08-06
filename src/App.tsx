@@ -13,7 +13,7 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import DashboardOverview from './components/DashboardOverview';
 import { getApiUrl } from './config/api';
-import { getInvoicesFromFirestore } from './services/firebaseService';
+import { getInvoicesFromFirestore, saveUserToFirestore } from './services/firebaseService';
 
 // Inside OAuth handler:
 // try {
@@ -221,10 +221,19 @@ export default function App() {
     window.location.hash = `#/${view}`;
   };
 
+  // Handle Login & Logout Handlers
+  const handleLoginSuccess = (account: UserAccount) => {
+    setCurrentUser(account);
+    localStorage.setItem('arbil_current_user', JSON.stringify(account));
+    saveUserToFirestore(account);
+    setShowAdminLoginModal(false);
+  };
+
   // Sync Current User to Local Storage & Update Profile Role dynamically
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('arbil_current_user', JSON.stringify(currentUser));
+      saveUserToFirestore(currentUser);
       setProfile(prev => ({
         ...prev,
         name: currentUser.name,
@@ -413,12 +422,6 @@ const safeFormatDate = (val: any): string => {
     } finally {
       setIsLinking(false);
     }
-  };
-
-  // Handle Login & Logout Handlers
-  const handleLoginSuccess = (account: UserAccount) => {
-    setCurrentUser(account);
-    setShowAdminLoginModal(false);
   };
 
   const handleLogout = () => {

@@ -211,3 +211,34 @@ export const getVouchersFromFirestore = async () => {
   }
 };
 
+// --- 6. USERS & STAFF MANAGEMENT ---
+export const saveUserToFirestore = async (user: any) => {
+  try {
+    const userId = String(user.id || user.arabpay_user_id || `user_${Date.now()}`);
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, sanitizeForFirestore({
+      ...user,
+      id: userId,
+      updated_at: new Date().toISOString()
+    }), { merge: true });
+    console.log(`✅ [FIREBASE FIRESTORE] User "${user.name || user.username || userId}" successfully saved/updated in Firestore users collection!`);
+    return { success: true, id: userId };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to save user to Firestore:', err);
+    return { success: false, error: err?.message };
+  }
+};
+
+export const getUsersFromFirestore = async () => {
+  try {
+    const userColl = collection(db, 'users');
+    const snapshot = await getDocs(userColl);
+    const users = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, users };
+  } catch (err: any) {
+    console.warn('[FIREBASE FIRESTORE WARN] Could not fetch users from Firestore:', err);
+    return { success: false, users: [] };
+  }
+};
+
+
