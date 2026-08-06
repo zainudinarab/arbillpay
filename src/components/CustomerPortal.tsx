@@ -2252,7 +2252,7 @@ export default function CustomerPortal({
 
               <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-center justify-between">
                 <span className="text-slate-400 font-semibold">Email SSO ArabPay:</span>
-                <span className="font-bold text-slate-200">{currentUser.email || 'user@arabpay.my.id'}</span>
+                <span className="font-bold text-slate-200">{currentUser.email || 'Belum diisi'}</span>
               </div>
 
               <div className="p-3.5 bg-emerald-950/20 border border-emerald-900/30 rounded-2xl flex items-center justify-between">

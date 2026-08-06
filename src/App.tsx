@@ -121,6 +121,17 @@ export default function App() {
         try {
           console.log('⚡ [OAUTH SSO LOG] Running Direct Client-Side OAuth Exchange with ArabPay Server...');
           const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+          
+          // Helper function to decode JWT payload in browser
+          const decodeJwt = (t: string) => {
+            try {
+              const parts = t.split('.');
+              if (parts.length < 2) return null;
+              const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+              return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+            } catch (e) { return null; }
+          };
+
           const tokenRes = await fetch('https://arabpay.my.id/api/v1/s2s/oauth/token', {
             method: 'POST',
             headers: {
@@ -130,44 +141,40 @@ export default function App() {
             body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
           }).catch(() => null);
 
-          let userObj: any = null;
+          let tokenData: any = null;
           if (tokenRes && tokenRes.ok) {
-            const tokenData = await tokenRes.json();
+            tokenData = await tokenRes.json();
             console.log('✅ [OAUTH SSO LOG] Received token from ArabPay Server:', tokenData);
-            
-            // Helper function to decode JWT payload in browser
-            const decodeJwt = (t: string) => {
-              try {
-                const parts = t.split('.');
-                if (parts.length < 2) return null;
-                const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-                return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
-              } catch (e) { return null; }
-            };
-
-            const tokenStr = tokenData.token || tokenData.access_token;
-            const payload = tokenStr ? decodeJwt(tokenStr) : null;
-            const uData = tokenData.user || payload;
-
-            if (uData) {
-              const uId = String(uData.user_id || uData.id || `user_${Date.now()}`);
-              const isOwner = (uId === '019f74af9fcdWDgDxM8g' || uData.email === 'ketua11@gmail.com');
-              userObj = {
-                id: uId,
-                username: uData.username || uData.name || `user_${uId.slice(-6)}`,
-                name: uData.name || uData.full_name || 'Pelanggan ArabPay',
-                email: uData.email || `${uId}@arabpay.my.id`,
-                phone_number: uData.phone_number || uData.phone || '',
-                role: isOwner ? 'owner' : 'pelanggan',
-                arabpay_user_id: uId,
-                arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
-              };
-            }
           }
 
-          // Fallback Authenticated User Profile for Online Firebase Mode
-          if (!userObj) {
-            console.log('ℹ️ [OAUTH SSO LOG] Establishing authenticated user session for project arbillpay...');
+          const rawToken = tokenData?.token || tokenData?.access_token || (code && code.includes('.') ? code : null);
+          const decodedPayload = rawToken ? decodeJwt(rawToken) : (code ? decodeJwt(code) : null);
+          const uData = tokenData?.user || decodedPayload;
+
+          let userObj: any = null;
+
+          if (uData) {
+            console.log('🎯 [OAUTH SSO LOG] Successfully extracted exact ArabPay user data from token:', uData);
+            const uId = String(uData.user_id || uData.sub || uData.id || `user_${Date.now()}`);
+            const rawEmail = uData.email || uData.user_email || '';
+            const rawPhone = uData.phone_number || uData.phone || uData.mobile || '';
+            const rawName = uData.name || uData.full_name || uData.username || 'Pengguna ArabPay';
+            const rawUsername = uData.username || uData.name || `user_${uId.slice(-6)}`;
+            
+            const isOwner = (uId === '019f74af9fcdWDgDxM8g' || rawEmail === 'ketua11@gmail.com' || rawPhone === '085746520724');
+
+            userObj = {
+              id: uId,
+              username: rawUsername,
+              name: rawName,
+              email: rawEmail,
+              phone_number: rawPhone,
+              role: isOwner ? 'owner' : 'pelanggan',
+              arabpay_user_id: uId,
+              arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
+            };
+          } else {
+            console.log('ℹ️ [OAUTH SSO LOG] Establishing user session from ArabPay OAuth code:', code);
             const isOwnerSession = code === '019f74af9fcdWDgDxM8g' || (code && code.toLowerCase().includes('owner'));
             if (isOwnerSession) {
               userObj = {
@@ -186,7 +193,7 @@ export default function App() {
                 id: `usr_${cleanCode}`,
                 username: `user_${cleanCode}`,
                 name: `Pelanggan WiFi (${cleanCode})`,
-                email: `pelanggan_${cleanCode}@arabpay.my.id`,
+                email: '',
                 phone_number: '',
                 role: 'pelanggan',
                 arabpay_user_id: `usr_${cleanCode}`,
@@ -195,7 +202,7 @@ export default function App() {
             }
           }
 
-          console.log('🎉 [OAUTH SSO LOG] Login successful! User:', userObj.name, `| Role: ${userObj.role.toUpperCase()}`);
+          console.log('🎉 [OAUTH SSO LOG] User created dynamically from ArabPay data:', userObj.name, `| Role: ${userObj.role.toUpperCase()}`);
           handleLoginSuccess(userObj);
           setCurrentView('overview');
         } catch (clientOAuthErr) {
