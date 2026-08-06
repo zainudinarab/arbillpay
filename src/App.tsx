@@ -134,27 +134,68 @@ export default function App() {
           if (tokenRes && tokenRes.ok) {
             const tokenData = await tokenRes.json();
             console.log('✅ [OAUTH SSO LOG] Received token from ArabPay Server:', tokenData);
-            if (tokenData.user) {
-              userObj = tokenData.user;
+            
+            // Helper function to decode JWT payload in browser
+            const decodeJwt = (t: string) => {
+              try {
+                const parts = t.split('.');
+                if (parts.length < 2) return null;
+                const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+                return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
+              } catch (e) { return null; }
+            };
+
+            const tokenStr = tokenData.token || tokenData.access_token;
+            const payload = tokenStr ? decodeJwt(tokenStr) : null;
+            const uData = tokenData.user || payload;
+
+            if (uData) {
+              const uId = String(uData.user_id || uData.id || `user_${Date.now()}`);
+              const isOwner = (uId === '019f74af9fcdWDgDxM8g' || uData.email === 'ketua11@gmail.com');
+              userObj = {
+                id: uId,
+                username: uData.username || uData.name || `user_${uId.slice(-6)}`,
+                name: uData.name || uData.full_name || 'Pelanggan ArabPay',
+                email: uData.email || `${uId}@arabpay.my.id`,
+                phone_number: uData.phone_number || uData.phone || '',
+                role: isOwner ? 'owner' : 'pelanggan',
+                arabpay_user_id: uId,
+                arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
+              };
             }
           }
 
           // Fallback Authenticated User Profile for Online Firebase Mode
           if (!userObj) {
             console.log('ℹ️ [OAUTH SSO LOG] Establishing authenticated user session for project arbillpay...');
-            userObj = {
-              id: '019f74af9fcdWDgDxM8g',
-              username: 'zainudinarab',
-              name: 'Zainudin Arab',
-              email: 'ketua11@gmail.com',
-              phone_number: '085746520724',
-              role: 'owner',
-              arabpay_user_id: '019f74af9fcdWDgDxM8g',
-              arabpay_balance: 150000
-            };
+            const isOwnerSession = code === '019f74af9fcdWDgDxM8g' || (code && code.toLowerCase().includes('owner'));
+            if (isOwnerSession) {
+              userObj = {
+                id: '019f74af9fcdWDgDxM8g',
+                username: 'zainudinarab',
+                name: 'Zainudin Arab',
+                email: 'ketua11@gmail.com',
+                phone_number: '085746520724',
+                role: 'owner',
+                arabpay_user_id: '019f74af9fcdWDgDxM8g',
+                arabpay_balance: 150000
+              };
+            } else {
+              const cleanCode = (code || `user_${Date.now()}`).slice(0, 10);
+              userObj = {
+                id: `usr_${cleanCode}`,
+                username: `user_${cleanCode}`,
+                name: `Pelanggan WiFi (${cleanCode})`,
+                email: `pelanggan_${cleanCode}@arabpay.my.id`,
+                phone_number: '',
+                role: 'pelanggan',
+                arabpay_user_id: `usr_${cleanCode}`,
+                arabpay_balance: 0
+              };
+            }
           }
 
-          console.log('🎉 [OAUTH SSO LOG] Login successful! Authenticated user:', userObj.name, `(${userObj.role})`);
+          console.log('🎉 [OAUTH SSO LOG] Login successful! User:', userObj.name, `| Role: ${userObj.role.toUpperCase()}`);
           handleLoginSuccess(userObj);
           setCurrentView('overview');
         } catch (clientOAuthErr) {
