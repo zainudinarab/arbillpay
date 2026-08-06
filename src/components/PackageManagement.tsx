@@ -27,6 +27,7 @@ import {
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { encodeIso8601, parseIso8601 } from '../utils/iso8601';
+import { getPackagesFromFirestore } from '../services/firebaseService';
 
 export interface PackageItem {
   id: string;
@@ -103,20 +104,35 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const fetchPackages = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/packages`);
-      const data = await parseJsonResponse(res);
+      const apiUrl = (import.meta as any).env?.VITE_API_URL;
+      let fetched = false;
 
-      if (data.success && Array.isArray(data.packages)) {
-        setPackages(data.packages);
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/packages`);
+          const data = await parseJsonResponse(res);
+          if (data.success && Array.isArray(data.packages)) {
+            setPackages(data.packages);
+            fetched = true;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API fetch failed, falling back to direct Firebase Firestore:', apiErr);
+        }
+      }
+
+      if (!fetched) {
+        const fbData = await getPackagesFromFirestore();
+        if (fbData.success && Array.isArray(fbData.packages)) {
+          setPackages(fbData.packages as any);
+        }
       }
     } catch (err: any) {
       console.error('Failed to fetch packages:', err);
-      setToastMsg({ type: 'error', text: err?.message || 'Gagal memuat paket internet.' });
     } finally {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchPackages();

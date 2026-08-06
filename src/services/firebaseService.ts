@@ -185,3 +185,29 @@ export const getSplitterCatalogFromFirestore = async () => {
     return { success: false, splitters: [] };
   }
 };
+
+// --- 5. PACKAGES & VOUCHERS ---
+export const getPackagesFromFirestore = async () => {
+  try {
+    const pkgColl = collection(db, 'packages');
+    const snapshot = await getDocs(pkgColl);
+    const packages = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, packages };
+  } catch (err: any) {
+    console.warn('[FIREBASE FIRESTORE WARN] Could not fetch packages from Firestore:', err);
+    return { success: false, packages: [] };
+  }
+};
+
+export const getVouchersFromFirestore = async () => {
+  try {
+    const vouchColl = collection(db, 'hotspot_vouchers');
+    const snapshot = await getDocs(vouchColl);
+    const vouchers = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, vouchers };
+  } catch (err: any) {
+    console.warn('[FIREBASE FIRESTORE WARN] Could not fetch vouchers from Firestore:', err);
+    return { success: false, vouchers: [] };
+  }
+};
+
