@@ -105,6 +105,7 @@ export default function CustomerPortal({
   // Tabs: 'buy' | 'history' | 'invoices' | 'register_member'
   const [activeTab, setActiveTab] = useState<'buy' | 'history' | 'invoices' | 'register_member'>('buy');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [monthlyPackages, setMonthlyPackages] = useState<any[]>([]);
 
   // Member Registration Modal State
@@ -931,15 +932,19 @@ export default function CustomerPortal({
                   <span className="hidden sm:inline">Top Up</span>
                 </button>
 
-                {/* User Avatar */}
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-full">
+                {/* User Avatar & Profile Button */}
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition cursor-pointer"
+                  title="Klik untuk Lihat Profil Saya"
+                >
                   <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center">
                     <span className="text-[10px] font-bold text-indigo-400">
                       {(currentUser?.name || 'P')[0].toUpperCase()}
                     </span>
                   </div>
                   <span className="text-xs font-medium text-slate-300 hidden sm:inline">{currentUser?.name}</span>
-                </div>
+                </button>
 
                 {/* Logout Button */}
                 <button
@@ -1116,6 +1121,16 @@ export default function CustomerPortal({
             >
               <FileText className="w-4 h-4" />
               <span>Tagihan Bulanan RT/RW Net</span>
+            </button>
+          )}
+
+          {currentUser && (
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              <UserCheck className="w-4 h-4 text-emerald-400" />
+              <span>Profil Saya</span>
             </button>
           )}
         </div>
@@ -2197,6 +2212,108 @@ export default function CustomerPortal({
               <span>Buka Portal ArabPay Top Up</span>
               <ExternalLink size={16} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== PROFIL SAYA MODAL ==================== */}
+      {showProfileModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowProfileModal(false)}></div>
+          <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden text-slate-100 animate-fade-in p-6 space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center font-black text-xl text-indigo-400">
+                  {(currentUser.name || 'P')[0].toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-100 leading-snug">{currentUser.name}</h3>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider ${
+                    currentUser.role === 'owner' 
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                      : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                  }`}>
+                    {currentUser.role === 'owner' ? '👑 Owner / Super Admin' : '👤 Pelanggan WiFi / Member'}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setShowProfileModal(false)} className="p-1.5 hover:bg-slate-800 rounded-xl transition cursor-pointer">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Profile Detail Items */}
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-center justify-between">
+                <span className="text-slate-400 font-semibold">Nomor WhatsApp / HP:</span>
+                <span className="font-bold text-slate-200">{currentUser.phone_number || customerData?.phone_number || 'Belum diisi'}</span>
+              </div>
+
+              <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-center justify-between">
+                <span className="text-slate-400 font-semibold">Email SSO ArabPay:</span>
+                <span className="font-bold text-slate-200">{currentUser.email || 'user@arabpay.my.id'}</span>
+              </div>
+
+              <div className="p-3.5 bg-emerald-950/20 border border-emerald-900/30 rounded-2xl flex items-center justify-between">
+                <span className="text-emerald-300 font-semibold flex items-center gap-1.5">
+                  <Wallet className="w-4 h-4 text-emerald-400" /> Saldo ArabPay:
+                </span>
+                <span className="font-mono text-sm font-black text-emerald-400">
+                  {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                </span>
+              </div>
+
+              {/* Status Pelanggan RT/RW Net */}
+              <div className="pt-2">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Status Langganan Internet</h4>
+                {customerData ? (
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Paket Internet:</span>
+                      <span className="font-bold text-indigo-400">{customerData.package_name || 'Member Hotspot/PPPoE'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Username PPPoE:</span>
+                      <span className="font-mono font-bold text-slate-200">{customerData.pppoe_username || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Status Layanan:</span>
+                      <span className={`font-bold ${customerData.status === 'active' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        {customerData.status === 'active' ? '🟢 AKTIF' : '🟡 MENUNGGU AKTIVASI'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-center space-y-2">
+                    <p className="text-slate-400">Belum terhubung ke data langganan bulanan.</p>
+                    <button
+                      onClick={() => {
+                        setShowProfileModal(false);
+                        setActiveTab('register_member');
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition cursor-pointer"
+                    >
+                      Daftar Langganan Member
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Logout Action */}
+            <div className="pt-2 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowProfileModal(false);
+                  onLogout();
+                }}
+                className="w-full py-3 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <LogOut size={16} />
+                <span>Keluar Akun (Logout)</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
