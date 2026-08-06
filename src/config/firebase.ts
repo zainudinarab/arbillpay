@@ -1,7 +1,7 @@
 // Firebase Configuration & Initialization helper for ArbilBaru (Project: arbillpay)
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 // Environment safe configuration reader (Works in both Vite browser & Node.js scripts)
 const getEnvVar = (key: string, fallback: string): string => {
@@ -30,8 +30,10 @@ export const firebaseConfig = {
 // Singleton Firebase App Initialization
 export const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Cloud Firestore Database Instance
-export const db = getFirestore(firebaseApp);
+// Cloud Firestore Database Instance with robust Long-Polling (Bypasses network & firewall stream blocks)
+export const db = initializeFirestore(firebaseApp, {
+  experimentalForceLongPolling: true
+});
 
 // Analytics Initialization (Browser Safe Check)
 export const initAnalytics = async () => {
