@@ -216,12 +216,16 @@ export const saveUserToFirestore = async (user: any) => {
   try {
     const userId = String(user.id || user.arabpay_user_id || `user_${Date.now()}`);
     const userRef = doc(db, 'users', userId);
+    
+    // EXCLUDE balance & arabpay_balance from Firestore persistence: Saldo disimpan 100% eksklusif di ArabPay!
+    const { balance, arabpay_balance, ...userDataToSave } = user;
+
     await setDoc(userRef, sanitizeForFirestore({
-      ...user,
+      ...userDataToSave,
       id: userId,
       updated_at: new Date().toISOString()
     }), { merge: true });
-    console.log(`✅ [FIREBASE FIRESTORE] User "${user.name || user.username || userId}" successfully saved/updated in Firestore users collection!`);
+    console.log(`✅ [FIREBASE FIRESTORE] User "${user.name || user.username || userId}" saved/updated in Firestore WITHOUT storing balance (Saldo 100% eksklusif di ArabPay)!`);
     return { success: true, id: userId };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save user to Firestore:', err);
