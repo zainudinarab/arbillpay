@@ -908,15 +908,15 @@ export default function CustomerPortal({
           <div className="flex items-center gap-2 sm:gap-3">
             {currentUser ? (
               <>
-                {/* Saldo Badge + Refresh */}
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
-                  <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                {/* Saldo Badge + Refresh (Tampil di HP & Laptop) */}
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-full">
+                  <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span className="text-xs font-bold text-emerald-400">
                     {formatRupiah(currentUser.arabpay_balance ?? 150000)}
                   </span>
                   <button
                     onClick={fetchLiveArabPayBalance}
-                    className="ml-0.5 text-emerald-500/50 hover:text-emerald-400 transition cursor-pointer"
+                    className="ml-0.5 text-emerald-500/60 hover:text-emerald-400 transition cursor-pointer"
                     title="Refresh Saldo ArabPay Live"
                   >
                     <RefreshCw className={`w-3 h-3 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
