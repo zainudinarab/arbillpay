@@ -492,25 +492,78 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch LIVE balance directly from ArabPay API (Server-to-Server)
+  // Fetch LIVE balance directly from ArabPay API (Works in both local backend & online serverless mode)
   const fetchLiveArabPayBalance = async () => {
     if (!currentUser) return;
     setIsRefreshingBalance(true);
     try {
-      const res = await fetch(`${apiUrl}/api/auth/live-balance`, {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/auth/live-balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: currentUser.arabpay_user_id || currentUser.id
+            })
+          });
+          const data = await res.json();
+          if (data.success && data.balance !== null && data.balance !== undefined) {
+            onLoginSuccess({
+              ...currentUser,
+              arabpay_balance: Number(data.balance)
+            });
+            setIsRefreshingBalance(false);
+            return;
+          }
+        } catch (apiErr) { }
+      }
+
+      // Direct Client-Side Live Balance Fetch from ArabPay S2S Server (Signed Request)
+      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const uId = currentUser.arabpay_user_id || currentUser.id || '019f74af9fcdWDgDxM8g';
+      
+      const bodyObj = { user_id: uId };
+      const bodyStr = JSON.stringify(bodyObj);
+
+      // Browser HMAC SHA256 Signature calculation
+      let signature = '';
+      try {
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(clientSecret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(bodyStr + timestamp));
+        signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (cryptoErr) { }
+
+      const directRes = await fetch('https://arabpay.my.id/api/v1/s2s/wallet/balance', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          userId: currentUser.arabpay_user_id || currentUser.id || currentUser.phone_number || currentUser.name
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.balance !== null && data.balance !== undefined) {
-        onLoginSuccess({
-          ...currentUser,
-          arabpay_balance: Number(data.balance)
-        });
+        headers: {
+          'X-Client-ID': clientId,
+          'X-Timestamp': timestamp,
+          'X-Signature': signature,
+          'Content-Type': 'application/json'
+        },
+        body: bodyStr
+      }).catch(() => null);
+
+      if (directRes && directRes.ok) {
+        const directData = await directRes.json();
+        if (directData && (directData.balance !== undefined || directData.arabpay_balance !== undefined)) {
+          const liveBal = Number(directData.balance ?? directData.arabpay_balance);
+          console.log('✅ [ARABPAY LIVE BALANCE] Successfully fetched live balance from ArabPay Server:', liveBal);
+          onLoginSuccess({
+            ...currentUser,
+            arabpay_balance: liveBal
+          });
+        }
       }
     } catch (err) {
       console.warn('Failed to fetch live ArabPay balance:', err);
