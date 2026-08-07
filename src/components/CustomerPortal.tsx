@@ -987,52 +987,55 @@ export default function CustomerPortal({
             <button onClick={() => setToastMsg(null)} className="text-xs font-bold underline cursor-pointer">Tutup</button>
           </div>
         )}
-        {/* ==================== CARD SALDO ARABPAY (SEPARATE DEDICATED CARD) ==================== */}
+        {/* ==================== CARD SALDO ARABPAY (RESPONSIVE ULTRA-MODERN FINTECH CARD) ==================== */}
         {currentUser && (
-          <div className="relative overflow-hidden p-6 sm:p-7 rounded-3xl bg-gradient-to-r from-emerald-950/90 via-slate-900 to-slate-900 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
-            {/* Background Ambient Glow Effects */}
-            <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/70 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
+            {/* Ambient Lighting & Pattern Overlay */}
+            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
 
-            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
-              {/* Left Side: Wallet Info & Big Balance */}
+            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+              {/* Left Side: Wallet Chip Header & Big Balance */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center justify-between sm:justify-start gap-2">
                   <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
                     <Wallet className="w-3.5 h-3.5 text-emerald-400" />
                     <span>SALDO ARABPAY WALLET</span>
                   </div>
-                  <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                  <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span>Live SSE Auto-Sync</span>
+                    <span>SSE Synced</span>
                   </div>
                 </div>
 
-                <div className="flex items-baseline gap-3">
-                  <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
                     {formatRupiah(currentUser.arabpay_balance ?? 150000)}
                   </span>
                   <button
                     onClick={fetchLiveArabPayBalance}
-                    className="p-1.5 bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-800/50 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer"
+                    className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
                     title="Refresh Saldo Live"
                   >
                     <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
 
-                <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                  <span>Akun Terhubung:</span>
+                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                  <span className="text-slate-500">Pemilik Akun:</span>
                   <span className="font-bold text-slate-200">{currentUser.name}</span>
-                  <span className="text-slate-500">({currentUser.phone_number || currentUser.email || 'Aktif'})</span>
-                </p>
+                  <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
+                    {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
+                  </span>
+                </div>
               </div>
 
-              {/* Right Side: Quick Action Buttons */}
-              <div className="flex items-center gap-3 flex-wrap">
+              {/* Right Side: Action Buttons Grid (Super Compact & Touch-Friendly on HP) */}
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
                 <button
                   onClick={() => setShowTopupModal(true)}
-                  className="flex-1 sm:flex-none px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="col-span-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-xs rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Top Up Saldo</span>
@@ -1040,7 +1043,7 @@ export default function CustomerPortal({
 
                 <button
                   onClick={() => setShowProfileModal(true)}
-                  className="flex-1 sm:flex-none px-5 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="col-span-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs sm:text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   <UserCheck className="w-4 h-4 text-emerald-400" />
                   <span>Profil Saya</span>
@@ -1118,11 +1121,11 @@ export default function CustomerPortal({
           );
         })()}
 
-        {/* ==================== NAVIGATION TABS (Persis arbiljs) ==================== */}
-        <div className="flex items-center justify-center gap-3 flex-wrap">
+        {/* ==================== NAVIGATION TABS (RESPONSIVE SCROLLBAR / GRID) ==================== */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
           <button
             onClick={() => setActiveTab('buy')}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'buy'
+            className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'buy'
                 ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
               }`}
@@ -1136,19 +1139,19 @@ export default function CustomerPortal({
               setActiveTab('register_member');
               fetchMonthlyMemberPackages();
             }}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'register_member'
+            className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'register_member'
                 ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-500/20'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
               }`}
           >
             <Zap className="w-4 h-4 text-amber-400" />
-            <span>Daftar Member Bulanan</span>
+            <span>Daftar Member</span>
           </button>
 
           {currentUser && (
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'history'
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'history'
                   ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
                   : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
@@ -1161,20 +1164,20 @@ export default function CustomerPortal({
           {currentUser && (
             <button
               onClick={() => setActiveTab('invoices')}
-              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer ${activeTab === 'invoices'
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'invoices'
                   ? 'bg-sky-600 border-sky-500 text-white shadow-lg shadow-sky-500/20'
                   : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                 }`}
             >
               <FileText className="w-4 h-4" />
-              <span>Tagihan Bulanan RT/RW Net</span>
+              <span>Tagihan Bulanan</span>
             </button>
           )}
 
           {currentUser && (
             <button
               onClick={() => setShowProfileModal(true)}
-              className="px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border cursor-pointer bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
+              className="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
             >
               <UserCheck className="w-4 h-4 text-emerald-400" />
               <span>Profil Saya</span>
