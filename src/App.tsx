@@ -117,11 +117,54 @@ export default function App() {
           }
         }
 
-        // Direct Client-Side / Firebase Serverless OAuth Fallback when running online hosting!
+        // Direct Client-Side / Firebase Serverless OAuth Exchange with ArabPay Server!
         try {
           console.log('⚡ [OAUTH SSO LOG] Running Direct Client-Side OAuth Exchange with ArabPay Server...');
           const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+          const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+          const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
           
+          const bodyObj = { code: code || '' };
+          const bodyStr = JSON.stringify(bodyObj);
+          
+          // Browser HMAC-SHA256 signature calculation using Web Crypto API
+          let signature = '';
+          try {
+            const enc = new TextEncoder();
+            const key = await crypto.subtle.importKey(
+              'raw',
+              enc.encode(clientSecret),
+              { name: 'HMAC', hash: 'SHA-256' },
+              false,
+              ['sign']
+            );
+            const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(bodyStr + timestamp));
+            signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+          } catch (cryptoErr) {
+            console.warn('⚠️ [OAUTH SSO LOG] Web Crypto signature calculation warning:', cryptoErr);
+          }
+
+          console.log('🔑 [OAUTH SSO LOG] Sending signed OAuth request to ArabPay. ClientID:', clientId);
+
+          const tokenRes = await fetch('https://arabpay.my.id/api/v1/s2s/oauth/token', {
+            method: 'POST',
+            headers: {
+              'X-Client-ID': clientId,
+              'X-Timestamp': timestamp,
+              'X-Signature': signature,
+              'Content-Type': 'application/json'
+            },
+            body: bodyStr
+          }).catch(() => null);
+
+          let tokenData: any = null;
+          if (tokenRes && tokenRes.ok) {
+            tokenData = await tokenRes.json();
+            console.log('✅ [OAUTH SSO LOG] Received token response from ArabPay Server:', tokenData);
+          } else if (tokenRes) {
+            console.warn('⚠️ [OAUTH SSO LOG] ArabPay Token endpoint response status:', tokenRes.status);
+          }
+
           // Helper function to decode JWT payload in browser
           const decodeJwt = (t: string) => {
             try {
@@ -131,21 +174,6 @@ export default function App() {
               return JSON.parse(decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
             } catch (e) { return null; }
           };
-
-          const tokenRes = await fetch('https://arabpay.my.id/api/v1/s2s/oauth/token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Client-ID': clientId
-            },
-            body: JSON.stringify({ code: code || 'arabpay_authorized_code' })
-          }).catch(() => null);
-
-          let tokenData: any = null;
-          if (tokenRes && tokenRes.ok) {
-            tokenData = await tokenRes.json();
-            console.log('✅ [OAUTH SSO LOG] Received token from ArabPay Server:', tokenData);
-          }
 
           const rawToken = tokenData?.token || tokenData?.access_token || (code && code.includes('.') ? code : null);
           const decodedPayload = rawToken ? decodeJwt(rawToken) : (code ? decodeJwt(code) : null);
