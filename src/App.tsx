@@ -121,7 +121,7 @@ export default function App() {
         try {
           console.log('⚡ [OAUTH SSO LOG] Running Direct Client-Side OAuth Exchange with ArabPay Server...');
           const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-          const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+          const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
           const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
           
           const bodyObj = { code: code || '' };
@@ -179,6 +179,22 @@ export default function App() {
           const decodedPayload = rawToken ? decodeJwt(rawToken) : (code ? decodeJwt(code) : null);
           const uData = tokenData?.user || decodedPayload;
 
+          // Fetch live balance via Bearer token if rawToken exists
+          let liveBalFromToken: number | null = null;
+          if (rawToken) {
+            try {
+              const bRes = await fetch('https://arabpay.my.id/api/v1/wallet/balance', {
+                headers: { 'Authorization': `Bearer ${rawToken}` }
+              }).catch(() => null);
+              if (bRes && bRes.ok) {
+                const bData = await bRes.json();
+                if (bData) {
+                  liveBalFromToken = Number(bData.balance ?? bData.saldo ?? bData.wallet_balance ?? bData.data?.balance ?? bData.data?.saldo);
+                }
+              }
+            } catch (e) {}
+          }
+
           let userObj: any = null;
 
           if (uData) {
@@ -191,6 +207,23 @@ export default function App() {
 
             const isOwner = (uId === '019f74af9fcdWDgDxM8g' || rawEmail === 'ketua11@gmail.com' || rawPhone === '085746520724');
 
+            const parsedBalance = Number(
+              liveBalFromToken ??
+              uData.balance ??
+              uData.arabpay_balance ??
+              uData.wallet_balance ??
+              uData.saldo ??
+              uData.wallet?.balance ??
+              uData.data?.balance ??
+              uData.data?.saldo ??
+              0
+            );
+
+            if (rawToken) {
+              localStorage.setItem('arabpay_token', rawToken);
+              console.log('💾 [OAUTH SSO LOG] ArabPay JWT Token successfully saved to localStorage!');
+            }
+
             // Strict Validation Rule: User MUST have Name AND (Phone Number OR Email)
             if (isOwner || (rawName && (rawPhone || rawEmail))) {
               userObj = {
@@ -201,7 +234,9 @@ export default function App() {
                 phone_number: rawPhone,
                 role: isOwner ? 'owner' : 'pelanggan',
                 arabpay_user_id: uId || `usr_${Date.now()}`,
-                arabpay_balance: Number(uData.balance || uData.arabpay_balance || 0)
+                arabpay_balance: parsedBalance,
+                token_jwt: rawToken || '',
+                token: rawToken || ''
               };
             } else {
               console.warn('❌ [OAUTH SSO REJECT] Incomplete ArabPay user profile. Missing Name/Phone/Email:', uData);

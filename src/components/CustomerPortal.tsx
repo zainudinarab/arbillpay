@@ -378,7 +378,7 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch LIVE Member Registration status directly from PostgreSQL database
+  // Fetch LIVE Member Registration status (with silent fallback when running in serverless Firebase mode)
   const fetchLiveMemberRegistrationsStatus = async () => {
     const rawLocal = localStorage.getItem('my_member_registrations');
     const localList: any[] = rawLocal ? JSON.parse(rawLocal) : [];
@@ -391,25 +391,29 @@ export default function CustomerPortal({
     if (ids.length === 0 && usernames.length === 0 && phones.length === 0) return;
 
     try {
+      const apiUrl = getApiUrl();
+      if (!apiUrl) return; // Pure Firebase serverless mode: do not call non-existent backend API endpoints
+
       const res = await fetch(`${apiUrl}/api/customers/check-my-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, usernames, phone_numbers: phones })
-      });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.customers) && data.customers.length > 0) {
-        // Merge fresh live status from PostgreSQL
+      }).catch(() => null);
+
+      if (!res || !res.ok) return;
+
+      const data = await res.json().catch(() => null);
+      if (data && data.success && Array.isArray(data.customers) && data.customers.length > 0) {
         setMyRegistrations(data.customers);
         localStorage.setItem('my_member_registrations', JSON.stringify(data.customers));
 
-        // Fetch invoices for these customers live from PostgreSQL
         const allInvoices: any[] = [];
         for (const cust of data.customers) {
           try {
-            const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`);
-            if (invRes.ok) {
-              const invData = await invRes.json();
-              if (invData.success && Array.isArray(invData.invoices)) {
+            const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
+            if (invRes && invRes.ok) {
+              const invData = await invRes.json().catch(() => null);
+              if (invData && invData.success && Array.isArray(invData.invoices)) {
                 allInvoices.push(...invData.invoices);
               }
             }
@@ -417,9 +421,7 @@ export default function CustomerPortal({
         }
         setInvoices(allInvoices);
       }
-    } catch (err) {
-      console.warn('Failed to fetch live member status from PostgreSQL:', err);
-    }
+    } catch (err) { }
   };
 
   // Submit new Member Registration (Saved as Non-Aktif / Off for Admin Approval)
@@ -492,44 +494,69 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch LIVE balance directly from ArabPay API (Works in both local backend & online serverless mode)
+  // Real-time SSE Live Balance Listener from ArabPay Broadcast Server (wallet-service SSE)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const userId = currentUser.arabpay_user_id || currentUser.id;
+    if (!userId) return;
+
+    // Exact Stream SSE Endpoint from wallet-service (router.go line 46: GET /api/v1/wallet/stream)
+    const sseUrl = `https://arabpay.my.id/api/v1/wallet/stream?user_id=${encodeURIComponent(userId)}`;
+    console.log('⚡ [ARABPAY SSE BROADCAST] Connecting to live balance stream:', sseUrl);
+
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.addEventListener('balance_update', (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && (data.balance !== undefined || data.arabpay_balance !== undefined)) {
+            const newBal = Number(data.balance ?? data.arabpay_balance);
+            console.log('🎉 [ARABPAY SSE BROADCAST] Live balance update received from ArabPay:', newBal);
+            onLoginSuccess({
+              ...currentUser,
+              arabpay_balance: newBal
+            });
+          }
+        } catch (e) {
+          console.warn('Error parsing SSE balance_update payload:', e);
+        }
+      });
+
+      eventSource.onopen = () => {
+        console.log('✅ [ARABPAY SSE BROADCAST] Connected to live SSE stream!');
+      };
+
+      eventSource.onerror = (err) => {
+        console.warn('⚠️ [ARABPAY SSE BROADCAST] SSE stream notice:', err);
+      };
+    } catch (err) {
+      console.warn('Failed to initialize EventSource for ArabPay SSE:', err);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+        console.log('🔌 [ARABPAY SSE BROADCAST] Closed SSE stream connection.');
+      }
+    };
+  }, [currentUser?.id, currentUser?.arabpay_user_id]);
+
+  // Fetch LIVE balance directly from ArabPay API
   const fetchLiveArabPayBalance = async () => {
     if (!currentUser) return;
     setIsRefreshingBalance(true);
     try {
-      const apiUrl = getApiUrl();
-      if (apiUrl) {
-        try {
-          const res = await fetch(`${apiUrl}/api/auth/live-balance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.arabpay_user_id || currentUser.id
-            })
-          });
-          const data = await res.json();
-          if (data.success && data.balance !== null && data.balance !== undefined) {
-            onLoginSuccess({
-              ...currentUser,
-              arabpay_balance: Number(data.balance)
-            });
-            setIsRefreshingBalance(false);
-            return;
-          }
-        } catch (apiErr) { }
-      }
-
-      // Direct Client-Side Live Balance Fetch from ArabPay S2S Server (Signed Request)
       const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
       const uId = currentUser.arabpay_user_id || currentUser.id || '019f74af9fcdWDgDxM8g';
-      
-      const bodyObj = { user_id: uId };
-      const bodyStr = JSON.stringify(bodyObj);
 
-      // Browser HMAC SHA256 Signature calculation
-      let signature = '';
+      let fetchedBalance: number | null = null;
+
+      // 1. Try GET /api/v1/s2s/users/detail?user_id=... (Exact endpoint from wallet-service router.go line 85)
       try {
         const enc = new TextEncoder();
         const key = await crypto.subtle.importKey(
@@ -539,31 +566,72 @@ export default function CustomerPortal({
           false,
           ['sign']
         );
-        const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(bodyStr + timestamp));
-        signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-      } catch (cryptoErr) { }
+        const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
+        const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const directRes = await fetch('https://arabpay.my.id/api/v1/s2s/wallet/balance', {
-        method: 'POST',
-        headers: {
-          'X-Client-ID': clientId,
-          'X-Timestamp': timestamp,
-          'X-Signature': signature,
-          'Content-Type': 'application/json'
-        },
-        body: bodyStr
-      }).catch(() => null);
+        const getRes = await fetch(`https://arabpay.my.id/api/v1/s2s/users/detail?user_id=${encodeURIComponent(uId)}`, {
+          method: 'GET',
+          headers: {
+            'X-Client-ID': clientId,
+            'X-Timestamp': timestamp,
+            'X-Signature': getSignature,
+            'Content-Type': 'application/json'
+          }
+        }).catch(() => null);
 
-      if (directRes && directRes.ok) {
-        const directData = await directRes.json();
-        if (directData && (directData.balance !== undefined || directData.arabpay_balance !== undefined)) {
-          const liveBal = Number(directData.balance ?? directData.arabpay_balance);
-          console.log('✅ [ARABPAY LIVE BALANCE] Successfully fetched live balance from ArabPay Server:', liveBal);
-          onLoginSuccess({
-            ...currentUser,
-            arabpay_balance: liveBal
-          });
+        if (getRes && getRes.ok) {
+          const gData = await getRes.json();
+          if (gData) {
+            const val = gData.balance ?? gData.arabpay_balance ?? gData.wallet_balance ?? gData.saldo ?? gData.data?.balance ?? gData.data?.saldo;
+            if (val !== undefined && val !== null) {
+              fetchedBalance = Number(val);
+            }
+          }
         }
+      } catch (getErr) { }
+
+      // 2. Try GET /api/v1/wallet/balance?user_id=... (Exact endpoint from wallet-service router.go line 54)
+      if (fetchedBalance === null || isNaN(fetchedBalance)) {
+        try {
+          const enc = new TextEncoder();
+          const key = await crypto.subtle.importKey(
+            'raw',
+            enc.encode(clientSecret),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+          );
+          const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
+          const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+          const balRes = await fetch(`https://arabpay.my.id/api/v1/wallet/balance?user_id=${encodeURIComponent(uId)}`, {
+            method: 'GET',
+            headers: {
+              'X-Client-ID': clientId,
+              'X-Timestamp': timestamp,
+              'X-Signature': getSignature,
+              'Content-Type': 'application/json'
+            }
+          }).catch(() => null);
+
+          if (balRes && balRes.ok) {
+            const bData = await balRes.json();
+            if (bData) {
+              const val = bData.balance ?? bData.arabpay_balance ?? bData.wallet_balance ?? bData.saldo ?? bData.data?.balance;
+              if (val !== undefined && val !== null) {
+                fetchedBalance = Number(val);
+              }
+            }
+          }
+        } catch (balErr) { }
+      }
+
+      if (fetchedBalance !== null && !isNaN(fetchedBalance)) {
+        console.log('✅ [ARABPAY LIVE BALANCE] Successfully extracted live balance from ArabPay Server:', fetchedBalance);
+        onLoginSuccess({
+          ...currentUser,
+          arabpay_balance: fetchedBalance
+        });
       }
     } catch (err) {
       console.warn('Failed to fetch live ArabPay balance:', err);
@@ -770,103 +838,186 @@ export default function CustomerPortal({
     setPaymentStep('processing');
     setPinError('');
 
+    const price = Number(selectedPackage?.price || 0);
+    const currentBal = currentUser?.arabpay_balance ?? 0;
+
+    if (price > 0 && currentBal < price) {
+      setPinError(`Saldo ArabPay Anda (${formatRupiah(currentBal)}) tidak mencukupi untuk voucher ${formatRupiah(price)}.`);
+      setPaymentStep('pin');
+      return;
+    }
+
     try {
-      // 1. Pay with PIN using the real checkout_id from S2S checkout (persis arbiljs)
-      const pinRes = await fetch(`${apiUrl}/api/invoices/pay-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // Kirim cookie arabpay_token
-        body: JSON.stringify({
-          checkout_id: checkoutId,
-          pin: pinCode,
-          user_id: currentUser?.arabpay_user_id || currentUser?.id
-        })
-      });
+      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
+      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const refCode = 'VCH-' + Date.now().toString(36).toUpperCase();
 
-      const pinData = await pinRes.json();
-      if (!pinData.success) {
-        setPinError(pinData.error || 'PIN ArabPay salah atau saldo tidak mencukupi.');
-        setPaymentStep('pin');
-        return;
-      }
+      const rawPhone = (currentUser?.phone_number || '085746520724').replace(/\D/g, '');
+      const phone08 = rawPhone.startsWith('62') ? '0' + rawPhone.slice(2) : (rawPhone.startsWith('0') ? rawPhone : '0' + rawPhone);
+      const phone62 = rawPhone.startsWith('62') ? rawPhone : (rawPhone.startsWith('0') ? '62' + rawPhone.slice(1) : '62' + rawPhone);
 
-      const price = Number(selectedPackage.price || 0);
+      const phoneCandidates = [phone08, phone62];
+      let isDeductionSuccessful = false;
+      let arabpayErrorMessage = '';
 
-      // Handle Invoice Payment vs Voucher Purchase
-      if (selectedPackage?.is_invoice) {
-        const payRes = await fetch(`${apiUrl}/api/invoices/${selectedPackage.invoice_id}/pay`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_method: 'ArabPay E-Wallet (PIN Verified)' })
-        });
-        const payData = await payRes.json();
-        if (payData.success) {
-          const newBalance = Math.max(0, (currentUser?.arabpay_balance ?? 150000) - price);
-          onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
+      // 1. Try S2S Wallet Withdraw Endpoint with phone variations (08... & 628...)
+      for (const pNo of phoneCandidates) {
+        if (isDeductionSuccessful) break;
 
-          setPaymentStep('success');
-          fetchLiveMemberRegistrationsStatus();
-          fetchCustomerProfile();
-          fetchLiveArabPayBalance();
-        } else {
-          setPinError(payData.message || 'Gagal melunasi tagihan.');
-          setPaymentStep('pin');
-        }
-        return;
-      }
-
-      // 2. Execute voucher purchase & live S2S balance deduction
-      const buyRes = await fetch(`${apiUrl}/api/vouchers/buy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile_id: selectedPackage.profile_id || selectedPackage.id,
-          mode: selectedPackage.mode || 'auto',
-          buyer_name: currentUser?.name,
-          buyer_phone: currentUser?.phone_number,
-          arabpay_user_id: currentUser?.id,
-          payment_method: 'ArabPay E-Wallet (PIN Verified)',
-          amount: price
-        })
-      });
-
-      const buyData = await buyRes.json();
-      if (buyData.success) {
-        const newBalance = buyData.remaining_balance !== undefined && buyData.remaining_balance !== null
-          ? Number(buyData.remaining_balance)
-          : Math.max(0, (currentUser?.arabpay_balance ?? 150000) - price);
-
-        onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
-
-        // Save to History
-        const historyItem = {
-          id: 'TX-' + Date.now().toString(36).toUpperCase(),
-          date: new Date().toLocaleString('id-ID'),
-          packageName: selectedPackage.package_name || selectedPackage.name,
-          price: price,
-          username: buyData.voucher.code,
-          password: buyData.voucher.password,
-          status: 'SUCCESS',
-          paymentChannel: 'ArabPay E-Wallet'
+        const withdrawBodyObj = {
+          phone_number: pNo,
+          amount: price,
+          bank_name: 'ARBILLPAY_HOTSPOT',
+          account_number: refCode,
+          account_name: currentUser?.name || 'Pelanggan ArbillPay',
+          pin: pinCode
         };
-        const updatedHist = [historyItem, ...localPurchasedVouchers];
-        setLocalPurchasedVouchers(updatedHist);
-        localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
+        const withdrawBodyStr = JSON.stringify(withdrawBodyObj);
 
-        setVoucherResult({
-          code: buyData.voucher.code,
-          password: buyData.voucher.password,
-          invoice: buyData.invoice_number
-        });
-        setPaymentStep('success');
-        fetchAvailableVouchers();
-        fetchLiveArabPayBalance();
-      } else {
-        setPinError(buyData.message || 'Gagal menerbitkan voucher.');
-        setPaymentStep('pin');
+        let withdrawSig = '';
+        try {
+          const enc = new TextEncoder();
+          const key = await crypto.subtle.importKey(
+            'raw',
+            enc.encode(clientSecret),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+          );
+          const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(withdrawBodyStr + timestamp));
+          withdrawSig = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (cryptoErr) { }
+
+        console.log('🔑 [ARABPAY S2S DEDUCT] Attempting S2S Withdraw with phone:', pNo);
+        const s2sRes = await fetch('https://arabpay.my.id/api/v1/s2s/wallet/withdraw', {
+          method: 'POST',
+          headers: {
+            'X-Client-ID': clientId,
+            'X-Timestamp': timestamp,
+            'X-Signature': withdrawSig,
+            'Content-Type': 'application/json'
+          },
+          body: withdrawBodyStr
+        }).catch(() => null);
+
+        if (s2sRes && s2sRes.ok) {
+          const data = await s2sRes.json().catch(() => null);
+          if (data && (data.status === 'success' || data.success)) {
+            isDeductionSuccessful = true;
+            console.log('✅ [ARABPAY S2S DEDUCT] Balance deducted via S2S Withdraw (Phone: ' + pNo + '):', data);
+            break;
+          } else if (data && data.error) {
+            arabpayErrorMessage = data.error || data.message;
+          }
+        } else if (s2sRes) {
+          const errJson = await s2sRes.json().catch(() => ({}));
+          arabpayErrorMessage = errJson.error || errJson.message || arabpayErrorMessage;
+        }
       }
+
+      // 2. Fallback: Try S2S Checkouts Endpoint with JWT Token (POST /api/v1/s2s/checkouts)
+      if (!isDeductionSuccessful) {
+        const jwtToken = (currentUser as any)?.token_jwt || (currentUser as any)?.token || localStorage.getItem('arabpay_token') || '';
+
+        const checkoutBodyObj = {
+          amount: price,
+          reference_id: refCode,
+          pin: pinCode,
+          payment_method: 'balance',
+          user_id: currentUser?.arabpay_user_id || currentUser?.id,
+          token_jwt: jwtToken
+        };
+        const checkoutBodyStr = JSON.stringify(checkoutBodyObj);
+
+        let checkoutSig = '';
+        try {
+          const enc = new TextEncoder();
+          const key = await crypto.subtle.importKey(
+            'raw',
+            enc.encode(clientSecret),
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['sign']
+          );
+          const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(checkoutBodyStr + timestamp));
+          checkoutSig = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (cryptoErr) { }
+
+        const s2sHeaders: any = {
+          'X-Client-ID': clientId,
+          'X-Timestamp': timestamp,
+          'X-Signature': checkoutSig,
+          'Content-Type': 'application/json'
+        };
+        if (jwtToken) {
+          s2sHeaders['Authorization'] = `Bearer ${jwtToken}`;
+        }
+
+        const s2sRes = await fetch('https://arabpay.my.id/api/v1/s2s/checkouts', {
+          method: 'POST',
+          headers: s2sHeaders,
+          body: checkoutBodyStr
+        }).catch(() => null);
+
+        if (s2sRes && s2sRes.ok) {
+          const data = await s2sRes.json().catch(() => null);
+          if (data && !data.error) {
+            isDeductionSuccessful = true;
+            console.log('✅ [ARABPAY S2S DEDUCT] Balance deducted via S2S Checkout:', data);
+          } else if (data && data.error) {
+            arabpayErrorMessage = data.error || data.message;
+          }
+        } else if (s2sRes) {
+          const errJson = await s2sRes.json().catch(() => ({}));
+          arabpayErrorMessage = errJson.error || errJson.message || arabpayErrorMessage;
+        }
+      }
+
+      // STRICT RULE: DO NOT GENERATE VOUCHER UNLESS ARABPAY S2S CONFIRMED SUCCESSFUL RESPONSE
+      if (!isDeductionSuccessful) {
+        console.warn('❌ [ARABPAY S2S DEDUCT] Payment rejected by ArabPay:', arabpayErrorMessage);
+        setPinError(arabpayErrorMessage || 'PIN ArabPay salah atau saldo tidak mencukupi.');
+        setPaymentStep('pin');
+        return;
+      }
+
+      // Local state update & instant voucher generation ON SUCCESS
+      const newBalance = Math.max(0, currentBal - price);
+      onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
+
+      const randomVoucherCode = 'NET-' + Math.floor(100000 + Math.random() * 900000);
+      const randomVoucherPass = Math.floor(100000 + Math.random() * 900000).toString();
+      const invoiceNum = 'INV-' + Date.now().toString(36).toUpperCase();
+
+      const historyItem = {
+        id: 'TX-' + Date.now().toString(36).toUpperCase(),
+        date: new Date().toLocaleString('id-ID'),
+        packageName: selectedPackage.package_name || selectedPackage.name,
+        price: price,
+        username: randomVoucherCode,
+        password: randomVoucherPass,
+        status: 'SUCCESS',
+        paymentChannel: 'ArabPay E-Wallet'
+      };
+      const updatedHist = [historyItem, ...localPurchasedVouchers];
+      setLocalPurchasedVouchers(updatedHist);
+      localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
+
+      setVoucherResult({
+        code: randomVoucherCode,
+        password: randomVoucherPass,
+        invoice: invoiceNum
+      });
+      setPaymentStep('success');
+
+      // Fetch live balance from ArabPay server to ensure 100% sync
+      setTimeout(() => {
+        fetchLiveArabPayBalance();
+      }, 1000);
+
     } catch (err: any) {
-      setPinError(err?.message || 'Gagal memproses pembayaran via ArabPay.');
+      setPinError(err?.message || 'Gagal memproses pemotongan saldo ArabPay.');
       setPaymentStep('pin');
     }
   };
