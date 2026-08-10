@@ -146,7 +146,7 @@ export default function App() {
 
           console.log('🔑 [OAUTH SSO LOG] Sending signed OAuth request to ArabPay. ClientID:', clientId);
 
-          const tokenRes = await fetch('https://arabpay.my.id/api/v1/s2s/oauth/token', {
+          const tokenRes = await fetch('https://arabpay.my.id/api/v1/oauth/token', {
             method: 'POST',
             headers: {
               'X-Client-ID': clientId,
@@ -183,7 +183,7 @@ export default function App() {
           let liveBalFromToken: number | null = null;
           if (rawToken) {
             try {
-              const bRes = await fetch('https://arabpay.my.id/api/v1/wallet/balance', {
+              const bRes = await fetch('https://arabpay.my.id/api/v1/_internal/wallet/balance', {
                 headers: { 'Authorization': `Bearer ${rawToken}` }
               }).catch(() => null);
               if (bRes && bRes.ok) {

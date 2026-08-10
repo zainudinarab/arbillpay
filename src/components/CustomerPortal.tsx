@@ -569,7 +569,7 @@ export default function CustomerPortal({
         const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
         const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-        const getRes = await fetch(`https://arabpay.my.id/api/v1/s2s/users/detail?user_id=${encodeURIComponent(uId)}`, {
+        const getRes = await fetch(`https://arabpay.my.id/api/v1/users/detail?user_id=${encodeURIComponent(uId)}`, {
           method: 'GET',
           headers: {
             'X-Client-ID': clientId,
@@ -890,7 +890,7 @@ export default function CustomerPortal({
         } catch (cryptoErr) { }
 
         console.log('🔑 [ARABPAY S2S DEDUCT] Attempting S2S Withdraw with phone:', pNo);
-        const s2sRes = await fetch('https://arabpay.my.id/api/v1/s2s/wallet/withdraw', {
+        const s2sRes = await fetch('https://arabpay.my.id/api/v1/checkouts/direct-pay', {
           method: 'POST',
           headers: {
             'X-Client-ID': clientId,
@@ -916,7 +916,7 @@ export default function CustomerPortal({
         }
       }
 
-      // 2. Fallback: Try S2S Checkouts Endpoint with JWT Token (POST /api/v1/s2s/checkouts)
+      // 2. Fallback: Try S2S Checkouts Endpoint with JWT Token (POST /api/v1/checkouts)
       if (!isDeductionSuccessful) {
         const jwtToken = (currentUser as any)?.token_jwt || (currentUser as any)?.token || localStorage.getItem('arabpay_token') || '';
 
@@ -954,7 +954,7 @@ export default function CustomerPortal({
           s2sHeaders['Authorization'] = `Bearer ${jwtToken}`;
         }
 
-        const s2sRes = await fetch('https://arabpay.my.id/api/v1/s2s/checkouts', {
+        const s2sRes = await fetch('https://arabpay.my.id/api/v1/checkouts', {
           method: 'POST',
           headers: s2sHeaders,
           body: checkoutBodyStr

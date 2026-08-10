@@ -41,7 +41,7 @@ export async function exchangeArabPayOAuthToken(code: string) {
   let jwtPayload: any = null;
 
   try {
-    const tokenRes = await fetch(`${arabpayBaseUrl}/api/v1/s2s/oauth/token`, {
+    const tokenRes = await fetch(`${arabpayBaseUrl}/api/v1/oauth/token`, {
       method: 'POST',
       headers,
       body: bodyStr
@@ -53,7 +53,7 @@ export async function exchangeArabPayOAuthToken(code: string) {
       if (jwtToken) {
         jwtPayload = decodeJwtPayload(jwtToken);
         
-        const balanceRes = await fetch(`${arabpayBaseUrl}/api/v1/wallet/balance`, {
+        const balanceRes = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/balance`, {
           headers: {
             ...generateArabPayHeaders(''),
             'Authorization': `Bearer ${jwtToken}`
@@ -94,7 +94,7 @@ export async function createArabPayPaymentOrder(params: {
   const headers = generateArabPayHeaders(bodyStr);
 
   try {
-    const res = await fetch(`${arabpayBaseUrl}/api/v1/payment/create`, {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts`, {
       method: 'POST',
       headers,
       body: bodyStr
@@ -117,7 +117,7 @@ export async function createArabPayPaymentOrder(params: {
     console.warn('ArabPay Create Payment Order Warning:', apiErr);
   }
 
-// Direct Checkout Link Fallback
+  // Direct Checkout Link Fallback
   const checkoutUrl = `${arabpayBaseUrl}/pay?id=${params.invoiceId}&amount=${params.amount}&inv=${params.invoiceNumber}`;
   return {
     success: true,
@@ -136,7 +136,7 @@ export async function fetchLiveArabPayBalance(tokenOrUserId: string) {
 
   try {
     // 1. Try with Bearer token header if token is provided
-    let res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/balance`, {
+    let res = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/balance`, {
       headers: {
         ...headers,
         'Authorization': `Bearer ${tokenOrUserId}`
@@ -149,7 +149,7 @@ export async function fetchLiveArabPayBalance(tokenOrUserId: string) {
     }
 
     // 2. Try S2S endpoint with user_id parameter
-    res = await fetch(`${arabpayBaseUrl}/api/v1/s2s/wallet/balance?user_id=${encodeURIComponent(tokenOrUserId)}`, {
+    res = await fetch(`${arabpayBaseUrl}/api/v1/users/detail?user_id=${encodeURIComponent(tokenOrUserId)}`, {
       headers
     });
 
@@ -190,7 +190,7 @@ export async function deductArabPayBalance(params: {
   }
 
   try {
-    const res = await fetch(`${arabpayBaseUrl}/api/v1/s2s/wallet/deduct`, {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts/direct-pay`, {
       method: 'POST',
       headers,
       body: bodyStr
@@ -212,8 +212,6 @@ export async function deductArabPayBalance(params: {
     }
   } catch (err: any) {
     console.warn('[ArabPay S2S Deduct API Warning]:', err.message);
-    // Return success in local offline mode with warning if network to ArabPay S2S API is down
-    // Return success in local offline mode with warning if network to ArabPay S2S API is down
     return {
       success: true,
       message: 'Pembayaran ArabPay diproses secara lokal (ArabPay S2S API Offline).',
@@ -248,7 +246,7 @@ export async function createS2SCheckout(params: {
   const headers = generateArabPayHeaders(bodyStr);
 
   try {
-    const res = await fetch(`${arabpayBaseUrl}/api/v1/s2s/checkouts`, {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts`, {
       method: 'POST',
       headers,
       body: bodyStr
@@ -327,7 +325,6 @@ export async function payCheckoutWithPin(params: {
     }
   } catch (err: any) {
     console.warn('[ArabPay Pay PIN Warning]:', err.message);
-    // Fallback lokal jika ArabPay tidak bisa dihubungi
     if (params.pin && params.pin.length === 6) {
       return {
         success: true,
@@ -351,7 +348,7 @@ export async function checkCheckoutStatus(checkoutIdOrRef: string) {
   const headers = generateArabPayHeaders('');
 
   try {
-    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkout/status/${encodeURIComponent(checkoutIdOrRef)}`, {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts/status?id=${encodeURIComponent(checkoutIdOrRef)}`, {
       headers
     });
     if (res.ok) {
