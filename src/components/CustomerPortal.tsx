@@ -1157,24 +1157,12 @@ export default function CustomerPortal({
         </div>
       </nav>
 
-      {/* ==================== HERO SECTION (Persis arbiljs) ==================== */}
-      <div className="relative overflow-hidden border-b border-slate-900">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-20 -right-20 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute -bottom-20 -left-20 w-72 h-72 bg-violet-500/8 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }}></div>
-        </div>
-
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-500/10 border border-indigo-500/30 rounded-full text-xs text-indigo-300 mb-4 font-semibold">
-            <Signal className="w-3.5 h-3.5" /> Hotspot Voucher — Beli Online, Langsung Aktif
-          </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent mb-3 tracking-tight">
-            Beli Voucher WiFi Instan
-          </h2>
-          <p className="text-slate-400 max-w-lg mx-auto text-sm sm:text-base leading-relaxed">
-            Pilih paket internet, bayar langsung dari saldo <span className="text-emerald-400 font-semibold">ArabPay Wallet</span> — voucher otomatis digenerate
-          </p>
-        </div>
+      {/* ==================== COMPACT 1-LINE HEADER (Mobile Clean View) ==================== */}
+      <div className="relative py-2.5 px-4 border-b border-slate-800/60 bg-slate-950/50 backdrop-blur-md text-center">
+        <p className="text-xs sm:text-sm font-medium text-slate-300">
+          <Signal className="inline w-3.5 h-3.5 mr-1.5 text-emerald-400 -mt-0.5" />
+          <span className="font-bold text-white">Beli Voucher WiFi Instan</span> — Bayar Saldo <span className="text-emerald-400 font-semibold">ArabPay Wallet</span>
+        </p>
       </div>
 
       {/* Main Container */}
