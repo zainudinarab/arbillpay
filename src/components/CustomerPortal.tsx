@@ -237,10 +237,9 @@ export default function CustomerPortal({
 
   // --- INITIAL & LIVE AUTO-REFRESH DATA FETCHING ---
   useEffect(() => {
-    fetchMerchantFeeConfig();
+    fetchCheckoutInit();
     fetchAvailableVouchers();
     fetchMonthlyMemberPackages();
-    fetchPaymentChannels();
     fetchLiveMemberRegistrationsStatus();
 
     if (currentUser) {
@@ -712,12 +711,14 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch public merchant fee configuration directly from ArabPay backend
-  const fetchMerchantFeeConfig = async () => {
+  // --- CONSOLIDATED HIGH-PERFORMANCE 3-IN-1 CHECKOUT INIT ---
+  const fetchCheckoutInit = async (userIdOverride?: string) => {
     try {
+      setIsLoadingChannels(true);
       const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
       const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const targetUserId = userIdOverride || currentUser?.phone || currentUser?.user_id || currentUser?.username || '';
 
       let signature = '';
       try {
@@ -733,14 +734,18 @@ export default function CustomerPortal({
         signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
       } catch (e) { }
 
+      const token = currentUser?.token || localStorage.getItem('arabpay_token');
       const headers: Record<string, string> = {
         'X-Client-ID': clientId,
         'X-Timestamp': timestamp,
         'X-Signature': signature,
         'Content-Type': 'application/json'
       };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-      const res = await fetch(`https://arabpay.my.id/api/v1/client-info?client_id=${encodeURIComponent(clientId)}&_t=${Date.now()}`, {
+      const res = await fetch(`https://arabpay.my.id/api/v1/checkout/init?client_id=${encodeURIComponent(clientId)}&user_id=${encodeURIComponent(targetUserId)}&_t=${Date.now()}`, {
         method: 'GET',
         headers,
         cache: 'no-store'
@@ -749,30 +754,30 @@ export default function CustomerPortal({
       if (res && res.ok) {
         const data = await res.json();
         if (data) {
-          if (data.fee_bearer !== undefined) {
-            setArabpayFeeBearer(data.fee_bearer);
+          // 1. Client Fee Config
+          if (data.client) {
+            if (data.client.fee_bearer !== undefined) {
+              setArabpayFeeBearer(data.client.fee_bearer);
+            }
+            if (data.client.service_fee !== undefined) {
+              setArabpayServiceFee(Number(data.client.service_fee));
+            }
           }
-          if (data.service_fee !== undefined) {
-            setArabpayServiceFee(Number(data.service_fee));
+          // 2. Payment Channels
+          if (Array.isArray(data.payment_channels)) {
+            setPaymentChannels(data.payment_channels.filter((ch: any) => ch.is_active));
+          }
+          // 3. User Balance
+          if (data.user_balance !== undefined && data.user_balance !== null && currentUser) {
+            onLoginSuccess({
+              ...currentUser,
+              arabpay_balance: Number(data.user_balance)
+            });
           }
         }
       }
     } catch (e) {
-      console.warn('Failed to fetch merchant fee config:', e);
-    }
-  };
-
-  // Fetch payment channels from ArabPay API
-  const fetchPaymentChannels = async () => {
-    setIsLoadingChannels(true);
-    try {
-      const res = await fetch('https://arabpay.my.id/api/v1/payment-channels');
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setPaymentChannels(data.filter((ch: any) => ch.is_active));
-      }
-    } catch (e) {
-      console.warn('Failed to fetch payment channels:', e);
+      console.warn('Failed to fetch consolidated checkout init:', e);
     } finally {
       setIsLoadingChannels(false);
     }
@@ -789,8 +794,7 @@ export default function CustomerPortal({
     setPinCode('');
     setPinError('');
     setPaymentMethod('balance');
-    fetchMerchantFeeConfig();
-    fetchLiveArabPayBalance();
+    fetchCheckoutInit();
     setShowPaymentModal(true);
   };
 
