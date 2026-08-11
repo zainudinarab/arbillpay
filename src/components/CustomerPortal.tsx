@@ -13,34 +13,51 @@ import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFires
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
-  let fee = 0;
+
   const flat = Number(ch.fee_flat || ch.flat_fee || ch.fee_amount || ch.fee || 0);
   const percent = Number(ch.fee_percent || ch.percentage_fee || ch.percent_fee || 0);
 
-  if (flat > 0) fee += flat;
-  if (percent > 0) fee += Math.round((amount * percent) / 100);
+  let flatFee = flat > 0 ? flat : 0;
+  let percentFee = percent > 0 ? Math.round((amount * percent) / 100) : 0;
 
-  if (fee === 0) {
+  // Fallback defaults if channel has no fee specified at all
+  if (flatFee === 0 && percentFee === 0) {
     const code = (ch.code || ch.id || ch.name || '').toLowerCase();
     if (code.includes('alfamart') || code.includes('indomaret') || code.includes('alfamidi')) {
-      fee = 3500;
+      flatFee = 3500;
     } else if (code.includes('va') || code.includes('bca') || code.includes('mandiri') || code.includes('bri') || code.includes('bni')) {
-      fee = 4000;
+      flatFee = 4000;
     } else if (code.includes('qris')) {
-      fee = Math.round((amount * 0.7) / 100);
+      percentFee = Math.round((amount * 0.7) / 100);
     }
   }
-  return fee;
+
+  return flatFee + percentFee;
 }
 
 function getChannelFeeLabel(ch: any, amount: number): string {
-  const fee = calculateChannelFee(ch, amount);
-  const percent = Number(ch.fee_percent || ch.percentage_fee || 0);
-  if (fee === 0) return 'Bebas Biaya';
-  if (percent > 0 && Number(ch.fee_flat || 0) === 0) {
-    return `+${percent}% (Rp ${fee.toLocaleString('id-ID')})`;
+  if (!ch) return 'Bebas Biaya';
+
+  const flat = Number(ch.fee_flat || ch.flat_fee || ch.fee_amount || ch.fee || 0);
+  const percent = Number(ch.fee_percent || ch.percentage_fee || ch.percent_fee || 0);
+  const totalFee = calculateChannelFee(ch, amount);
+
+  if (totalFee <= 0) {
+    return 'Bebas Biaya (Free)';
   }
-  return `+Rp ${fee.toLocaleString('id-ID')}`;
+
+  // Combined Flat + Percent fee
+  if (flat > 0 && percent > 0) {
+    return `+Rp ${flat.toLocaleString('id-ID')} + ${percent}% (Total Rp ${totalFee.toLocaleString('id-ID')})`;
+  }
+  
+  // Only percent fee
+  if (percent > 0 && flat === 0) {
+    return `+${percent}% (Rp ${totalFee.toLocaleString('id-ID')})`;
+  }
+
+  // Only flat fee
+  return `+Rp ${totalFee.toLocaleString('id-ID')}`;
 }
 
 // ...
