@@ -967,13 +967,12 @@ export default function CustomerPortal({
     setPinError('');
 
     const itemPrice = Number(selectedPackage?.price || 0);
-    const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
-    const customerFee = feeBearer === 'customer' ? 200 : 0;
-    const price = itemPrice + customerFee;
+    const customerFee = arabpayServiceFee || (arabpayFeeBearer === 'customer' ? 200 : 0);
+    const totalPay = itemPrice + customerFee;
     const currentBal = currentUser?.arabpay_balance ?? 0;
 
-    if (price > 0 && currentBal < price) {
-      setPinError(`Saldo ArabPay Anda (${formatRupiah(currentBal)}) tidak mencukupi untuk voucher ${formatRupiah(price)}.`);
+    if (totalPay > 0 && currentBal < totalPay) {
+      setPinError(`Saldo ArabPay Anda (${formatRupiah(currentBal)}) tidak mencukupi untuk total tagihan ${formatRupiah(totalPay)}.`);
       setPaymentStep('pin');
       return;
     }
@@ -1007,7 +1006,7 @@ export default function CustomerPortal({
 
         const withdrawBodyObj = {
           phone_number: pNo,
-          amount: price,
+          amount: itemPrice,
           bank_name: 'ARBILLPAY_HOTSPOT',
           account_number: refCode,
           account_name: currentUser?.name || 'Pelanggan ArbillPay',
