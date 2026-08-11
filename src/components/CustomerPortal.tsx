@@ -2133,8 +2133,7 @@ export default function CustomerPortal({
                       let feeLabel = 'Biaya Sistem';
 
                       if (paymentMethod === 'balance') {
-                        const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
-                        feeAmount = feeBearer === 'customer' ? 200 : 0;
+                        feeAmount = arabpayServiceFee;
                         feeLabel = 'Biaya Layanan';
                       } else if (paymentMethod === 'direct' && selectedChannel) {
                         feeAmount = calculateChannelFee(selectedChannel, itemPrice);
@@ -2199,22 +2198,15 @@ export default function CustomerPortal({
                             <span className="text-sm font-extrabold text-slate-100 flex items-center gap-1.5">
                               ⚡ ArabPay E-Wallet
                             </span>
-                            {(() => {
-                              const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
-                              const customerFee = feeBearer === 'customer' ? 200 : 0;
-                              if (customerFee > 0) {
-                                return (
-                                  <span className="text-[10px] font-bold text-indigo-300 bg-indigo-900/50 px-2 py-0.5 rounded-full border border-indigo-700/50">
-                                    +{formatRupiah(customerFee)}
-                                  </span>
-                                );
-                              }
-                              return (
-                                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                                  Bebas Biaya
-                                </span>
-                              );
-                            })()}
+                            {arabpayServiceFee > 0 ? (
+                              <span className="text-[10px] font-bold text-indigo-300 bg-indigo-900/50 px-2 py-0.5 rounded-full border border-indigo-700/50">
+                                +{formatRupiah(arabpayServiceFee)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                Bebas Biaya
+                              </span>
+                            )}
                           </div>
 
                           {/* Saldo Aktif Badge */}
@@ -2347,8 +2339,7 @@ export default function CustomerPortal({
                       let feeAmount = 0;
 
                       if (paymentMethod === 'balance') {
-                        const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
-                        feeAmount = feeBearer === 'customer' ? 200 : 0;
+                        feeAmount = arabpayServiceFee;
                       } else if (paymentMethod === 'direct' && selectedChannel) {
                         feeAmount = calculateChannelFee(selectedChannel, itemPrice);
                       }
