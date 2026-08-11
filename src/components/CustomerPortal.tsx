@@ -190,9 +190,12 @@ export default function CustomerPortal({
   const [voucherGroups, setVoucherGroups] = useState<any[]>([]);
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
-  const [arabpayServiceFee, setArabpayServiceFee] = useState<number>(0);
   const [arabpayFeeBearer, setArabpayFeeBearer] = useState<string>(() => {
-    return (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+    return (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'customer';
+  });
+  const [arabpayServiceFee, setArabpayServiceFee] = useState<number>(() => {
+    const bearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'customer';
+    return bearer === 'customer' ? 200 : 0;
   });
 
   // Voucher History State (local & API)
@@ -657,14 +660,20 @@ export default function CustomerPortal({
           const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
           const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
+          const token = currentUser?.token || localStorage.getItem('arabpay_token');
+          const headers: Record<string, string> = {
+            'X-Client-ID': clientId,
+            'X-Timestamp': timestamp,
+            'X-Signature': getSignature,
+            'Content-Type': 'application/json'
+          };
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+
           const balRes = await fetch(`https://arabpay.my.id/api/v1/wallet/balance?user_id=${encodeURIComponent(uId)}`, {
             method: 'GET',
-            headers: {
-              'X-Client-ID': clientId,
-              'X-Timestamp': timestamp,
-              'X-Signature': getSignature,
-              'Content-Type': 'application/json'
-            }
+            headers
           }).catch(() => null);
 
           if (balRes && balRes.ok) {
