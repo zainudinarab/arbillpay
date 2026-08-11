@@ -671,9 +671,10 @@ export default function CustomerPortal({
             headers['Authorization'] = `Bearer ${token}`;
           }
 
-          const balRes = await fetch(`https://arabpay.my.id/api/v1/wallet/balance?user_id=${encodeURIComponent(uId)}`, {
+          const balRes = await fetch(`https://arabpay.my.id/api/v1/wallet/balance?user_id=${encodeURIComponent(uId)}&_t=${Date.now()}`, {
             method: 'GET',
-            headers
+            headers,
+            cache: 'no-store'
           }).catch(() => null);
 
           if (balRes && balRes.ok) {
@@ -737,6 +738,7 @@ export default function CustomerPortal({
     setPinCode('');
     setPinError('');
     setPaymentMethod('balance');
+    fetchLiveArabPayBalance();
     setShowPaymentModal(true);
   };
 
