@@ -190,6 +190,10 @@ export default function CustomerPortal({
   const [voucherGroups, setVoucherGroups] = useState<any[]>([]);
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
+  const [arabpayServiceFee, setArabpayServiceFee] = useState<number>(0);
+  const [arabpayFeeBearer, setArabpayFeeBearer] = useState<string>(() => {
+    return (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+  });
 
   // Voucher History State (local & API)
   const [localPurchasedVouchers, setLocalPurchasedVouchers] = useState<any[]>(() => {
@@ -669,6 +673,14 @@ export default function CustomerPortal({
               const val = bData.balance ?? bData.arabpay_balance ?? bData.wallet_balance ?? bData.saldo ?? bData.data?.balance;
               if (val !== undefined && val !== null) {
                 fetchedBalance = Number(val);
+              }
+              if (bData.fee_bearer !== undefined) {
+                setArabpayFeeBearer(bData.fee_bearer);
+              }
+              if (bData.service_fee !== undefined) {
+                setArabpayServiceFee(Number(bData.service_fee));
+              } else {
+                setArabpayServiceFee(bData.fee_bearer === 'customer' ? 200 : 0);
               }
             }
           }
