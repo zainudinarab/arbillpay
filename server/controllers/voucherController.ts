@@ -347,11 +347,12 @@ export async function buyVoucher(req: Request, res: Response) {
     let remainingBalance: number | null = null;
     if (payment_method && payment_method.toLowerCase().includes('arabpay')) {
       try {
+        const packageName = routerProfile?.profile_name || 'Voucher Hotspot';
         const { deductArabPayBalance } = await import('../services/arabpayService.js');
         const deductResult = await deductArabPayBalance({
           userId: arabpay_user_id || buyer_phone || buyer_name,
           amount: amount || 0,
-          notes: `Pembelian Voucher Hotspot - Kode: ${voucherCode}`,
+          notes: `Pembelian ${packageName} (Kode: ${voucherCode})`,
           invoiceId: invoiceNumber
         });
         if (deductResult.remaining_balance !== undefined) {

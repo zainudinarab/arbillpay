@@ -861,6 +861,15 @@ export default function CustomerPortal({
       let isDeductionSuccessful = false;
       let arabpayErrorMessage = '';
 
+      const pkgName = selectedPackage?.package_name || selectedPackage?.name || selectedPackage?.profile_name || 'Voucher Hotspot';
+      const pkgDetails = [
+        pkgName,
+        selectedPackage?.validity || selectedPackage?.duration || '',
+        selectedPackage?.bandwidth || selectedPackage?.speed || ''
+      ].filter(Boolean).join(' - ');
+
+      const purchaseDesc = `Pembelian ${pkgDetails || 'Voucher Hotspot'}`;
+
       // 1. Try S2S Wallet Withdraw Endpoint with phone variations (08... & 628...)
       for (const pNo of phoneCandidates) {
         if (isDeductionSuccessful) break;
@@ -871,6 +880,8 @@ export default function CustomerPortal({
           bank_name: 'ARBILLPAY_HOTSPOT',
           account_number: refCode,
           account_name: currentUser?.name || 'Pelanggan ArbillPay',
+          description: purchaseDesc,
+          notes: purchaseDesc,
           pin: pinCode
         };
         const withdrawBodyStr = JSON.stringify(withdrawBodyObj);
