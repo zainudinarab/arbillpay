@@ -176,10 +176,15 @@ export async function deductArabPayBalance(params: {
   token?: string;
 }) {
   const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+  const defaultDesc = params.invoiceId
+    ? `Pembayaran Hotspot Arbill #${params.invoiceId}`
+    : `Pembayaran Hotspot Arbill`;
+  const descriptionText = params.notes && params.notes.trim() ? params.notes : defaultDesc;
+
   const bodyObj = {
     user_id: params.userId,
     amount: params.amount,
-    description: params.notes,
+    description: descriptionText,
     invoice_id: params.invoiceId || `INV-${Date.now()}`
   };
   const bodyStr = JSON.stringify(bodyObj);
