@@ -716,9 +716,36 @@ export default function CustomerPortal({
   const fetchMerchantFeeConfig = async () => {
     try {
       const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+      let signature = '';
+      try {
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(clientSecret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
+        signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) { }
+
+      const headers: Record<string, string> = {
+        'X-Client-ID': clientId,
+        'X-Timestamp': timestamp,
+        'X-Signature': signature,
+        'Content-Type': 'application/json'
+      };
+
       const res = await fetch(`https://arabpay.my.id/api/v1/client-info?client_id=${encodeURIComponent(clientId)}&_t=${Date.now()}`, {
+        method: 'GET',
+        headers,
         cache: 'no-store'
       }).catch(() => null);
+
       if (res && res.ok) {
         const data = await res.json();
         if (data) {
