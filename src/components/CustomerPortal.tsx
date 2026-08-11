@@ -11,6 +11,38 @@ import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore } from '../services/firebaseService';
 
+function calculateChannelFee(ch: any, amount: number): number {
+  if (!ch) return 0;
+  let fee = 0;
+  const flat = Number(ch.fee_flat || ch.flat_fee || ch.fee_amount || ch.fee || 0);
+  const percent = Number(ch.fee_percent || ch.percentage_fee || ch.percent_fee || 0);
+
+  if (flat > 0) fee += flat;
+  if (percent > 0) fee += Math.round((amount * percent) / 100);
+
+  if (fee === 0) {
+    const code = (ch.code || ch.id || ch.name || '').toLowerCase();
+    if (code.includes('alfamart') || code.includes('indomaret') || code.includes('alfamidi')) {
+      fee = 3500;
+    } else if (code.includes('va') || code.includes('bca') || code.includes('mandiri') || code.includes('bri') || code.includes('bni')) {
+      fee = 4000;
+    } else if (code.includes('qris')) {
+      fee = Math.round((amount * 0.7) / 100);
+    }
+  }
+  return fee;
+}
+
+function getChannelFeeLabel(ch: any, amount: number): string {
+  const fee = calculateChannelFee(ch, amount);
+  const percent = Number(ch.fee_percent || ch.percentage_fee || 0);
+  if (fee === 0) return 'Bebas Biaya';
+  if (percent > 0 && Number(ch.fee_flat || 0) === 0) {
+    return `+${percent}% (Rp ${fee.toLocaleString('id-ID')})`;
+  }
+  return `+Rp ${fee.toLocaleString('id-ID')}`;
+}
+
 // ...
   // Submit new Member Registration (Saved as Non-Aktif / Off for Admin Approval)
   const handleSubmitMemberRegistration = async (e: React.FormEvent) => {
@@ -2068,9 +2100,19 @@ export default function CustomerPortal({
                     </div>
                     {(() => {
                       const itemPrice = Number(selectedPackage.price || 0);
-                      const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
-                      const customerFee = feeBearer === 'customer' ? 200 : 0;
-                      const finalCustomerPrice = itemPrice + customerFee;
+                      let feeAmount = 0;
+                      let feeLabel = 'Biaya Sistem';
+
+                      if (paymentMethod === 'balance') {
+                        const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+                        feeAmount = feeBearer === 'customer' ? 200 : 0;
+                        feeLabel = 'Biaya Layanan';
+                      } else if (paymentMethod === 'direct' && selectedChannel) {
+                        feeAmount = calculateChannelFee(selectedChannel, itemPrice);
+                        feeLabel = `Biaya Channel (${selectedChannel.name || selectedChannel.code || 'Gateway'})`;
+                      }
+
+                      const totalPrice = itemPrice + feeAmount;
 
                       return (
                         <>
@@ -2079,17 +2121,19 @@ export default function CustomerPortal({
                             <span className="font-mono font-bold text-slate-200">{formatRupiah(itemPrice)}</span>
                           </div>
 
-                          {customerFee > 0 && (
+                          {feeAmount > 0 && (
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-400">Biaya Sistem</span>
-                              <span className="font-mono font-bold text-amber-400">{formatRupiah(customerFee)}</span>
+                              <span className="text-slate-400">{feeLabel}</span>
+                              <span className="font-mono font-bold text-amber-400">+{formatRupiah(feeAmount)}</span>
                             </div>
                           )}
 
                           <div className="flex items-center justify-between border-t border-slate-800 pt-2.5">
-                            <span className="font-bold text-slate-100 text-sm">Total Potong Saldo</span>
+                            <span className="font-bold text-slate-100 text-sm">
+                              {paymentMethod === 'balance' ? 'Total Potong Saldo' : 'Total Pembayaran'}
+                            </span>
                             <span className="text-lg font-black text-emerald-400 font-mono">
-                              {formatRupiah(finalCustomerPrice)}
+                              {formatRupiah(totalPrice)}
                             </span>
                           </div>
                         </>
@@ -2197,8 +2241,10 @@ export default function CustomerPortal({
                                 <div className="grid grid-cols-2 gap-2">
                                   {/* Fallback default channels */}
                                   {[
-                                    { id: 'bca_va', name: 'BCA Virtual Account', category: 'va' },
-                                    { id: 'qris', name: 'QRIS', category: 'ewallet' }
+                                    { id: 'bca_va', name: 'BCA Virtual Account', category: 'va', fee_flat: 4000 },
+                                    { id: 'qris', name: 'QRIS', category: 'ewallet', fee_percent: 0.7 },
+                                    { id: 'shopeepay', name: 'ShopeePay', category: 'ewallet', fee_percent: 1.5 },
+                                    { id: 'alfamart', name: 'Alfamart', category: 'convenience_store', fee_flat: 3500 }
                                   ].map((ch) => (
                                     <div
                                       key={ch.id}
@@ -2214,7 +2260,12 @@ export default function CustomerPortal({
                                       </div>
                                       <div className="flex-grow min-w-0">
                                         <p className="text-[11px] font-bold truncate text-slate-200">{ch.name}</p>
-                                        <p className="text-[9px] text-slate-500 truncate">{ch.category}</p>
+                                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                                          <span className="text-[9px] text-slate-500 truncate">{ch.category}</span>
+                                          <span className="text-[9px] font-mono font-bold text-amber-400">
+                                            {getChannelFeeLabel(ch, Number(selectedPackage?.price || 0))}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
@@ -2236,7 +2287,12 @@ export default function CustomerPortal({
                                       </div>
                                       <div className="flex-grow min-w-0">
                                         <p className="text-[11px] font-bold truncate text-slate-200">{ch.name}</p>
-                                        <p className="text-[9px] text-slate-500 truncate">{ch.category}</p>
+                                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                                          <span className="text-[9px] text-slate-500 truncate">{ch.category || ch.code}</span>
+                                          <span className="text-[9px] font-mono font-bold text-amber-400">
+                                            {getChannelFeeLabel(ch, Number(selectedPackage?.price || 0))}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
@@ -2257,11 +2313,25 @@ export default function CustomerPortal({
                     className="w-full py-3.5 rounded-xl font-extrabold text-sm transition-all bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] mt-2 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Lock className="w-4 h-4" />
-                    {paymentMethod === 'balance' ? (
-                      <span>Lanjut Bayar — {formatRupiah(Number(selectedPackage.price || 0) + 200)}</span>
-                    ) : (
-                      <span>Bayar Transfer Langsung — {formatRupiah(Number(selectedPackage.price || 0) + 200)}</span>
-                    )}
+                    {(() => {
+                      const itemPrice = Number(selectedPackage.price || 0);
+                      let feeAmount = 0;
+
+                      if (paymentMethod === 'balance') {
+                        const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+                        feeAmount = feeBearer === 'customer' ? 200 : 0;
+                      } else if (paymentMethod === 'direct' && selectedChannel) {
+                        feeAmount = calculateChannelFee(selectedChannel, itemPrice);
+                      }
+
+                      const totalPrice = itemPrice + feeAmount;
+
+                      return paymentMethod === 'balance' ? (
+                        <span>Lanjut Bayar — {formatRupiah(totalPrice)}</span>
+                      ) : (
+                        <span>Bayar Gateway — {formatRupiah(totalPrice)}</span>
+                      );
+                    })()}
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
