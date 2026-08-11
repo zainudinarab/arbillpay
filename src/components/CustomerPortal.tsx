@@ -838,7 +838,10 @@ export default function CustomerPortal({
     setPaymentStep('processing');
     setPinError('');
 
-    const price = Number(selectedPackage?.price || 0);
+    const itemPrice = Number(selectedPackage?.price || 0);
+    const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+    const customerFee = feeBearer === 'customer' ? 200 : 0;
+    const price = itemPrice + customerFee;
     const currentBal = currentUser?.arabpay_balance ?? 0;
 
     if (price > 0 && currentBal < price) {
@@ -2063,22 +2066,35 @@ export default function CustomerPortal({
                       <span className="text-slate-400">Speed</span>
                       <span className="text-slate-300 font-medium">{selectedPackage.rate_limit || selectedPackage.speed || '10 Mbps'}</span>
                     </div>
+                    {(() => {
+                      const itemPrice = Number(selectedPackage.price || 0);
+                      const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+                      const customerFee = feeBearer === 'customer' ? 200 : 0;
+                      const finalCustomerPrice = itemPrice + customerFee;
 
-                    <div className="flex items-center justify-between text-sm border-t border-slate-850 pt-2.5">
-                      <span className="text-slate-400">Harga Voucher</span>
-                      <span className="font-mono font-bold text-slate-200">{formatRupiah(Number(selectedPackage.price || 0))}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400">Biaya Sistem</span>
-                      <span className="font-mono font-bold text-amber-400">{formatRupiah(200)}</span>
-                    </div>
+                      return (
+                        <>
+                          <div className="flex items-center justify-between text-sm border-t border-slate-850 pt-2.5">
+                            <span className="text-slate-400">Harga Voucher</span>
+                            <span className="font-mono font-bold text-slate-200">{formatRupiah(itemPrice)}</span>
+                          </div>
 
-                    <div className="flex items-center justify-between border-t border-slate-800 pt-2.5">
-                      <span className="font-bold text-slate-100 text-sm">Total Potong Saldo</span>
-                      <span className="text-lg font-black text-emerald-400 font-mono">
-                        {formatRupiah(Number(selectedPackage.price || 0) + 200)}
-                      </span>
-                    </div>
+                          {customerFee > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-slate-400">Biaya Sistem</span>
+                              <span className="font-mono font-bold text-amber-400">{formatRupiah(customerFee)}</span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between border-t border-slate-800 pt-2.5">
+                            <span className="font-bold text-slate-100 text-sm">Total Potong Saldo</span>
+                            <span className="text-lg font-black text-emerald-400 font-mono">
+                              {formatRupiah(finalCustomerPrice)}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
 
                   {/* Pilih Cara Bayar Section */}
@@ -2110,9 +2126,22 @@ export default function CustomerPortal({
                             <span className="text-sm font-extrabold text-slate-100 flex items-center gap-1.5">
                               ⚡ ArabPay E-Wallet
                             </span>
-                            <span className="text-[10px] font-bold text-indigo-300 bg-indigo-900/50 px-2 py-0.5 rounded-full border border-indigo-700/50">
-                              +Rp 200
-                            </span>
+                            {(() => {
+                              const feeBearer = (import.meta as any).env?.VITE_ARABPAY_FEE_BEARER || 'merchant';
+                              const customerFee = feeBearer === 'customer' ? 200 : 0;
+                              if (customerFee > 0) {
+                                return (
+                                  <span className="text-[10px] font-bold text-indigo-300 bg-indigo-900/50 px-2 py-0.5 rounded-full border border-indigo-700/50">
+                                    +{formatRupiah(customerFee)}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                  Bebas Biaya
+                                </span>
+                              );
+                            })()}
                           </div>
 
                           {/* Saldo Aktif Badge */}
@@ -2143,10 +2172,12 @@ export default function CustomerPortal({
                         </div>
 
                         {/* Details */}
-                        <div className="flex-grow space-y-2">
-                          <span className="text-sm font-extrabold text-slate-100 block">
-                            💳 Bayar Langsung via ArabPay Gateway (QRIS / VA)
-                          </span>
+                        <div className="flex-grow space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-extrabold text-slate-100 flex items-center gap-1.5">
+                              💳 Bayar Langsung via ArabPay Gateway (QRIS / VA)
+                            </span>
+                          </div>
                           <p className="text-[11px] text-slate-400 leading-relaxed">
                             Bayar langsung menggunakan transfer bank VA atau scan QRIS secara instant melalui perantara ArabPay.
                           </p>
