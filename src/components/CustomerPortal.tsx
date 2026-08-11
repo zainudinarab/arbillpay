@@ -237,6 +237,7 @@ export default function CustomerPortal({
 
   // --- INITIAL & LIVE AUTO-REFRESH DATA FETCHING ---
   useEffect(() => {
+    fetchMerchantFeeConfig();
     fetchAvailableVouchers();
     fetchMonthlyMemberPackages();
     fetchPaymentChannels();
@@ -711,6 +712,29 @@ export default function CustomerPortal({
     }
   };
 
+  // Fetch public merchant fee configuration directly from ArabPay backend
+  const fetchMerchantFeeConfig = async () => {
+    try {
+      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+      const res = await fetch(`https://arabpay.my.id/api/v1/client-info?client_id=${encodeURIComponent(clientId)}&_t=${Date.now()}`, {
+        cache: 'no-store'
+      }).catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data) {
+          if (data.fee_bearer !== undefined) {
+            setArabpayFeeBearer(data.fee_bearer);
+          }
+          if (data.service_fee !== undefined) {
+            setArabpayServiceFee(Number(data.service_fee));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch merchant fee config:', e);
+    }
+  };
+
   // Fetch payment channels from ArabPay API
   const fetchPaymentChannels = async () => {
     setIsLoadingChannels(true);
@@ -738,6 +762,7 @@ export default function CustomerPortal({
     setPinCode('');
     setPinError('');
     setPaymentMethod('balance');
+    fetchMerchantFeeConfig();
     fetchLiveArabPayBalance();
     setShowPaymentModal(true);
   };
