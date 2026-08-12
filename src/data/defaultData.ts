@@ -1,149 +1,21 @@
 import { Client, Invoice, PaymentGateway, BusinessProfile } from '../types';
 
-export const defaultClients: Client[] = [
-  {
-    id: 'c-1',
-    name: 'Budi Santoso',
-    email: 'budi@angkasajaya.co.id',
-    phone: '081234567890',
-    company: 'PT Angkasa Jaya',
-    address: 'Jl. Jendral Sudirman No. 45, Jakarta Selatan'
-  },
-  {
-    id: 'c-2',
-    name: 'Siti Aminah',
-    email: 'siti@majubersama.com',
-    phone: '085678901234',
-    company: 'CV Maju Bersama',
-    address: 'Jl. Asia Afrika No. 12, Bandung'
-  },
-  {
-    id: 'c-3',
-    name: 'Hendra Wijaya',
-    email: 'hendra@berkahmandiri.id',
-    phone: '081987654321',
-    company: 'Toko Berkah Mandiri',
-    address: 'Ruko Artha Gading Blok B No. 9, Jakarta Utara'
-  },
-  {
-    id: 'c-4',
-    name: 'Dewi Lestari',
-    email: 'dewi@nusantaradigital.co.id',
-    phone: '082133445566',
-    company: 'PT Nusantara Digital',
-    address: 'Gedung Cyber 2 Lantai 18, Jakarta Selatan'
-  }
-];
+export const defaultClients: Client[] = [];
 
-export const defaultInvoices: Invoice[] = [
-  {
-    id: 'inv-1',
-    invoiceNumber: 'INV-2026-001',
-    client: defaultClients[0],
-    issueDate: '2026-06-24',
-    dueDate: '2026-07-08',
-    status: 'paid',
-    paymentMethod: 'QRIS',
-    paymentDate: '2026-06-25',
-    notes: 'Jasa pembuatan landing page dan setup domain.',
-    enabledPaymentMethods: ['qris', 'gopay', 'ovo', 'dana', 'bank_transfer'],
-    items: [
-      { id: 'i-1', description: 'Jasa Pembuatan Landing Page Company Profile', quantity: 1, price: 12000000, amount: 12000000 },
-      { id: 'i-2', description: 'Setup Hosting & Domain (.co.id) 1 Tahun', quantity: 1, price: 2000000, amount: 2000000 }
-    ],
-    subtotal: 14000000,
-    taxRate: 11, // PPN 11%
-    taxAmount: 1540000,
-    total: 15540000
-  },
-  {
-    id: 'inv-2',
-    invoiceNumber: 'INV-2026-002',
-    client: defaultClients[1],
-    issueDate: '2026-06-22',
-    dueDate: '2026-07-15',
-    status: 'pending',
-    notes: 'Pengadaan lisensi software desain kreatif bulanan.',
-    enabledPaymentMethods: ['gopay', 'ovo', 'dana', 'bank_transfer'],
-    items: [
-      { id: 'i-3', description: 'Lisensi Adobe Creative Cloud for Teams', quantity: 5, price: 1500000, amount: 7500000 },
-      { id: 'i-4', description: 'Biaya Administrasi & Setup Akun', quantity: 1, price: 500000, amount: 500000 }
-    ],
-    subtotal: 8000000,
-    taxRate: 11,
-    taxAmount: 880000,
-    total: 8880000
-  },
-  {
-    id: 'inv-3',
-    invoiceNumber: 'INV-2026-003',
-    client: defaultClients[3],
-    issueDate: '2026-05-15',
-    dueDate: '2026-05-30',
-    status: 'overdue',
-    notes: 'Jasa konsultasi pengembangan sistem IT tahap 1.',
-    enabledPaymentMethods: ['bank_transfer'],
-    items: [
-      { id: 'i-5', description: 'Consulting Fee - IT Architecture Design', quantity: 1, price: 25000000, amount: 25000000 }
-    ],
-    subtotal: 25000000,
-    taxRate: 11,
-    taxAmount: 2750000,
-    total: 27750000
-  },
-  {
-    id: 'inv-4',
-    invoiceNumber: 'INV-2026-004',
-    client: defaultClients[2],
-    issueDate: '2026-06-18',
-    dueDate: '2026-07-02',
-    status: 'paid',
-    paymentMethod: 'GoPay',
-    paymentDate: '2026-06-19',
-    notes: 'Pembelian printer kantor laserjet warna.',
-    enabledPaymentMethods: ['qris', 'gopay', 'dana'],
-    items: [
-      { id: 'i-6', description: 'Printer HP Color LaserJet Pro', quantity: 1, price: 4500000, amount: 4500000 }
-    ],
-    subtotal: 4500000,
-    taxRate: 0,
-    taxAmount: 0,
-    total: 4500000
-  },
-  {
-    id: 'inv-5',
-    invoiceNumber: 'INV-2026-06-05',
-    client: defaultClients[1],
-    issueDate: '2026-06-10',
-    dueDate: '2026-06-25',
-    status: 'paid',
-    paymentMethod: 'DANA',
-    paymentDate: '2026-06-12',
-    notes: 'Pembelian ATK dan perlengkapan inventaris kantor.',
-    enabledPaymentMethods: ['gopay', 'ovo', 'dana'],
-    items: [
-      { id: 'i-7', description: 'Kertas A4 Sinar Dunia 70gsm', quantity: 20, price: 50000, amount: 1000000 },
-      { id: 'i-8', description: 'Tinta Printer Epson Black & Color Set', quantity: 2, price: 600000, amount: 1200000 }
-    ],
-    subtotal: 2200000,
-    taxRate: 11,
-    taxAmount: 242000,
-    total: 2442000
-  }
-];
+export const defaultInvoices: Invoice[] = [];
 
 export const defaultGateways: PaymentGateway[] = [
   {
     id: 'qris',
-    name: 'QRIS',
-    displayName: 'QRIS (Gopay, OVO, Dana, LinkAja)',
+    name: 'QRIS Direct',
+    displayName: 'QRIS All Payment (Gopay, OVO, DANA, BCA Mobile)',
     iconName: 'QrCode',
     isActive: true,
     type: 'qris',
     payoutShare: 45,
     colorClass: 'bg-rose-500 text-white',
     accountNumber: 'NMID-102030405060',
-    accountName: 'BILLAVA MERCHANT'
+    accountName: 'ARBILLPAY MERCHANT'
   },
   {
     id: 'gopay',

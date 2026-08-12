@@ -290,13 +290,13 @@ export default function InvoiceDetails({
   const simulatedUrl = `${window.location.origin}/?view=checkout&id=${invoice.id}`;
 
   const waText = isIndo
-    ? `Halo, berikut adalah tagihan Anda dari *${profile.companyName || 'Billava'}*:\n\n` +
+    ? `Halo, berikut adalah tagihan Anda dari *${profile.companyName || 'ArbillPay'}*:\n\n` +
       `• *No. Tagihan*: ${invoice.invoiceNumber}\n` +
       `• *Total Tagihan*: ${totalFormatted}\n` +
       `• *Jatuh Tempo*: ${formatDate(invoice.dueDate, 'id')}\n\n` +
       `Silakan lakukan pembayaran atau lihat rincian lengkapnya secara online melalui tautan berikut:\n${simulatedUrl}\n\n` +
       `Terima kasih!`
-    : `Hello, here is your invoice from *${profile.companyName || 'Billava'}*:\n\n` +
+    : `Hello, here is your invoice from *${profile.companyName || 'ArbillPay'}*:\n\n` +
       `• *Invoice No*: ${invoice.invoiceNumber}\n` +
       `• *Total Amount*: ${totalFormatted}\n` +
       `• *Due Date*: ${formatDate(invoice.dueDate, 'en')}\n\n` +
@@ -849,7 +849,7 @@ export default function InvoiceDetails({
           
           <div className="text-center space-y-1 pt-1">
             <p className="font-bold text-[9px]">TERIMA KASIH</p>
-            <p className="text-[8px] italic">Powered by Billava</p>
+            <p className="text-[8px] italic">Powered by ArbillPay</p>
           </div>
           
           {/* Feed space at the bottom to allow clean tear-off on thermal printers */}

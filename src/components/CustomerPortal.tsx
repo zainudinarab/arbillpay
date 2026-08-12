@@ -405,15 +405,8 @@ export default function CustomerPortal({
         }
       }
 
-      // Fallback default packages if both API and Firestore return empty
-      setVoucherGroups([
-        { profile_id: 'pkg-1h', package_name: '1 Jam', rate_limit: '5 Mbps', price: 3000, validity_value: 1, validity_unit: 'hour', color: 'cyan', mode: 'ondemand', stock: 999 },
-        { profile_id: 'pkg-3h', package_name: '3 Jam', rate_limit: '10 Mbps', price: 5000, validity_value: 3, validity_unit: 'hour', color: 'blue', mode: 'ondemand', stock: 999 },
-        { profile_id: 'pkg-6h', package_name: '6 Jam', rate_limit: '15 Mbps', price: 8000, validity_value: 6, validity_unit: 'hour', color: 'violet', popular: true, mode: 'ondemand', stock: 999 },
-        { profile_id: 'pkg-12h', package_name: '12 Jam', rate_limit: '20 Mbps', price: 12000, validity_value: 12, validity_unit: 'hour', color: 'indigo', mode: 'ondemand', stock: 999 },
-        { profile_id: 'pkg-1d', package_name: '1 Hari', rate_limit: '25 Mbps', price: 15000, validity_value: 24, validity_unit: 'hour', color: 'emerald', popular: true, mode: 'ondemand', stock: 999 },
-        { profile_id: 'pkg-7d', package_name: '7 Hari', rate_limit: '30 Mbps', price: 50000, validity_value: 7, validity_unit: 'day', color: 'amber', mode: 'ondemand', stock: 999 }
-      ]);
+      // If both API and Firestore return empty, show empty array (no fake fallback data)
+      setVoucherGroups([]);
     } catch (err) {
       console.warn('Failed to load vouchers:', err);
     } finally {

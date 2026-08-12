@@ -256,7 +256,7 @@ export default function PaymentMethodsSettings({
           <div className="space-y-1">
             <h4 className="font-sans font-bold text-slate-800">Bagaimana Cara Kerja Integrasi E-Wallet?</h4>
             <p className="font-sans">
-              Setiap kali Anda menerbitkan tagihan dengan metode e-wallet (GoPay, OVO, DANA) atau QRIS yang diaktifkan, Billava akan secara dinamis menyatukannya menjadi satu kode QR QRIS tunggal atau menyediakan tautan transfer e-wallet instan untuk pelanggan Anda. Di simulator, Anda dapat melihat halaman checkout yang akan diakses oleh pelanggan Anda!
+              Setiap kali Anda menerbitkan tagihan dengan metode e-wallet (GoPay, OVO, DANA) atau QRIS yang diaktifkan, ArbillPay akan secara dinamis menyatukannya menjadi satu kode QR QRIS tunggal atau menyediakan tautan transfer e-wallet instan untuk pelanggan Anda. Di simulator, Anda dapat melihat halaman checkout yang akan diakses oleh pelanggan Anda!
             </p>
           </div>
         </div>

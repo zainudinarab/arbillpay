@@ -936,7 +936,7 @@ const safeFormatDate = (val: any): string => {
             <div className="w-8 h-8 rounded-lg bg-[#0066FF] flex items-center justify-center text-white font-bold text-base">
               B
             </div>
-            <span className="font-sans font-extrabold text-base text-slate-800">Billava Gateway</span>
+            <span className="font-sans font-extrabold text-base text-slate-800">ArbillPay Gateway</span>
           </div>
 
           <div className="flex items-center gap-2.5 text-xs text-slate-400 font-bold uppercase tracking-wider">
@@ -1067,7 +1067,7 @@ const safeFormatDate = (val: any): string => {
 
         {/* Footer */}
         <footer className="bg-white border-t border-slate-100 py-4 px-6 text-center text-xs text-slate-400 font-sans">
-          Powered by <span className="font-semibold text-slate-600">Billava E-Invoice Indonesia</span> &copy; 2026. All rights reserved.
+          Powered by <span className="font-semibold text-slate-600">ArbillPay System Indonesia</span> &copy; 2026. All rights reserved.
         </footer>
 
         {/* Mounted Payment Simulator Overlay */}

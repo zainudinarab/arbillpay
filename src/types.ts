@@ -1,5 +1,5 @@
 /**
- * Types for Billava - Indonesian Invoice Web Mobile App
+ * Types for ArbillPay - Indonesian E-Wallet & WiFi Management System
  */
 
 export interface Client {

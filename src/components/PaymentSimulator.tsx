@@ -188,7 +188,7 @@ export default function PaymentSimulator({
               {/* Secure checkout info */}
               <div className="pt-2 flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                 <ShieldCheck size={14} className="text-emerald-500" />
-                <span>Secured by Billava Gate</span>
+                <span>Secured by ArbillPay Gate</span>
               </div>
             </div>
 
