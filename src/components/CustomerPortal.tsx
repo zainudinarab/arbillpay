@@ -967,6 +967,7 @@ export default function CustomerPortal({
     setPinError('');
 
     const itemPrice = Number(selectedPackage?.price || 0);
+    const price = itemPrice;
     const customerFee = arabpayServiceFee || (arabpayFeeBearer === 'customer' ? 200 : 0);
     const totalPay = itemPrice + customerFee;
     const currentBal = currentUser?.arabpay_balance ?? 0;
@@ -1062,7 +1063,7 @@ export default function CustomerPortal({
         const jwtToken = (currentUser as any)?.token_jwt || (currentUser as any)?.token || localStorage.getItem('arabpay_token') || '';
 
         const checkoutBodyObj = {
-          amount: price,
+          amount: itemPrice,
           reference_id: refCode,
           pin: pinCode,
           payment_method: 'balance',
