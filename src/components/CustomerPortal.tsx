@@ -1979,15 +1979,15 @@ export default function CustomerPortal({
             })()}
 
             {regSuccess ? (
-              <div className="p-8 text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
-                  <CheckCircle2 size={36} />
+              <div className="p-6 text-center space-y-3.5 overflow-y-auto flex-1">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
+                  <CheckCircle2 size={28} />
                 </div>
-                <h4 className="text-lg font-bold text-white">Pendaftaran Berhasil Dikirim!</h4>
+                <h4 className="text-base font-bold text-white">Pendaftaran Berhasil Dikirim!</h4>
                 <p className="text-xs text-slate-300 max-w-md mx-auto leading-relaxed">
                   Data pendaftaran Anda telah berhasil dicatat dengan status <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full font-bold">Non-Aktif (Off / Pending)</span>.
                 </p>
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-left space-y-2 text-xs text-slate-400">
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl text-left space-y-2 text-xs text-slate-400">
                   <div className="flex justify-between"><span>Nama Pelanggan:</span> <strong className="text-white">{regForm.name}</strong></div>
                   <div className="flex justify-between"><span>Nomor WhatsApp:</span> <strong className="text-white">{regForm.phone_number}</strong></div>
                   <div className="flex justify-between"><span>Username Akun:</span> <strong className="text-amber-400 font-mono">{regForm.username}</strong></div>
@@ -1998,7 +1998,7 @@ export default function CustomerPortal({
                 </p>
                 <button
                   onClick={() => { setShowMemberRegisterModal(false); setRegSuccess(false); }}
-                  className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer"
+                  className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer shadow-lg active:scale-95"
                 >
                   Tutup & Kembali
                 </button>
