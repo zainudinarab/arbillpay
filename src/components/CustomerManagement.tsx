@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
+import { getCustomersFromFirestore, getPackagesFromFirestore } from '../services/firebaseService';
 
 interface PackageItem {
   id: string;
@@ -405,59 +406,87 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   const fetchData = async () => {
     setLoading(true);
+    let loadedCustomers: any[] = [];
+    let loadedPackages: any[] = [];
+
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
-        fetch(`${apiUrl}/api/customers`),
-        fetch(`${apiUrl}/api/packages`),
-        fetch(`${apiUrl}/api/routers`),
-        fetch(`${apiUrl}/api/router-profiles`),
+        fetch(`${apiUrl}/api/customers`).catch(() => null),
+        fetch(`${apiUrl}/api/packages`).catch(() => null),
+        fetch(`${apiUrl}/api/routers`).catch(() => null),
+        fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
         fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null),
         fetch(`${apiUrl}/api/ftth/map`).catch(() => null)
       ]);
 
-      const dataCust = await parseJsonResponse(resCust);
-      const dataPkg = await parseJsonResponse(resPkg);
-      const dataRtr = await parseJsonResponse(resRtr);
-      const dataProf = await parseJsonResponse(resProf);
-
-      if (dataCust.success && Array.isArray(dataCust.customers)) {
-        // Filter strictly ONLY PPPoE customers
-        setCustomers(dataCust.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
-      }
-      if (dataPkg.success && Array.isArray(dataPkg.packages)) {
-        // Only PPPoE packages
-        setPackages(dataPkg.packages.filter((p: any) => p.type === 'pppoe'));
-      }
-      if (dataRtr.success && Array.isArray(dataRtr.routers)) {
-        setRouters(dataRtr.routers);
-        if (dataRtr.routers.length > 0 && !selectedRouterId) {
-          setSelectedRouterId(dataRtr.routers[0].id);
-          setImportRouterId(dataRtr.routers[0].id);
+      if (resCust && resCust.ok) {
+        const dataCust = await parseJsonResponse(resCust).catch(() => null);
+        if (dataCust && dataCust.success && Array.isArray(dataCust.customers)) {
+          loadedCustomers = dataCust.customers;
         }
       }
-      if (dataProf.success && Array.isArray(dataProf.profiles)) {
-        setRouterProfiles(dataProf.profiles);
+      if (resPkg && resPkg.ok) {
+        const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
+        if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages)) {
+          loadedPackages = dataPkg.packages;
+        }
+      }
+      if (resRtr && resRtr.ok) {
+        const dataRtr = await parseJsonResponse(resRtr).catch(() => null);
+        if (dataRtr && dataRtr.success && Array.isArray(dataRtr.routers)) {
+          setRouters(dataRtr.routers);
+          if (dataRtr.routers.length > 0 && !selectedRouterId) {
+            setSelectedRouterId(dataRtr.routers[0].id);
+            setImportRouterId(dataRtr.routers[0].id);
+          }
+        }
+      }
+      if (resProf && resProf.ok) {
+        const dataProf = await parseJsonResponse(resProf).catch(() => null);
+        if (dataProf && dataProf.success && Array.isArray(dataProf.profiles)) {
+          setRouterProfiles(dataProf.profiles);
+        }
       }
       if (resActive && resActive.ok) {
-        const dataActive = await parseJsonResponse(resActive);
-        if (dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
+        const dataActive = await parseJsonResponse(resActive).catch(() => null);
+        if (dataActive && dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
           setOnlineUsernames(dataActive.onlineUsernames);
         }
       }
       if (resMap && resMap.ok) {
-        const dataMap = await parseJsonResponse(resMap);
-        if (dataMap.success && dataMap.data) {
+        const dataMap = await parseJsonResponse(resMap).catch(() => null);
+        if (dataMap && dataMap.success && dataMap.data) {
           setFtthNodes(dataMap.data.nodes || []);
           setFtthLines(dataMap.data.lines || []);
         }
       }
-    } catch (err: any) {
-      console.error('Failed to fetch customers:', err);
-      setToastMsg({ type: 'error', text: err?.message || 'Gagal memuat data pelanggan PPPoE.' });
-    } finally {
-      setLoading(false);
+    } catch (err: any) { }
+
+    // Merge with Firebase Cloud Firestore for instant cloud persistence
+    const fbCust = await getCustomersFromFirestore();
+    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
+      const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
+      fbCust.customers.forEach((fc: any) => {
+        if (!existingIds.has(String(fc.id))) {
+          loadedCustomers.push(fc);
+        }
+      });
     }
+
+    const fbPkg = await getPackagesFromFirestore();
+    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
+      const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
+      fbPkg.packages.forEach((fp: any) => {
+        if (!existingPkgIds.has(String(fp.id))) {
+          loadedPackages.push(fp);
+        }
+      });
+    }
+
+    setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+    setPackages(loadedPackages.filter((p: any) => p.type === 'pppoe'));
+    setLoading(false);
   };
 
   useEffect(() => {

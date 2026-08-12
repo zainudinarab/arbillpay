@@ -28,6 +28,7 @@ import {
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { CustomerItem as Customer } from './CustomerManagement';
+import { getCustomersFromFirestore, getPackagesFromFirestore } from '../services/firebaseService';
 
 interface HotspotCustomerManagementProps {
   profile: BusinessProfile;
@@ -154,49 +155,71 @@ export default function HotspotCustomerManagement({
 
   const fetchData = async () => {
     setLoading(true);
+    let loadedCustomers: any[] = [];
+    let loadedPackages: any[] = [];
+
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const [cRes, pRes, rRes, rpRes, actRes] = await Promise.all([
-        fetch(`${apiUrl}/api/customers`),
-        fetch(`${apiUrl}/api/packages`),
-        fetch(`${apiUrl}/api/routers`),
-        fetch(`${apiUrl}/api/router-profiles`),
+        fetch(`${apiUrl}/api/customers`).catch(() => null),
+        fetch(`${apiUrl}/api/packages`).catch(() => null),
+        fetch(`${apiUrl}/api/routers`).catch(() => null),
+        fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
         fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null)
       ]);
 
-      const cData = await parseJsonResponse(cRes);
-      const pData = await parseJsonResponse(pRes);
-      const rData = await parseJsonResponse(rRes);
-      const rpData = await parseJsonResponse(rpRes);
-      
-      let activeNames: string[] = [];
-      if (actRes) {
-        try {
-          const actData = await parseJsonResponse(actRes);
-          if (actData.success && Array.isArray(actData.onlineUsernames)) {
-            activeNames = actData.onlineUsernames;
-          }
-        } catch (e) {}
+      if (cRes && cRes.ok) {
+        const cData = await parseJsonResponse(cRes).catch(() => null);
+        if (cData && cData.success && Array.isArray(cData.customers)) {
+          loadedCustomers = cData.customers;
+        }
       }
+      if (pRes && pRes.ok) {
+        const pData = await parseJsonResponse(pRes).catch(() => null);
+        if (pData && pData.success && Array.isArray(pData.packages)) {
+          loadedPackages = pData.packages;
+        }
+      }
+      if (rRes && rRes.ok) {
+        const rData = await parseJsonResponse(rRes).catch(() => null);
+        if (rData && rData.success && Array.isArray(rData.routers)) setRouters(rData.routers);
+      }
+      if (rpRes && rpRes.ok) {
+        const rpData = await parseJsonResponse(rpRes).catch(() => null);
+        if (rpData && rpData.success && Array.isArray(rpData.profiles)) setRouterProfiles(rpData.profiles);
+      }
+      if (actRes && actRes.ok) {
+        const actData = await parseJsonResponse(actRes).catch(() => null);
+        if (actData && actData.success && Array.isArray(actData.onlineUsernames)) {
+          setOnlineUsernames(actData.onlineUsernames);
+        }
+      }
+    } catch (err: any) { }
 
-      if (cData.success && Array.isArray(cData.customers)) {
-        // Filter strictly ONLY HOTSPOT subscription member customers (excluding voucher eceran)
-        setCustomers(cData.customers.filter((c: Customer) => c.connection_type === 'hotspot' && !c.is_voucher));
-      }
-      if (pData.success && Array.isArray(pData.packages)) {
-        // Filter only Hotspot Member (Monthly) packages
-        setPackages(pData.packages.filter((p: any) => p.type === 'hotspot_monthly'));
-      }
-      if (rData.success && Array.isArray(rData.routers)) setRouters(rData.routers);
-      if (rpData.success && Array.isArray(rpData.profiles)) setRouterProfiles(rpData.profiles);
-      setOnlineUsernames(activeNames);
-
-    } catch (err: any) {
-      console.error('Failed to fetch hotspot customers:', err);
-      setToastMsg({ type: 'error', text: err?.message || 'Gagal memuat data pelanggan Hotspot.' });
-    } finally {
-      setLoading(false);
+    // Always merge with Firebase Cloud Firestore for instant serverless cloud sync
+    const fbCust = await getCustomersFromFirestore();
+    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
+      const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
+      fbCust.customers.forEach((fc: any) => {
+        if (!existingIds.has(String(fc.id))) {
+          loadedCustomers.push(fc);
+        }
+      });
     }
+
+    const fbPkg = await getPackagesFromFirestore();
+    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
+      const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
+      fbPkg.packages.forEach((fp: any) => {
+        if (!existingPkgIds.has(String(fp.id))) {
+          loadedPackages.push(fp);
+        }
+      });
+    }
+
+    setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'hotspot' && !c.is_voucher));
+    setPackages(loadedPackages.filter((p: any) => p.type === 'hotspot_monthly'));
+    setLoading(false);
   };
 
   useEffect(() => {
