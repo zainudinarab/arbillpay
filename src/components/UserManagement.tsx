@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
+import { getUsersFromFirestore, getCustomersFromFirestore, saveUserToFirestore } from '../services/firebaseService';
 
 interface UserItem {
   id: string;
@@ -56,18 +57,64 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
   const fetchUsers = async () => {
     setLoading(true);
+    let loadedUsers: UserItem[] = [];
+
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/users`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.users)) {
-        setUsers(data.users);
+      const res = await fetch(`${apiUrl}/api/users`).catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && data.success && Array.isArray(data.users)) {
+          loadedUsers = data.users;
+        }
       }
-    } catch (err) {
-      console.error('Failed to fetch users from database API:', err);
-    } finally {
-      setLoading(false);
+    } catch (err) { }
+
+    // Always fetch and merge from Firebase Cloud Firestore for pure serverless deployment
+    try {
+      const fbUsers = await getUsersFromFirestore();
+      if (fbUsers.success && Array.isArray(fbUsers.users)) {
+        const existingIds = new Set(loadedUsers.map(u => String(u.id)));
+        fbUsers.users.forEach((fu: any) => {
+          if (!existingIds.has(String(fu.id))) {
+            loadedUsers.push({
+              id: fu.id,
+              username: fu.username || fu.email || `user_${fu.id.slice(-4)}`,
+              name: fu.name || fu.username || 'User',
+              email: fu.email || 'user@hotspot.local',
+              phone_number: fu.phone_number || fu.phone || '',
+              role: fu.role || 'pelanggan',
+              created_at: fu.created_at || fu.updated_at || new Date().toISOString()
+            });
+          }
+        });
+      }
+
+      // Also merge customer member registrations from Firestore `customers` collection
+      const fbCust = await getCustomersFromFirestore();
+      if (fbCust.success && Array.isArray(fbCust.customers)) {
+        const existingUsernames = new Set(loadedUsers.map(u => String(u.username || '').toLowerCase()));
+        fbCust.customers.forEach((fc: any) => {
+          const uName = String(fc.pppoe_username || fc.username || fc.phone_number || '').toLowerCase();
+          if (uName && !existingUsernames.has(uName)) {
+            loadedUsers.push({
+              id: fc.id,
+              username: fc.pppoe_username || fc.username || fc.phone_number,
+              name: fc.name || 'Pelanggan Member',
+              email: fc.email || `${fc.pppoe_username || fc.id}@member.local`,
+              phone_number: fc.phone_number || '',
+              role: 'pelanggan',
+              created_at: fc.created_at || new Date().toISOString()
+            });
+          }
+        });
+      }
+    } catch (fbErr) {
+      console.warn('Firestore user fetch warning:', fbErr);
     }
+
+    setUsers(loadedUsers);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -85,31 +132,37 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          username: username.trim(),
-          email: email.trim(),
-          phone_number: phoneNumber.trim() || null,
-          role,
-          password
-        })
-      });
+      const newUserObj = {
+        id: `user_${Date.now()}`,
+        name: name.trim(),
+        username: username.trim(),
+        email: email.trim(),
+        phone_number: phoneNumber.trim() || null,
+        role,
+        created_at: new Date().toISOString()
+      };
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToastMsg({ type: 'success', text: `User "${data.user.name}" (Role: ${data.user.role.toUpperCase()}) berhasil ditambahkan!` });
-        setShowAddModal(false);
-        resetForm();
-        fetchUsers();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal menambahkan user' });
-      }
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      try {
+        const res = await fetch(`${apiUrl}/api/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newUserObj)
+        }).catch(() => null);
+        if (res && res.ok) {
+          await res.json().catch(() => null);
+        }
+      } catch (apiErr) { }
+
+      // Always save to Firebase Cloud Firestore
+      await saveUserToFirestore(newUserObj);
+
+      setToastMsg({ type: 'success', text: `User "${newUserObj.name}" (Role: ${newUserObj.role.toUpperCase()}) berhasil ditambahkan!` });
+      setShowAddModal(false);
+      resetForm();
+      fetchUsers();
     } catch (err: any) {
-      setToastMsg({ type: 'error', text: 'Gagal terhubung ke Database API.' });
+      setToastMsg({ type: 'error', text: 'Gagal menambahkan user: ' + err?.message });
     } finally {
       setSubmitLoading(false);
     }
