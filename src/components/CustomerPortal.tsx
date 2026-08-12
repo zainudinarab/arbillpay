@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
-import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore } from '../services/firebaseService';
+import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
@@ -441,8 +441,20 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch LIVE Member Registration status (with silent fallback when running in serverless Firebase mode)
+  // Fetch LIVE Member Registration status (with Firestore cloud fallback for cross-browser sync)
   const fetchLiveMemberRegistrationsStatus = async () => {
+    const targetId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id;
+
+    // 1. Direct Firebase Cloud Firestore database query for cross-browser & cross-device sync
+    if (targetId) {
+      const fbData = await getCustomersFromFirestore(targetId);
+      if (fbData.success && Array.isArray(fbData.customers) && fbData.customers.length > 0) {
+        setMyRegistrations(fbData.customers);
+        localStorage.setItem('my_member_registrations', JSON.stringify(fbData.customers));
+      }
+    }
+
+    // 2. PostgreSQL Backend status check if backend URL is configured
     const rawLocal = localStorage.getItem('my_member_registrations');
     const localList: any[] = rawLocal ? JSON.parse(rawLocal) : [];
 

@@ -116,11 +116,30 @@ export const saveCustomerToFirestore = async (customer: any) => {
   }
 };
 
-export const getCustomersFromFirestore = async () => {
+export const getCustomersFromFirestore = async (phoneOrUserId?: string) => {
   try {
     const custColl = collection(db, 'customers');
     const snapshot = await getDocs(custColl);
-    const customers = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    let customers = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+
+    if (phoneOrUserId) {
+      const targetStr = String(phoneOrUserId);
+      const cleanTarget = targetStr.replace(/\D/g, '');
+      customers = customers.filter((c: any) => {
+        if (!c) return false;
+        if (c.user_id && String(c.user_id) === targetStr) return true;
+        if (c.phone_number) {
+          const cleanPhone = String(c.phone_number).replace(/\D/g, '');
+          if (cleanPhone && cleanTarget && (cleanPhone === cleanTarget || (cleanTarget.length > 5 && cleanPhone.endsWith(cleanTarget.slice(-8))))) {
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+
+    // Sort newest first
+    customers.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     return { success: true, customers };
   } catch (err: any) {
     console.warn('[FIREBASE FIRESTORE WARN] Could not fetch customers from Firestore:', err);
