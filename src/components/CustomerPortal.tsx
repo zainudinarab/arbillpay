@@ -837,7 +837,12 @@ export default function CustomerPortal({
         })
       });
 
-      const checkoutData = await checkoutRes.json();
+      let checkoutData: any = {};
+      try {
+        if (checkoutRes && checkoutRes.headers.get('content-type')?.includes('application/json')) {
+          checkoutData = await checkoutRes.json();
+        }
+      } catch (jsonErr) { }
 
       if (checkoutData.error && !checkoutData.success && !checkoutData.id) {
         setPinError(checkoutData.error || checkoutData.message || 'Gagal membuat checkout.');
