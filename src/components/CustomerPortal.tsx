@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
-import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore } from '../services/firebaseService';
+import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore } from '../services/firebaseService';
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
@@ -245,6 +245,7 @@ export default function CustomerPortal({
     if (currentUser) {
       fetchCustomerProfile();
       fetchLiveArabPayBalance();
+      fetchCloudPurchasedVouchers();
 
       // 1. Auto-refresh live balance when returning to tab/window
       const handleFocus = () => {
@@ -297,6 +298,19 @@ export default function CustomerPortal({
       };
     }
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
+
+  // Fetch cloud purchased vouchers history from Firebase Cloud Firestore
+  const fetchCloudPurchasedVouchers = async () => {
+    try {
+      const uId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id;
+      const res = await getPurchasedVouchersFromFirestore(uId);
+      if (res.success && Array.isArray(res.vouchers) && res.vouchers.length > 0) {
+        setLocalPurchasedVouchers(res.vouchers);
+        localStorage.setItem('purchased_vouchers_history', JSON.stringify(res.vouchers));
+        console.log(`✅ [FIREBASE FIRESTORE] Successfully synced ${res.vouchers.length} purchased vouchers from Cloud Database!`);
+      }
+    } catch (e) { }
+  };
 
   // Fetch logged in customer's live profile & invoices from PostgreSQL / Firestore
   const fetchCustomerProfile = async () => {
@@ -938,9 +952,11 @@ export default function CustomerPortal({
           status: 'SUCCESS',
           paymentChannel: 'QRIS Transfer'
         };
+        const targetUId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id || 'guest';
         const updatedHist = [historyItem, ...localPurchasedVouchers];
         setLocalPurchasedVouchers(updatedHist);
         localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
+        savePurchasedVoucherToFirestore(historyItem, targetUId);
 
         setVoucherResult({
           code: buyData.voucher.code,
@@ -1147,9 +1163,11 @@ export default function CustomerPortal({
         status: 'SUCCESS',
         paymentChannel: 'ArabPay E-Wallet'
       };
+      const targetUId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id || 'guest';
       const updatedHist = [historyItem, ...localPurchasedVouchers];
       setLocalPurchasedVouchers(updatedHist);
       localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
+      savePurchasedVoucherToFirestore(historyItem, targetUId);
 
       setVoucherResult({
         code: randomVoucherCode,

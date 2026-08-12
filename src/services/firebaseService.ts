@@ -245,4 +245,42 @@ export const getUsersFromFirestore = async () => {
   }
 };
 
+// --- 7. PURCHASED VOUCHERS HISTORY CLOUD PERSISTENCE ---
+export const savePurchasedVoucherToFirestore = async (voucherItem: any, userId?: string) => {
+  try {
+    const docId = String(voucherItem.id || `TX-${Date.now()}`);
+    const vouchRef = doc(db, 'purchased_vouchers_history', docId);
+    
+    await setDoc(vouchRef, sanitizeForFirestore({
+      ...voucherItem,
+      id: docId,
+      user_id: userId || voucherItem.user_id || 'guest',
+      created_at: new Date().toISOString()
+    }), { merge: true });
+    
+    console.log(`✅ [FIREBASE FIRESTORE] Purchased Voucher "${voucherItem.packageName || voucherItem.username}" saved to Firestore server database!`);
+    return { success: true, id: docId };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to save purchased voucher to Firestore:', err);
+    return { success: false, error: err?.message };
+  }
+};
+
+export const getPurchasedVouchersFromFirestore = async (userId?: string) => {
+  try {
+    const vouchColl = collection(db, 'purchased_vouchers_history');
+    const snapshot = await getDocs(vouchColl);
+    let vouchers = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+    if (userId) {
+      vouchers = vouchers.filter((v: any) => v.user_id === userId || v.buyer_phone === userId || v.customer_id === userId);
+    }
+    // Sort newest first
+    vouchers.sort((a: any, b: any) => new Date(b.created_at || b.date).getTime() - new Date(a.created_at || a.date).getTime());
+    return { success: true, vouchers };
+  } catch (err: any) {
+    console.warn('[FIREBASE FIRESTORE WARN] Could not fetch purchased vouchers from Firestore:', err);
+    return { success: false, vouchers: [] };
+  }
+};
+
 
