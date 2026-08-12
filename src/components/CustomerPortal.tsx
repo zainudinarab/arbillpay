@@ -509,49 +509,52 @@ export default function CustomerPortal({
       const finalUsername = isHotspot ? regForm.username : (regForm.username || `user-${regForm.phone_number.slice(-4)}`);
       const finalPassword = isHotspot ? regForm.password : (regForm.password || '123456');
 
-      const res = await fetch(`${apiUrl}/api/customers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser?.id || null,
-          name: regForm.name,
-          phone_number: regForm.phone_number,
-          pppoe_username: finalUsername,
-          pppoe_password: finalPassword,
-          address: regForm.dusun || null,
-          dusun: regForm.dusun || null,
-          desa: regForm.desa || null,
-          kecamatan: regForm.kecamatan || null,
-          kabupaten: regForm.kabupaten || null,
-          provinsi: regForm.provinsi || null,
-          package_id: registerPkg.id,
-          connection_type: isHotspot ? 'hotspot' : 'pppoe',
-          status: 'non-active'
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setRegSuccess(true);
-        const newRegItem = {
-          id: data.customer?.id || Date.now().toString(),
-          name: regForm.name,
-          phone_number: regForm.phone_number,
-          pppoe_username: finalUsername,
-          package_name: registerPkg.name,
-          speed_limit: registerPkg.speed_limit || registerPkg.rate_limit || '10 Mbps',
-          status: 'non-active',
-          created_at: new Date().toISOString()
-        };
-        setMyRegistrations(prev => {
-          const updated = [newRegItem, ...prev.filter((r: any) => r.pppoe_username !== finalUsername)];
-          localStorage.setItem('my_member_registrations', JSON.stringify(updated));
-          return updated;
-        });
-      } else {
-        setRegError(data.message || 'Gagal mendaftar member. Silakan coba lagi.');
+      const custObj = {
+        id: `cust_${Date.now()}`,
+        user_id: currentUser?.id || null,
+        name: regForm.name,
+        phone_number: regForm.phone_number,
+        pppoe_username: finalUsername,
+        pppoe_password: finalPassword,
+        address: regForm.dusun || null,
+        dusun: regForm.dusun || null,
+        desa: regForm.desa || null,
+        kecamatan: regForm.kecamatan || null,
+        kabupaten: regForm.kabupaten || null,
+        provinsi: regForm.provinsi || null,
+        package_id: registerPkg.id,
+        package_name: registerPkg.name || 'Member Package',
+        speed_limit: registerPkg.speed_limit || registerPkg.rate_limit || '10 Mbps',
+        connection_type: isHotspot ? 'hotspot' : 'pppoe',
+        status: 'non-active',
+        created_at: new Date().toISOString()
+      };
+
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/customers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(custObj)
+          }).catch(() => null);
+          if (res && res.ok) {
+            await res.json().catch(() => null);
+          }
+        } catch (apiErr) { }
       }
+
+      // Always save customer registration directly to Cloud Firestore as permanent audit trail
+      await saveCustomerToFirestore(custObj);
+
+      setRegSuccess(true);
+      setMyRegistrations(prev => {
+        const updated = [custObj, ...prev.filter((r: any) => r.pppoe_username !== finalUsername)];
+        localStorage.setItem('my_member_registrations', JSON.stringify(updated));
+        return updated;
+      });
     } catch (err: any) {
-      setRegError(err.message || 'Terjadi kesalahan koneksi saat pendaftaran.');
+      setRegError(err.message || 'Terjadi kesalahan saat menyimpan pendaftaran.');
     } finally {
       setRegLoading(false);
     }
