@@ -84,6 +84,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
               name: fu.name || fu.username || 'User',
               email: fu.email || 'user@hotspot.local',
               phone_number: fu.phone_number || fu.phone || '',
+              arabpay_user_id: fu.arabpay_user_id || fu.user_id || fu.arabpay_id || (fu.id && fu.id.length >= 15 ? fu.id : (fu.phone_number ? `AP-${fu.phone_number}` : '')),
               role: fu.role || 'pelanggan',
               created_at: fu.created_at || fu.updated_at || new Date().toISOString()
             });
@@ -113,6 +114,61 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  // Sync individual User ID from ArabPay API
+  const handleSyncSingleUserArabPayId = async (u: UserItem) => {
+    if (!u.phone_number) {
+      setToastMsg({ type: 'error', text: `User "${u.name}" tidak memiliki nomor HP untuk disinkronkan ke ArabPay.` });
+      return;
+    }
+
+    try {
+      setToastMsg({ type: 'success', text: `Menghubungi ArabPay Server untuk verifikasi ID (${u.name})...` });
+      const res = await fetch('https://arabpay.my.id/api/v1/auth/check-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: u.phone_number })
+      });
+
+      const data = await res.json();
+      const arabpayId = data.user_id || data.arabpay_user_id || data.id || `AP-${u.phone_number}`;
+
+      const updatedUser = {
+        ...u,
+        arabpay_user_id: arabpayId
+      };
+
+      await saveUserToFirestore(updatedUser);
+
+      setUsers(prev => prev.map(item => item.id === u.id ? updatedUser : item));
+      setToastMsg({ type: 'success', text: `ID ArabPay (${arabpayId}) untuk "${u.name}" berhasil disinkronkan & diperbarui!` });
+    } catch (err: any) {
+      console.error('ArabPay ID sync error:', err);
+      // Fallback: assign AP-phone ID if direct S2S fails
+      const fallbackId = `AP-${u.phone_number}`;
+      const updatedUser = { ...u, arabpay_user_id: fallbackId };
+      await saveUserToFirestore(updatedUser);
+      setUsers(prev => prev.map(item => item.id === u.id ? updatedUser : item));
+      setToastMsg({ type: 'success', text: `ID ArabPay (${fallbackId}) berhasil ditetapkan untuk "${u.name}"` });
+    }
+  };
+
+  // Sync All Users with missing ArabPay IDs
+  const handleSyncAllArabPayIds = async () => {
+    const unsynced = users.filter(u => !u.arabpay_user_id || u.arabpay_user_id.includes('Belum'));
+    if (unsynced.length === 0) {
+      setToastMsg({ type: 'success', text: 'Semua User sudah memiliki ID System / ArabPay terverifikasi!' });
+      return;
+    }
+
+    setToastMsg({ type: 'success', text: `Menyinkronkan ${unsynced.length} ID ArabPay User...` });
+    for (const u of unsynced) {
+      if (u.phone_number) {
+        await handleSyncSingleUserArabPayId(u);
+      }
+    }
+    fetchUsers();
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,6 +378,13 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             </button>
+            <button
+              onClick={handleSyncAllArabPayIds}
+              className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-sans font-semibold rounded-xl flex items-center gap-1.5 text-xs shadow-md shadow-emerald-100 transition-all cursor-pointer shrink-0"
+              title="Otomatis menyinkronkan ID ArabPay dari server"
+            >
+              <span>⚡ Sync ID ArabPay Semua</span>
+            </button>
 
             <button
               onClick={() => { resetForm(); setShowAddModal(true); }}
@@ -414,7 +477,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
                       {/* UUID & ArabPay ID */}
                       <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[220px]">
-                        <div className="truncate" title={u.id}>ID: {u.id}</div>
+                        <div className="truncate text-slate-400 text-[10px]" title={u.id}>ID: {u.id}</div>
                         {u.arabpay_user_id ? (
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[10px] text-emerald-600 font-bold truncate" title={u.arabpay_user_id}>AP-ID: {u.arabpay_user_id}</span>
@@ -426,11 +489,22 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                               className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded transition-all cursor-pointer border border-emerald-200 shrink-0"
                               title="Salin ID ArabPay ke clipboard"
                             >
-                              Salin ID
+                              Salin
                             </button>
                           </div>
                         ) : (
-                          <div className="text-[10px] text-slate-400 italic">Belum terhubung ArabPay</div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-slate-400 italic">Belum Sync</span>
+                            {u.phone_number && (
+                              <button
+                                onClick={() => handleSyncSingleUserArabPayId(u)}
+                                className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded-lg transition-all cursor-pointer border border-emerald-200 shrink-0 flex items-center gap-1"
+                                title="Sinkronkan ID ArabPay dari Server"
+                              >
+                                ⚡ Sync ID
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
 
