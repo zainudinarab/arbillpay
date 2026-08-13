@@ -20,6 +20,16 @@ import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { getUsersFromFirestore, getCustomersFromFirestore, saveUserToFirestore } from '../services/firebaseService';
 
+// Helper: Normalize phone numbers for 100% accurate WhatsApp matching (08... format)
+const normalizePhone = (phone?: string): string => {
+  if (!phone) return '';
+  let cleaned = String(phone).replace(/[^0-9]/g, '');
+  if (cleaned.startsWith('62')) {
+    cleaned = '0' + cleaned.slice(2);
+  }
+  return cleaned;
+};
+
 interface UserItem {
   id: string;
   username: string;
@@ -92,14 +102,24 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         });
       }
 
-      // Fetch customer subscriptions and map them to their parent User (1 User -> Many Member Subscriptions)
+      // Fetch customer subscriptions and map them to their parent User via normalized WhatsApp number
       const fbCust = await getCustomersFromFirestore();
       if (fbCust.success && Array.isArray(fbCust.customers)) {
         const subMap: Record<string, any[]> = {};
         fbCust.customers.forEach((cust: any) => {
-          const key = cust.phone_number || cust.user_id || 'guest';
-          if (!subMap[key]) subMap[key] = [];
-          subMap[key].push(cust);
+          const normP = normalizePhone(cust.phone_number || cust.phone);
+          if (normP) {
+            if (!subMap[normP]) subMap[normP] = [];
+            subMap[normP].push(cust);
+          }
+          if (cust.user_id && cust.user_id !== normP) {
+            if (!subMap[cust.user_id]) subMap[cust.user_id] = [];
+            subMap[cust.user_id].push(cust);
+          }
+          if (cust.arabpay_user_id && cust.arabpay_user_id !== normP) {
+            if (!subMap[cust.arabpay_user_id]) subMap[cust.arabpay_user_id] = [];
+            subMap[cust.arabpay_user_id].push(cust);
+          }
         });
         setUserSubscriptionsMap(subMap);
       }
@@ -452,8 +472,20 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       {/* Subscriptions / Member Services Column */}
                       <td className="py-4 px-6">
                         {(() => {
-                          const key = u.phone_number || u.id;
-                          const subs = userSubscriptionsMap[key] || [];
+                          const normP = normalizePhone(u.phone_number);
+                          const list1 = normP ? (userSubscriptionsMap[normP] || []) : [];
+                          const list2 = userSubscriptionsMap[u.id] || [];
+                          const list3 = u.arabpay_user_id ? (userSubscriptionsMap[u.arabpay_user_id] || []) : [];
+
+                          const combinedMap = new Map();
+                          [...list1, ...list2, ...list3].forEach(item => {
+                            const itemKey = item.id || item.pppoe_username || item.username;
+                            if (itemKey && !combinedMap.has(itemKey)) {
+                              combinedMap.set(itemKey, item);
+                            }
+                          });
+                          const subs = Array.from(combinedMap.values());
+
                           return (
                             <div className="flex items-center gap-2">
                               <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
