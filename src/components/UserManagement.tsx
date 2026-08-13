@@ -44,7 +44,8 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
-  const [submitLoading, setSubmitLoading] = useState(false);
+  const [userSubscriptionsMap, setUserSubscriptionsMap] = useState<Record<string, any[]>>({});
+  const [selectedUserSubs, setSelectedUserSubs] = useState<{ user: UserItem; subs: any[] } | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form State (Add & Edit)
@@ -90,24 +91,16 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         });
       }
 
-      // Also merge customer member registrations from Firestore `customers` collection
+      // Fetch customer subscriptions and map them to their parent User (1 User -> Many Member Subscriptions)
       const fbCust = await getCustomersFromFirestore();
       if (fbCust.success && Array.isArray(fbCust.customers)) {
-        const existingUsernames = new Set(loadedUsers.map(u => String(u.username || '').toLowerCase()));
-        fbCust.customers.forEach((fc: any) => {
-          const uName = String(fc.pppoe_username || fc.username || fc.phone_number || '').toLowerCase();
-          if (uName && !existingUsernames.has(uName)) {
-            loadedUsers.push({
-              id: fc.id,
-              username: fc.pppoe_username || fc.username || fc.phone_number,
-              name: fc.name || 'Pelanggan Member',
-              email: fc.email || `${fc.pppoe_username || fc.id}@member.local`,
-              phone_number: fc.phone_number || '',
-              role: 'pelanggan',
-              created_at: fc.created_at || new Date().toISOString()
-            });
-          }
+        const subMap: Record<string, any[]> = {};
+        fbCust.customers.forEach((cust: any) => {
+          const key = cust.phone_number || cust.user_id || 'guest';
+          if (!subMap[key]) subMap[key] = [];
+          subMap[key].push(cust);
         });
+        setUserSubscriptionsMap(subMap);
       }
     } catch (fbErr) {
       console.warn('Firestore user fetch warning:', fbErr);
@@ -359,8 +352,9 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                     <th className="py-4 px-6">Pengguna & Username</th>
                     <th className="py-4 px-6">Kontak Email & HP</th>
                     <th className="py-4 px-6">Hak Akses (Role)</th>
+                    <th className="py-4 px-6">Layanan Member (1-to-N)</th>
                     <th className="py-4 px-6">ID System / ArabPay</th>
-                    <th className="py-4 px-6 text-right">Kelola / Angkat Jabatan</th>
+                    <th className="py-4 px-6 text-right">Kelola / Role</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-sans">
@@ -390,6 +384,32 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       {/* Role Badge */}
                       <td className="py-4 px-6">
                         {getRoleBadge(u.role)}
+                      </td>
+
+                      {/* Subscriptions / Member Services Column */}
+                      <td className="py-4 px-6">
+                        {(() => {
+                          const key = u.phone_number || u.id;
+                          const subs = userSubscriptionsMap[key] || [];
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                                subs.length > 0 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-500'
+                              }`}>
+                                {subs.length} Langganan
+                              </span>
+                              {subs.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedUserSubs({ user: u, subs })}
+                                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-[#2563EB] text-[10px] font-bold rounded-lg transition border border-blue-200 cursor-pointer"
+                                >
+                                  📋 Detail Member
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* UUID & ArabPay ID */}
@@ -706,6 +726,63 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail Member Subscriptions (1 User -> N Langganan) */}
+      {selectedUserSubs && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-base">
+                  📋 Daftar Layanan Member ({selectedUserSubs.subs.length})
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Pemilik: <strong>{selectedUserSubs.user.name}</strong> (WA: <strong>{selectedUserSubs.user.phone_number || '-'}</strong>)
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedUserSubs(null)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {selectedUserSubs.subs.map((sub: any, idx: number) => (
+                <div key={sub.id || idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-slate-800 text-sm">
+                      {sub.package_name || sub.packageName || 'Paket Internet Member'}
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                      sub.status === 'active' || sub.status === 'aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {sub.status === 'active' || sub.status === 'aktif' ? '● Aktif' : '○ Menunggu Persetujuan'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-slate-600 text-[11px]">
+                    <div>Username: <strong className="font-mono text-slate-950">{sub.pppoe_username || sub.username || '-'}</strong></div>
+                    <div>Router: <strong className="text-slate-800">{sub.router_name || 'MikroTik Hotspot'}</strong></div>
+                    <div>Biaya: <strong className="text-emerald-600">Rp {(Number(sub.price) || 0).toLocaleString('id-ID')} / bln</strong></div>
+                    <div>Tgl Daftar: <strong className="text-slate-500">{sub.created_at ? new Date(sub.created_at).toLocaleDateString('id-ID') : '-'}</strong></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2 text-right">
+              <button
+                onClick={() => setSelectedUserSubs(null)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
