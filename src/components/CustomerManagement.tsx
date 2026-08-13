@@ -1232,15 +1232,15 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
                           {/* MIKROTIK SYNC & DISCONNECT BUTTON COLUMN */}
                           <td className="py-3.5 px-4 text-center">
-                            {cust.status === 'pending' ? (
+                            {isPendingStatus(cust.status) ? (
                               <button
                                 onClick={() => handleApprovePendingCustomer(cust)}
                                 disabled={actionLoadingId === cust.id}
-                                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-200"
-                                title="Klik untuk menyetujui dan mengaktifkan pengajuan langganan member ini"
+                                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-amber-100"
+                                title="Klik untuk mengaktifkan permohonan pemasangan pelanggan ini"
                               >
                                 {actionLoadingId === cust.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                <span>✅ Setujui & Aktifkan</span>
+                                <span>⚡ Proses & Aktifkan</span>
                               </button>
                             ) : !cust.is_synced ? (
                               <button
