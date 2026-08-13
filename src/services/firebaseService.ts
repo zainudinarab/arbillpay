@@ -302,4 +302,36 @@ export const getPurchasedVouchersFromFirestore = async (userId?: string) => {
   }
 };
 
+export const resetAllLocalStateAndDatabase = () => {
+  try {
+    const keysToKeep = [
+      'arbill_setup_completed',
+      'arabpay_client_id',
+      'arabpay_client_secret',
+      'arabpay_owner_user_id',
+      'arabpay_owner_phone',
+      'business_name',
+    ];
+
+    const savedValues: Record<string, string | null> = {};
+    keysToKeep.forEach(k => {
+      savedValues[k] = localStorage.getItem(k);
+    });
+
+    localStorage.clear();
+
+    keysToKeep.forEach(k => {
+      if (savedValues[k]) {
+        localStorage.setItem(k, savedValues[k]!);
+      }
+    });
+
+    console.log('✅ [DATABASE RESET] Successfully cleared all sample/cached data from browser storage!');
+    return { success: true };
+  } catch (err: any) {
+    console.error('[DATABASE RESET ERROR]', err);
+    return { success: false, error: err?.message };
+  }
+};
+
 

@@ -14,6 +14,7 @@ import {
   Server
 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
+import { resetAllLocalStateAndDatabase } from '../services/firebaseService';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -137,6 +138,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       const cleanClientId = clientId.trim();
       const cleanClientSecret = clientSecret.trim();
       const ownerId = verifiedData?.owner_user_id || '019f74af9fcdWDgDxM8g';
+
+      // Clear all sample/cached data for a 100% clean installation
+      resetAllLocalStateAndDatabase();
 
       // Always save to localStorage for instant Client-Side persistence!
       localStorage.setItem('arbill_setup_completed', 'true');
