@@ -83,10 +83,19 @@ export default function App() {
   useEffect(() => {
     const checkSetupStatus = async () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
-      if (hash === 'setup') {
+      const pathname = window.location.pathname.replace('/', '');
+      if (hash.includes('setup') || pathname.includes('setup')) {
         setShowSetupWizard(true);
         return;
       }
+
+      const localInstalled = localStorage.getItem('arbill_setup_completed');
+      const localClientId = localStorage.getItem('arabpay_client_id');
+      if (localInstalled !== 'true' || !localClientId) {
+        setShowSetupWizard(true);
+        return;
+      }
+
       try {
         const apiUrl = getApiUrl();
         if (apiUrl) {
