@@ -13,7 +13,8 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import DashboardOverview from './components/DashboardOverview';
 import { getApiUrl } from './config/api';
-import { getInvoicesFromFirestore, saveUserToFirestore } from './services/firebaseService';
+import { getInvoicesFromFirestore, saveUserToFirestore, getCustomersFromFirestore } from './services/firebaseService';
+import PendingSubmissionsPage from './components/PendingSubmissionsPage';
 
 // Inside OAuth handler:
 // try {
@@ -78,6 +79,23 @@ export default function App() {
     return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin';
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  const fetchPendingCount = async () => {
+    try {
+      const res = await getCustomersFromFirestore();
+      if (res.success && Array.isArray(res.customers)) {
+        const count = res.customers.filter((c: any) => c.status === 'pending').length;
+        setPendingCount(count);
+      }
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Check setup installation status on startup
   useEffect(() => {
@@ -737,6 +755,14 @@ const safeFormatDate = (val: any): string => {
   // --- RENDERING ROUTER ---
   const renderMainContent = () => {
     switch (currentView) {
+      case 'pending-submissions':
+        return (
+          <PendingSubmissionsPage
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
       case 'overview':
         return (
           <DashboardOverview
@@ -1168,6 +1194,7 @@ const safeFormatDate = (val: any): string => {
         }}
         onLogout={handleLogout}
         userRole={currentUser?.role || 'owner'}
+        pendingCount={pendingCount}
       />
 
       {/* 2. Main Viewing Pane */}

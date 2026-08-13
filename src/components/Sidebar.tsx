@@ -33,6 +33,7 @@ interface SidebarProps {
   onQuickInvoice: () => void;
   onLogout?: () => void;
   userRole?: UserRole;
+  pendingCount?: number;
 }
 
 interface MenuGroup {
@@ -55,7 +56,8 @@ export default function Sidebar({
   t,
   onQuickInvoice,
   onLogout,
-  userRole = 'owner'
+  userRole = 'owner',
+  pendingCount = 0
 }: SidebarProps) {
 
   const theme = profile.themeColor || 'blue';
@@ -99,6 +101,7 @@ export default function Sidebar({
       icon: Package,
       roles: ['owner', 'teknisi', 'marketing', 'kasir', 'pelanggan'],
       items: [
+        { id: 'pending-submissions', label: 'Pengajuan Customer', icon: Zap, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'packages', label: 'Paket Internet', icon: Router, roles: ['owner', 'teknisi'] },
         { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
@@ -230,13 +233,20 @@ export default function Sidebar({
                         <button
                           key={item.id}
                           onClick={() => setCurrentView(item.id)}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer ${isActive
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer ${isActive
                             ? themeStyles.activeBg
                             : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
                             }`}
                         >
-                          <ItemIcon size={15} className={isActive ? themeStyles.activeIcon : 'text-slate-400'} />
-                          <span>{item.label}</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <ItemIcon size={15} className={isActive ? themeStyles.activeIcon : 'text-slate-400'} />
+                            <span className="truncate">{item.label}</span>
+                          </div>
+                          {item.id === 'pending-submissions' && pendingCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white font-mono text-[10px] font-black shadow-xs shadow-rose-200 animate-pulse shrink-0">
+                              {pendingCount}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
