@@ -19,6 +19,7 @@ import {
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { getUsersFromFirestore, getCustomersFromFirestore, saveUserToFirestore } from '../services/firebaseService';
+import { getApiUrl } from '../config/api';
 
 // Helper: Normalize phone numbers for 100% accurate WhatsApp matching (08... format)
 const normalizePhone = (phone?: string): string => {
@@ -72,12 +73,14 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     let loadedUsers: UserItem[] = [];
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/users`).catch(() => null);
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.success && Array.isArray(data.users)) {
-          loadedUsers = data.users;
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/users`).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.success && Array.isArray(data.users)) {
+            loadedUsers = data.users;
+          }
         }
       }
     } catch (err) { }
@@ -212,17 +215,14 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         created_at: new Date().toISOString()
       };
 
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      try {
-        const res = await fetch(`${apiUrl}/api/users`, {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newUserObj)
         }).catch(() => null);
-        if (res && res.ok) {
-          await res.json().catch(() => null);
-        }
-      } catch (apiErr) { }
+      }
 
       // Always save to Firebase Cloud Firestore
       await saveUserToFirestore(newUserObj);
@@ -274,19 +274,21 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     };
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          username: username.trim(),
-          email: email.trim(),
-          phone_number: phoneNumber.trim() || null,
-          role,
-          password: password.trim() || undefined
-        })
-      }).catch(() => null);
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            username: username.trim(),
+            email: email.trim(),
+            phone_number: phoneNumber.trim() || null,
+            role,
+            password: password.trim() || undefined
+          })
+        }).catch(() => null);
+      }
 
       // Always update Cloud Firestore database
       await saveUserToFirestore(updatedUserObj).catch(() => null);
