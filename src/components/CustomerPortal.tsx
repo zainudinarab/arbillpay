@@ -1318,13 +1318,23 @@ export default function CustomerPortal({
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => setShowLoginModal(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-full transition shadow-lg shadow-indigo-500/20 cursor-pointer"
-              >
-                <Wallet className="w-3.5 h-3.5" />
-                <span>Login ArabPay</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { window.location.hash = '#/setup'; window.location.reload(); }}
+                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-full transition cursor-pointer border border-slate-700"
+                  title="Setup Kredensial ArabPay Owner"
+                >
+                  <span>⚙️ Setup Owner</span>
+                </button>
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-full transition shadow-lg shadow-indigo-500/20 cursor-pointer"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>Login ArabPay</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

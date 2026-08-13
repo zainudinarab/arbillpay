@@ -1122,6 +1122,18 @@ const safeFormatDate = (val: any): string => {
 
 
 
+  // 0. FIRST-TIME ONBOARDING SETUP WIZARD (Jika Belum Di-setup / Hash #setup)
+  if (showSetupWizard) {
+    return (
+      <SetupWizard
+        onComplete={() => {
+          setShowSetupWizard(false);
+          window.location.hash = '#/overview';
+        }}
+      />
+    );
+  }
+
   // 1. CUSTOMER PORTAL (Untuk Pengunjung Belum Login ATAU Role Pelanggan)
   if (!currentUser || currentUser.role === 'pelanggan') {
     return (
