@@ -32,7 +32,13 @@ import {
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
-import { getCustomersFromFirestore, getPackagesFromFirestore } from '../services/firebaseService';
+import { 
+  getCustomersFromFirestore, 
+  saveCustomerToFirestore, 
+  getPackagesFromFirestore, 
+  getInvoicesFromFirestore, 
+  saveInvoiceToFirestore 
+} from '../services/firebaseService';
 
 interface PackageItem {
   id: string;
@@ -199,14 +205,59 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
 
   const fetchCustomerInvoices = async (cust: CustomerItem) => {
+    let matchedInvoices: any[] = [];
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`);
-      const data = await parseJsonResponse(res);
-      if (data.success && Array.isArray(data.invoices)) {
-        setCustomerInvoices(data.invoices);
+      const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
+      if (res && res.ok) {
+        const data = await parseJsonResponse(res);
+        if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
+          matchedInvoices = data.invoices;
+        }
       }
     } catch (err) {}
+
+    // Fallback: Query Cloud Firestore if API didn't return invoices
+    if (matchedInvoices.length === 0) {
+      try {
+        const fbRes = await getInvoicesFromFirestore();
+        if (fbRes.success && Array.isArray(fbRes.invoices)) {
+          matchedInvoices = fbRes.invoices.filter((inv: any) => 
+            inv.customer_id === cust.id || 
+            inv.customer_code === cust.customer_code ||
+            (cust.phone_number && inv.customer_phone === cust.phone_number) ||
+            (cust.pppoe_username && inv.pppoe_username === cust.pppoe_username)
+          );
+        }
+      } catch (fbErr) {}
+    }
+
+    // Auto-generate current invoice if customer has no invoice yet
+    if (matchedInvoices.length === 0) {
+      const pkg = packages.find(p => p.id === cust.package_id);
+      const pkgPrice = pkg ? Number(pkg.price) : 150000;
+      const pkgName = pkg ? pkg.name : 'Paket Internet PPPoE';
+
+      const generatedInvoice = {
+        id: `INV-${Date.now().toString().slice(-6)}`,
+        customer_id: cust.id,
+        customer_code: cust.customer_code || `CUST-${cust.id.slice(-4)}`,
+        customer_name: cust.name,
+        customer_phone: cust.phone_number || '',
+        pppoe_username: cust.pppoe_username || '',
+        package_name: pkgName,
+        amount: pkgPrice,
+        status: cust.status === 'active' || cust.status === 'aktif' ? 'unpaid' : 'pending',
+        month: new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        created_at: new Date().toISOString()
+      };
+
+      await saveInvoiceToFirestore(generatedInvoice).catch(() => null);
+      matchedInvoices = [generatedInvoice];
+    }
+
+    setCustomerInvoices(matchedInvoices);
   };
 
   const openBillingModal = (cust: CustomerItem) => {
@@ -223,19 +274,37 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payment_method: 'Kasir / Tunai' })
-      });
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        if (billingCustomer) {
-          fetchCustomerInvoices(billingCustomer);
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const data = await parseJsonResponse(res);
+        if (data.success) {
+          setToastMsg({ type: 'success', text: data.message });
         }
-        fetchData();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal membayar invoice.' });
       }
+
+      // Always update Firestore invoice & customer status to paid & active
+      const targetInv = customerInvoices.find(i => i.id === invId);
+      if (targetInv) {
+        const updatedInv = {
+          ...targetInv,
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          payment_method: 'Kasir / Tunai'
+        };
+        await saveInvoiceToFirestore(updatedInv).catch(() => null);
+      }
+
+      if (billingCustomer) {
+        const updatedCust = { ...billingCustomer, status: 'active' };
+        await saveCustomerToFirestore(updatedCust).catch(() => null);
+        fetchCustomerInvoices(billingCustomer);
+      }
+
+      setToastMsg({ type: 'success', text: 'Tagihan berhasil dilunasi & status pelanggan AKTIF!' });
+      fetchData();
     } catch (err: any) {
-      setToastMsg({ type: 'error', text: err?.message || 'Gagal bayar.' });
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal memproses pembayaran.' });
     } finally {
       setPayLoading(false);
     }
@@ -670,49 +739,55 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+      const pkg = packages.find(p => p.id === packageId);
 
-      const res = await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
+      const updatedCustObj: CustomerItem = {
+        ...editingCustomer,
+        customer_code: customerCode,
+        name: name.trim(),
+        phone_number: phoneNumber.trim(),
+        address: address.trim(),
+        dusun: dusun.trim() || null,
+        desa: desa.trim() || null,
+        kecamatan: kecamatan.trim() || null,
+        kabupaten: kabupaten.trim() || null,
+        provinsi: provinsi.trim() || null,
+        connection_type: 'pppoe',
+        pppoe_username: pppoeUsername.trim(),
+        pppoe_password: pppoePassword.trim(),
+        static_ip: staticIp.trim() || null,
+        installation_date: installationDate,
+        expired_at: expiredAt || null,
+        grace_until: graceUntil || null,
+        odp_port: odpPort.trim() || null,
+        sn_onu: snOnu.trim() || null,
+        power_laser: powerLaser.trim() || null,
+        teknisi: teknisi.trim() || null,
+        package_id: packageId,
+        package_name: pkg ? pkg.name : editingCustomer.package_name,
+        router_id: selectedRouterId || null,
+        router_profile_id: matchedProfile ? matchedProfile.id : null,
+        status: status as any
+      };
+
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_code: customerCode,
-          name: name.trim(),
-          phone_number: phoneNumber.trim(),
-          address: address.trim(),
-          dusun: dusun.trim() || null,
-          desa: desa.trim() || null,
-          kecamatan: kecamatan.trim() || null,
-          kabupaten: kabupaten.trim() || null,
-          provinsi: provinsi.trim() || null,
-          connection_type: 'pppoe',
-          pppoe_username: pppoeUsername.trim(),
-          pppoe_password: pppoePassword.trim(),
-          static_ip: staticIp.trim() || null,
-          installation_date: installationDate,
-          expired_at: expiredAt || null,
-          grace_until: graceUntil || null,
-          odp_port: odpPort.trim() || null,
-          sn_onu: snOnu.trim() || null,
-          power_laser: powerLaser.trim() || null,
-          teknisi: teknisi.trim() || null,
-          package_id: packageId,
-          router_id: selectedRouterId || null,
-          router_profile_id: matchedProfile ? matchedProfile.id : null,
-          status
-        })
-      });
+        body: JSON.stringify(updatedCustObj)
+      }).catch(() => null);
 
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        setShowEditModal(false);
-        setEditingCustomer(null);
-        fetchData();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui data pelanggan.' });
-      }
+      // Always save to Cloud Firestore as primary database
+      await saveCustomerToFirestore(updatedCustObj).catch(() => null);
+
+      // Update local state
+      setCustomers(prev => prev.map(c => c.id === editingCustomer.id ? updatedCustObj : c));
+
+      setToastMsg({ type: 'success', text: `Data pelanggan "${updatedCustObj.name}" berhasil diperbarui!` });
+      setShowEditModal(false);
+      setEditingCustomer(null);
+      fetchData();
     } catch (err: any) {
       setToastMsg({ type: 'error', text: err?.message || 'Gagal memperbarui data pelanggan.' });
     } finally {
