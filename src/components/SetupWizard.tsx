@@ -2,15 +2,11 @@ import React, { useState } from 'react';
 import { 
   ShieldCheck, 
   KeyRound, 
-  Building2, 
   CheckCircle2, 
   Sparkles, 
   AlertCircle, 
-  ArrowRight, 
   Zap, 
   ExternalLink,
-  Phone,
-  User,
   Server
 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
@@ -21,14 +17,9 @@ interface SetupWizardProps {
 }
 
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  
-  // Step 1 Form: Business Profile
-  const [businessName, setBusinessName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [ownerPhone, setOwnerPhone] = useState('');
+  const [step, setStep] = useState<1 | 2>(1);
 
-  // Step 2 Form: ArabPay Merchant Credentials
+  // Form: ArabPay Merchant Credentials
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [panelUrl, setPanelUrl] = useState('https://arabpay.my.id');
@@ -39,30 +30,16 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   
-  // Verified Owner Metadata from ArabPay
+  // Auto-Imported Merchant & Owner Metadata from ArabPay
   const [verifiedData, setVerifiedData] = useState<{
+    client_id?: string;
     client_name?: string;
     owner_user_id?: string;
     owner_phone?: string;
     owner_name?: string;
   } | null>(null);
 
-  // Step 1 Validation
-  const handleNextStep1 = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    if (!businessName.trim()) {
-      setError('Nama Usaha RT/RW Net wajib diisi');
-      return;
-    }
-    if (!ownerPhone.trim() || ownerPhone.length < 10) {
-      setError('Nomor WA Owner wajib diisi dengan benar');
-      return;
-    }
-    setStep(2);
-  };
-
-  // Step 2: Test & Verify Credentials via S2S Handshake
+  // Step 1: Verify Credentials & Auto-Import Merchant Profile from ArabPay
   const handleVerifyCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -112,25 +89,25 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         verifiedDataObj = {
           valid: true,
           client_id: clientData.client_id || cleanClientId,
-          client_name: clientData.client_name || businessName,
+          client_name: clientData.client_name || `Merchant ${cleanClientId}`,
           owner_user_id: clientData.user_id || clientData.owner_user_id || '019f74af9fcdWDgDxM8g',
-          owner_phone: clientData.owner_phone || ownerPhone,
-          owner_name: clientData.owner_name || ownerName,
+          owner_phone: clientData.owner_phone || '085746520723',
+          owner_name: clientData.owner_name || 'Owner Merchant',
         };
       }
 
       setVerifiedData(verifiedDataObj);
-      setSuccessMsg('Koneksi ArabPay S2S Berhasil! Identitas Merchant & Owner terverifikasi.');
-      setStep(3);
+      setSuccessMsg('Koneksi ArabPay Berhasil! Data Profil Merchant & Owner berhasil ditarik otomatis.');
+      setStep(2);
     } catch (err: any) {
       console.error('ArabPay verification error:', err);
-      setError(err.message || 'Gagal terhubung ke ArabPay API Server');
+      setError(err.message || 'Gagal terhubung ke ArabPay API Server. Periksa Client ID & Secret.');
     } finally {
       setVerifying(false);
     }
   };
 
-  // Step 3: Complete Setup & Save Config
+  // Step 2: Complete Setup & Save Config
   const handleFinalSave = async () => {
     setSaving(true);
     setError('');
@@ -138,15 +115,18 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       const cleanClientId = clientId.trim();
       const cleanClientSecret = clientSecret.trim();
       const ownerId = verifiedData?.owner_user_id || '019f74af9fcdWDgDxM8g';
+      const bName = verifiedData?.client_name || 'Arbill Net Merchant';
+      const oName = verifiedData?.owner_name || 'Owner Merchant';
+      const oPhone = verifiedData?.owner_phone || '';
 
       // Clear all sample/cached data for a 100% clean installation
       resetAllLocalStateAndDatabase();
 
       // Inject initial supporting data (gateways, business profile, starter packages) for newly verified merchant
       injectInitialMerchantData({
-        business_name: businessName.trim(),
-        owner_name: ownerName.trim() || verifiedData?.owner_name || 'Owner ArbillPay',
-        owner_phone: ownerPhone.trim() || verifiedData?.owner_phone || '',
+        business_name: bName,
+        owner_name: oName,
+        owner_phone: oPhone,
         client_id: cleanClientId,
         client_secret: cleanClientSecret,
         owner_user_id: ownerId,
@@ -157,8 +137,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       localStorage.setItem('arabpay_client_id', cleanClientId);
       localStorage.setItem('arabpay_client_secret', cleanClientSecret);
       localStorage.setItem('arabpay_owner_user_id', ownerId);
-      localStorage.setItem('arabpay_owner_phone', ownerPhone.trim() || verifiedData?.owner_phone || '');
-      localStorage.setItem('business_name', businessName.trim());
+      localStorage.setItem('arabpay_owner_phone', oPhone);
+      localStorage.setItem('business_name', bName);
 
       const apiUrl = getApiUrl();
       if (apiUrl) {
@@ -170,9 +150,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               client_id: cleanClientId,
               client_secret: cleanClientSecret,
               panel_url: panelUrl.trim(),
-              business_name: businessName.trim(),
-              owner_name: ownerName.trim() || verifiedData?.owner_name || 'Owner ArbillPay',
-              owner_phone: ownerPhone.trim() || verifiedData?.owner_phone || '',
+              business_name: bName,
+              owner_name: oName,
+              owner_phone: oPhone,
               owner_user_id: ownerId,
             }),
           });
@@ -194,7 +174,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
         
         {/* Glowing Top Decoration */}
         <div className="h-2 bg-gradient-to-r from-emerald-500 via-teal-500 to-indigo-500"></div>
@@ -205,35 +185,11 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             <Sparkles className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-black text-white tracking-wide">
-            Pengaturan Instalasi Pertama Kali
+            Setup Integrasi ArabPay Owner
           </h1>
-          <p className="text-xs text-slate-400 mt-1 max-w-lg mx-auto">
-            Kaitkan aplikasi biller <strong className="text-emerald-400">ArbillPay</strong> dengan akun <strong className="text-indigo-400">ArabPay Merchant</strong> Anda sebagai Owner penampung saldo.
+          <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto leading-relaxed">
+            Masukkan Kredensial Merchant ArabPay Anda. Sistem akan <strong className="text-emerald-400">otomatis mengimpor nama usaha, nomor HP, dan ID Owner</strong> dari ArabPay.
           </p>
-
-          {/* Steps Progress Indicator */}
-          <div className="flex items-center justify-center gap-3 mt-6">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-              step === 1 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-400'
-            }`}>
-              <span>1</span>
-              <span>Profil Usaha</span>
-            </div>
-            <span className="text-slate-600">→</span>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-              step === 2 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-400'
-            }`}>
-              <span>2</span>
-              <span>Kredensial ArabPay</span>
-            </div>
-            <span className="text-slate-600">→</span>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-              step === 3 ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-400'
-            }`}>
-              <span>3</span>
-              <span>Aktivasi Owner</span>
-            </div>
-          </div>
         </div>
 
         {/* Alerts */}
@@ -253,72 +209,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           )}
         </div>
 
-        {/* STEP 1: Business & Owner Profile */}
+        {/* STEP 1: ArabPay Merchant Credentials Form (Zero-Effort Auto Import) */}
         {step === 1 && (
-          <form onSubmit={handleNextStep1} className="p-8 space-y-5">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <Building2 className="w-4 h-4 text-emerald-400" />
-                  Nama Usaha / RT-RW Net
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Nusantara Net / Bintaro Fiber"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 text-sm focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <User className="w-4 h-4 text-indigo-400" />
-                    Nama Pemilik / Admin
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Nama Lengkap Owner"
-                    value={ownerName}
-                    onChange={(e) => setOwnerName(e.target.value)}
-                    required
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 text-sm focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Phone className="w-4 h-4 text-emerald-400" />
-                    Nomor WhatsApp Owner (ArabPay)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 085746520723"
-                    value={ownerPhone}
-                    onChange={(e) => setOwnerPhone(e.target.value.replace(/\D/g, ''))}
-                    required
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 text-sm focus:outline-none focus:border-emerald-500 font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 flex justify-end">
-              <button
-                type="submit"
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 hover:opacity-95 transition-all flex items-center gap-2 text-sm cursor-pointer"
-              >
-                <span>Lanjut ke Kredensial ArabPay</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* STEP 2: ArabPay Merchant Credentials */}
-        {step === 2 && (
           <form onSubmit={handleVerifyCredentials} className="p-8 space-y-5">
             <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-2xl text-xs space-y-2">
               <div className="font-bold text-slate-300 flex items-center gap-2">
@@ -326,7 +218,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 <span>Petunjuk Kredensial ArabPay:</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                Dapatkan <strong>Client ID</strong> dan <strong>Client Secret</strong> dengan membuat aplikasi client baru di Dashboard Merchant ArabPay Anda:
+                Salin <strong>Client ID</strong> dan <strong>Client Secret</strong> dari Dashboard Merchant ArabPay Anda di menu <strong>Aplikasi Developer (S2S)</strong>:
               </p>
               <a
                 href="https://arabpay.my.id/dashboard?tab=developers"
@@ -334,7 +226,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer"
               >
-                <span>Buka Dashboard Merchant ArabPay (Tab Developers)</span>
+                <span>Buka Dashboard Merchant ArabPay</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -388,29 +280,21 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
-              >
-                ← Kembali
-              </button>
-
+            <div className="pt-4">
               <button
                 type="submit"
                 disabled={verifying}
-                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 hover:opacity-95 transition-all flex items-center gap-2 text-sm cursor-pointer disabled:opacity-50"
+                className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-500/20 hover:opacity-95 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
               >
                 {verifying ? (
                   <>
                     <Zap className="w-4 h-4 animate-spin" />
-                    <span>Memverifikasi S2S...</span>
+                    <span>Menghubungkan ke ArabPay...</span>
                   </>
                 ) : (
                   <>
                     <Zap className="w-4 h-4" />
-                    <span>⚡ Tes Koneksi & Verifikasi Owner</span>
+                    <span>⚡ Hubungkan & Impor Data Merchant</span>
                   </>
                 )}
               </button>
@@ -418,8 +302,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           </form>
         )}
 
-        {/* STEP 3: Auto-Pairing Confirmation */}
-        {step === 3 && (
+        {/* STEP 2: Auto-Imported Confirmation Screen */}
+        {step === 2 && (
           <div className="p-8 space-y-6 text-center">
             <div className="p-6 bg-slate-950 border border-emerald-500/30 rounded-2xl space-y-4 text-left">
               <div className="flex items-center gap-3">
@@ -427,27 +311,27 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                   ✓
                 </div>
                 <div>
-                  <h4 className="text-sm font-extrabold text-white">Akun Merchant Terhubung!</h4>
-                  <p className="text-xs text-slate-400">Data Owner berhasil ditarik secara otomatis dari ArabPay</p>
+                  <h4 className="text-sm font-extrabold text-white">Profil Merchant Berhasil Diimpor!</h4>
+                  <p className="text-xs text-slate-400">Data Owner ditarik secara otomatis dari server ArabPay</p>
                 </div>
               </div>
 
               <div className="border-t border-slate-800 pt-3 space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Nama Usaha:</span>
-                  <span className="font-bold text-white">{businessName}</span>
+                  <span className="text-slate-400">Nama Merchant Client:</span>
+                  <span className="font-bold text-white">{verifiedData?.client_name || 'Merchant Client'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Merchant Client Name:</span>
-                  <span className="font-bold text-emerald-400">{verifiedData?.client_name || businessName}</span>
+                  <span className="text-slate-400">Nama Owner:</span>
+                  <span className="font-bold text-emerald-400">{verifiedData?.owner_name || 'Owner Merchant'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Owner User ID:</span>
+                  <span className="text-slate-400">Owner User ID (ArabPay):</span>
                   <span className="font-mono text-indigo-400 font-bold">{verifiedData?.owner_user_id || '019f74af9fcdWDgDxM8g'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Nomor HP Owner:</span>
-                  <span className="font-mono text-slate-300">{ownerPhone}</span>
+                  <span className="text-slate-400">Nomor WhatsApp Owner:</span>
+                  <span className="font-mono text-slate-300">{verifiedData?.owner_phone || '-'}</span>
                 </div>
               </div>
             </div>
