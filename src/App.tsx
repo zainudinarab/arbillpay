@@ -66,9 +66,11 @@ import { formatCurrency, formatDate } from './utils';
 import LoginModal from './components/LoginModal';
 import PublicVoucherStore from './components/PublicVoucherStore';
 import CustomerPortal from './components/CustomerPortal';
+import SetupWizard from './components/SetupWizard';
 import { UserAccount } from './types';
 
 export default function App() {
+  const [showSetupWizard, setShowSetupWizard] = useState<boolean>(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(() => {
     const hash = window.location.hash.replace('#/', '').replace('#', '');
     const pathname = window.location.pathname.replace('/', '');
@@ -76,6 +78,30 @@ export default function App() {
     return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin';
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
+
+  // Check setup installation status on startup
+  useEffect(() => {
+    const checkSetupStatus = async () => {
+      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      if (hash === 'setup') {
+        setShowSetupWizard(true);
+        return;
+      }
+      try {
+        const apiUrl = getApiUrl();
+        if (apiUrl) {
+          const res = await fetch(`${apiUrl}/api/setup/status`);
+          const data = await res.json();
+          if (data && data.installed === false) {
+            setShowSetupWizard(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Setup status check error:', err);
+      }
+    };
+    checkSetupStatus();
+  }, []);
 
   // Check URL query string or pathname for admin login route or ArabPay OAuth callback
   useEffect(() => {
@@ -1179,6 +1205,16 @@ const safeFormatDate = (val: any): string => {
           t={t}
           onClose={() => setShowSimulator(false)}
           onPaymentSuccess={handlePaymentSuccess}
+        />
+      )}
+
+      {/* 5. First-Time Onboarding Setup Wizard Overlay */}
+      {showSetupWizard && (
+        <SetupWizard
+          onComplete={() => {
+            setShowSetupWizard(false);
+            window.location.hash = '#/overview';
+          }}
         />
       )}
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../config/db.js';
+import setupRoutes from './setupRoutes.js';
 import authRoutes from './authRoutes.js';
 import userRoutes from './userRoutes.js';
 import customerRoutes from './customerRoutes.js';
@@ -23,6 +24,7 @@ router.get('/health', async (req, res) => {
 });
 
 // Modular Routes
+router.use('/setup', setupRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/customers', customerRoutes);
