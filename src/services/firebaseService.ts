@@ -334,4 +334,117 @@ export const resetAllLocalStateAndDatabase = () => {
   }
 };
 
+// Helper: Inject initial supporting data (gateways, business profile, starter packages) for newly verified merchant
+export const injectInitialMerchantData = (setupData: {
+  business_name: string;
+  owner_name: string;
+  owner_phone: string;
+  client_id: string;
+  client_secret: string;
+  owner_user_id: string;
+}) => {
+  try {
+    // 1. Business Profile
+    const profile = {
+      name: setupData.owner_name || 'Owner RT/RW Net',
+      role: 'Owner / Admin',
+      companyName: setupData.business_name || 'Arbill Net',
+      email: '',
+      phone: setupData.owner_phone || '',
+      address: 'Jl. Utama RT/RW Net No. 1',
+      logoUrl: '',
+      taxId: '',
+      arabpay_client_id: setupData.client_id,
+      arabpay_owner_user_id: setupData.owner_user_id,
+    };
+    localStorage.setItem('arbill_business_profile', JSON.stringify(profile));
+
+    // 2. Default Active Gateways (ArabPay + QRIS + Bank Transfer)
+    const starterGateways = [
+      {
+        id: 'arabpay',
+        name: 'ArabPay E-Wallet',
+        displayName: 'ArabPay E-Wallet (Bayar 1-Klik / SSO Direct)',
+        iconName: 'Wallet',
+        isActive: true,
+        type: 'ewallet',
+        payoutShare: 100,
+        colorClass: 'bg-indigo-600 text-white',
+        accountNumber: setupData.owner_phone,
+        accountName: setupData.owner_name,
+      },
+      {
+        id: 'qris',
+        name: 'QRIS Direct',
+        displayName: 'QRIS All Payment (GoPay, OVO, DANA, BCA)',
+        iconName: 'QrCode',
+        isActive: true,
+        type: 'qris',
+        payoutShare: 45,
+        colorClass: 'bg-rose-500 text-white',
+        accountNumber: 'NMID-102030405060',
+        accountName: setupData.business_name,
+      },
+      {
+        id: 'bank_transfer',
+        name: 'Bank Transfer',
+        displayName: 'Transfer Bank (BCA, Mandiri, BRI)',
+        iconName: 'Landmark',
+        isActive: true,
+        type: 'bank',
+        payoutShare: 5,
+        colorClass: 'bg-blue-800 text-white',
+        accountNumber: '8012-3456-7890',
+        accountName: setupData.owner_name,
+      }
+    ];
+    localStorage.setItem('arbill_gateways', JSON.stringify(starterGateways));
+
+    // 3. Starter Package Templates
+    const starterPackages = [
+      {
+        id: 'pkg-1',
+        name: 'Paket Home 10 Mbps',
+        speed: '10 Mbps',
+        price: 150000,
+        billingCycle: 'monthly',
+        type: 'pppoe',
+        description: 'Paket Internet Rumah Hemat 10 Mbps Unlimited',
+        isActive: true,
+      },
+      {
+        id: 'pkg-2',
+        name: 'Paket High Speed 20 Mbps',
+        speed: '20 Mbps',
+        price: 250000,
+        billingCycle: 'monthly',
+        type: 'pppoe',
+        description: 'Paket Internet Cepat 20 Mbps Unlimited Streaming & Gaming',
+        isActive: true,
+      },
+      {
+        id: 'pkg-3',
+        name: 'Voucher Hotspot 24 Jam',
+        speed: '5 Mbps',
+        price: 5000,
+        duration: '1 hari',
+        type: 'hotspot',
+        description: 'Voucher Hotspot Unlimited 24 Jam Masa Aktif 1 Hari',
+        isActive: true,
+      }
+    ];
+    localStorage.setItem('arbill_packages', JSON.stringify(starterPackages));
+
+    // 4. Empty customers & invoices to start 100% clean
+    localStorage.setItem('arbill_clients', JSON.stringify([]));
+    localStorage.setItem('arbill_invoices', JSON.stringify([]));
+
+    console.log('🎉 [INITIAL SEED] Successfully injected starter gateways, packages & business profile for new merchant!');
+    return { success: true };
+  } catch (err: any) {
+    console.error('[INITIAL SEED ERROR]', err);
+    return { success: false, error: err?.message };
+  }
+};
+
 

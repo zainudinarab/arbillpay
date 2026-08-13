@@ -14,7 +14,7 @@ import {
   Server
 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
-import { resetAllLocalStateAndDatabase } from '../services/firebaseService';
+import { resetAllLocalStateAndDatabase, injectInitialMerchantData } from '../services/firebaseService';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -141,6 +141,16 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
       // Clear all sample/cached data for a 100% clean installation
       resetAllLocalStateAndDatabase();
+
+      // Inject initial supporting data (gateways, business profile, starter packages) for newly verified merchant
+      injectInitialMerchantData({
+        business_name: businessName.trim(),
+        owner_name: ownerName.trim() || verifiedData?.owner_name || 'Owner ArbillPay',
+        owner_phone: ownerPhone.trim() || verifiedData?.owner_phone || '',
+        client_id: cleanClientId,
+        client_secret: cleanClientSecret,
+        owner_user_id: ownerId,
+      });
 
       // Always save to localStorage for instant Client-Side persistence!
       localStorage.setItem('arbill_setup_completed', 'true');
