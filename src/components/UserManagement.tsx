@@ -54,6 +54,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [submitLoading, setSubmitLoading] = useState(false);
   const [userSubscriptionsMap, setUserSubscriptionsMap] = useState<Record<string, any[]>>({});
   const [selectedUserSubs, setSelectedUserSubs] = useState<{ user: UserItem; subs: any[] } | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
