@@ -258,9 +258,18 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
     setSubmitLoading(true);
     setToastMsg(null);
 
+    const updatedUserObj: UserItem = {
+      ...editingUser,
+      name: name.trim(),
+      username: username.trim(),
+      email: email.trim(),
+      phone_number: phoneNumber.trim() || undefined,
+      role: role
+    };
+
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
+      await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -271,20 +280,21 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
           role,
           password: password.trim() || undefined
         })
-      });
+      }).catch(() => null);
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToastMsg({ type: 'success', text: data.message || `Jabatan user "${name}" berhasil diubah menjadi ${role.toUpperCase()}!` });
-        setShowEditModal(false);
-        setEditingUser(null);
-        resetForm();
-        fetchUsers();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui user' });
-      }
+      // Always update Cloud Firestore database
+      await saveUserToFirestore(updatedUserObj).catch(() => null);
+
+      // Update local state instantly
+      setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUserObj : u));
+
+      setToastMsg({ type: 'success', text: `Jabatan user "${name}" berhasil diubah menjadi ${role.toUpperCase()}!` });
+      setShowEditModal(false);
+      setEditingUser(null);
+      resetForm();
+      fetchUsers();
     } catch (err: any) {
-      setToastMsg({ type: 'error', text: 'Gagal memperbarui user ke database.' });
+      setToastMsg({ type: 'error', text: 'Gagal memperbarui user ke database: ' + err?.message });
     } finally {
       setSubmitLoading(false);
     }

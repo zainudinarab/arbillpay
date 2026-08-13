@@ -695,8 +695,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   const openEditModal = (cust: CustomerItem) => {
     setEditingCustomer(cust);
-    setCustomerCode(cust.customer_code || `CUST-${cust.id.substring(0, 5).toUpperCase()}`);
-    setName(cust.name);
+    const safeId = String(cust.id || Date.now());
+    setCustomerCode(cust.customer_code || `CUST-${safeId.substring(0, 5).toUpperCase()}`);
+    setName(cust.name || '');
     setPhoneNumber(cust.phone_number || '');
     setAddress(cust.address || '');
     setDusun(cust.dusun || '');
@@ -704,20 +705,31 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setKecamatan(cust.kecamatan || '');
     setKabupaten(cust.kabupaten || '');
     setProvinsi(cust.provinsi || '');
-    setInstallationDate(cust.installation_date ? cust.installation_date.split('T')[0] : new Date().toISOString().split('T')[0]);
+
+    const safeInstDate = typeof cust.installation_date === 'string' ? cust.installation_date : new Date().toISOString();
+    setInstallationDate(safeInstDate.includes('T') ? safeInstDate.split('T')[0] : safeInstDate);
+
     setStatus((cust.status as any) || 'active');
 
     setPppoeUsername(cust.pppoe_username || '');
     setPppoePassword(cust.pppoe_password || '');
     setStaticIp(cust.static_ip || '');
 
-    setExpiredAt(cust.expired_at ? cust.expired_at.split('T')[0] : '');
-    setGraceUntil(cust.grace_until ? cust.grace_until.split('T')[0] : '');
-    
-    const ftthConn = getFtthInfoForCustomer(cust);
-    const autoOdp = cust.odp_port || (ftthConn ? `${ftthConn.odpName} (Port ${ftthConn.odpPort})` : '');
+    const safeExp = typeof cust.expired_at === 'string' ? cust.expired_at : '';
+    setExpiredAt(safeExp.includes('T') ? safeExp.split('T')[0] : safeExp);
+
+    const safeGrace = typeof cust.grace_until === 'string' ? cust.grace_until : '';
+    setGraceUntil(safeGrace.includes('T') ? safeGrace.split('T')[0] : safeGrace);
+
+    let autoOdp = cust.odp_port || '';
+    try {
+      const ftthConn = getFtthInfoForCustomer(cust);
+      if (!autoOdp && ftthConn) {
+        autoOdp = `${ftthConn.odpName || ''} (Port ${ftthConn.odpPort || 1})`;
+      }
+    } catch (e) { }
     setOdpPort(autoOdp);
-    
+
     setSnOnu(cust.sn_onu || '');
     setPowerLaser(cust.power_laser || '-19.00');
     setTeknisi(cust.teknisi || '');
