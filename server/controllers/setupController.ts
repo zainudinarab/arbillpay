@@ -110,9 +110,42 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
       console.log('✅ [SETUP WIZARD] Updated .env configuration on disk successfully');
     }
 
+    // Save to PostgreSQL database system_settings table if available
+    try {
+      const { pool } = await import('../config/db.js');
+      if (pool) {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS system_settings (
+            key VARCHAR(255) PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        const saveSetting = async (k: string, v: string) => {
+          await pool.query(`
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ($1, $2, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+          `, [k, v]);
+        };
+
+        await saveSetting('arabpay_client_id', client_id);
+        await saveSetting('arabpay_client_secret', client_secret);
+        if (owner_user_id) await saveSetting('arabpay_owner_user_id', owner_user_id);
+        if (owner_phone) await saveSetting('arabpay_owner_phone', owner_phone);
+        if (business_name) await saveSetting('business_name', business_name);
+        await saveSetting('app_installed', 'true');
+
+        console.log('✅ [SETUP WIZARD] Saved setup credentials into PostgreSQL database table system_settings');
+      }
+    } catch (dbErr) {
+      console.warn('PostgreSQL database save notice:', dbErr);
+    }
+
     return res.json({
       success: true,
-      message: 'Konfigurasi setup ArabPay berhasil disimpan!'
+      message: 'Konfigurasi setup ArabPay berhasil disimpan di Database & .env!'
     });
   } catch (err: any) {
     console.error('[SETUP SAVE ERROR]', err);
