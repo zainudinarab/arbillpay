@@ -238,14 +238,19 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   };
 
   const openEditModal = (u: UserItem) => {
-    setEditingUser(u);
-    setName(u.name);
-    setUsername(u.username);
-    setEmail(u.email);
-    setPhoneNumber(u.phone_number || '');
-    setRole(u.role);
-    setPassword('');
-    setShowEditModal(true);
+    try {
+      if (!u) return;
+      setEditingUser(u);
+      setName(String(u.name || ''));
+      setUsername(String(u.username || u.name || 'user'));
+      setEmail(String(u.email || ''));
+      setPhoneNumber(String(u.phone_number || ''));
+      setRole(String(u.role || 'kasir'));
+      setPassword('');
+      setShowEditModal(true);
+    } catch (err) {
+      console.error('Error opening user edit modal:', err);
+    }
   };
 
   const handleUpdateUser = async (e: React.FormEvent) => {
@@ -739,7 +744,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   <input
                     type="text"
                     required
-                    value={name}
+                    value={name || ''}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
@@ -752,7 +757,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   <input
                     type="text"
                     required
-                    value={username}
+                    value={username || ''}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
@@ -765,7 +770,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                     <input
                       type="email"
                       required
-                      value={email}
+                      value={email || ''}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                     />
@@ -779,7 +784,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="tel"
-                    value={phoneNumber}
+                    value={phoneNumber || ''}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
@@ -796,7 +801,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                   </div>
                 ) : (
                   <select
-                    value={role}
+                    value={role || 'kasir'}
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-indigo-50/80 border border-indigo-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all text-indigo-900 font-extrabold"
                   >
