@@ -39,6 +39,21 @@ import {
   getInvoicesFromFirestore, 
   saveInvoiceToFirestore 
 } from '../services/firebaseService';
+import { getApiUrl } from '../config/api';
+
+const formatDateSafe = (dateVal: any): string => {
+  if (!dateVal) return '-';
+  if (typeof dateVal === 'string') {
+    return dateVal.includes('T') ? dateVal.split('T')[0] : dateVal;
+  }
+  if (dateVal instanceof Date) {
+    return dateVal.toISOString().split('T')[0];
+  }
+  if (typeof dateVal === 'object' && dateVal.seconds) {
+    return new Date(dateVal.seconds * 1000).toISOString().split('T')[0];
+  }
+  return String(dateVal);
+};
 
 interface PackageItem {
   id: string;
@@ -479,55 +494,57 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     let loadedPackages: any[] = [];
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
-        fetch(`${apiUrl}/api/customers`).catch(() => null),
-        fetch(`${apiUrl}/api/packages`).catch(() => null),
-        fetch(`${apiUrl}/api/routers`).catch(() => null),
-        fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
-        fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null),
-        fetch(`${apiUrl}/api/ftth/map`).catch(() => null)
-      ]);
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
+          fetch(`${apiUrl}/api/customers`).catch(() => null),
+          fetch(`${apiUrl}/api/packages`).catch(() => null),
+          fetch(`${apiUrl}/api/routers`).catch(() => null),
+          fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
+          fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null),
+          fetch(`${apiUrl}/api/ftth/map`).catch(() => null)
+        ]);
 
-      if (resCust && resCust.ok) {
-        const dataCust = await parseJsonResponse(resCust).catch(() => null);
-        if (dataCust && dataCust.success && Array.isArray(dataCust.customers)) {
-          loadedCustomers = dataCust.customers;
-        }
-      }
-      if (resPkg && resPkg.ok) {
-        const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
-        if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages)) {
-          loadedPackages = dataPkg.packages;
-        }
-      }
-      if (resRtr && resRtr.ok) {
-        const dataRtr = await parseJsonResponse(resRtr).catch(() => null);
-        if (dataRtr && dataRtr.success && Array.isArray(dataRtr.routers)) {
-          setRouters(dataRtr.routers);
-          if (dataRtr.routers.length > 0 && !selectedRouterId) {
-            setSelectedRouterId(dataRtr.routers[0].id);
-            setImportRouterId(dataRtr.routers[0].id);
+        if (resCust && resCust.ok) {
+          const dataCust = await parseJsonResponse(resCust).catch(() => null);
+          if (dataCust && dataCust.success && Array.isArray(dataCust.customers)) {
+            loadedCustomers = dataCust.customers;
           }
         }
-      }
-      if (resProf && resProf.ok) {
-        const dataProf = await parseJsonResponse(resProf).catch(() => null);
-        if (dataProf && dataProf.success && Array.isArray(dataProf.profiles)) {
-          setRouterProfiles(dataProf.profiles);
+        if (resPkg && resPkg.ok) {
+          const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
+          if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages)) {
+            loadedPackages = dataPkg.packages;
+          }
         }
-      }
-      if (resActive && resActive.ok) {
-        const dataActive = await parseJsonResponse(resActive).catch(() => null);
-        if (dataActive && dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
-          setOnlineUsernames(dataActive.onlineUsernames);
+        if (resRtr && resRtr.ok) {
+          const dataRtr = await parseJsonResponse(resRtr).catch(() => null);
+          if (dataRtr && dataRtr.success && Array.isArray(dataRtr.routers)) {
+            setRouters(dataRtr.routers);
+            if (dataRtr.routers.length > 0 && !selectedRouterId) {
+              setSelectedRouterId(dataRtr.routers[0].id);
+              setImportRouterId(dataRtr.routers[0].id);
+            }
+          }
         }
-      }
-      if (resMap && resMap.ok) {
-        const dataMap = await parseJsonResponse(resMap).catch(() => null);
-        if (dataMap && dataMap.success && dataMap.data) {
-          setFtthNodes(dataMap.data.nodes || []);
-          setFtthLines(dataMap.data.lines || []);
+        if (resProf && resProf.ok) {
+          const dataProf = await parseJsonResponse(resProf).catch(() => null);
+          if (dataProf && dataProf.success && Array.isArray(dataProf.profiles)) {
+            setRouterProfiles(dataProf.profiles);
+          }
+        }
+        if (resActive && resActive.ok) {
+          const dataActive = await parseJsonResponse(resActive).catch(() => null);
+          if (dataActive && dataActive.success && Array.isArray(dataActive.activeUsers)) {
+            setPppActiveUsers(dataActive.activeUsers);
+          }
+        }
+        if (resMap && resMap.ok) {
+          const dataMap = await parseJsonResponse(resMap).catch(() => null);
+          if (dataMap && dataMap.success && dataMap.mapData) {
+            setFtthNodes(dataMap.mapData.nodes || []);
+            setFtthEdges(dataMap.mapData.edges || []);
+          }
         }
       }
     } catch (err: any) { }
@@ -1885,13 +1902,13 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">TANGGAL PASANG</span>
                     <span className="font-bold text-slate-700">
-                      {billingCustomer.installation_date ? billingCustomer.installation_date.split('T')[0] : '-'}
+                      {formatDateSafe(billingCustomer.installation_date)}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 font-bold block">EXPIRED HINGGA</span>
                     <span className="font-bold text-rose-600">
-                      {billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}
+                      {formatDateSafe(billingCustomer.expired_at)}
                     </span>
                   </div>
                 </div>
@@ -1911,7 +1928,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                             <span>Belum Lunas / Dalam Tagihan</span>
                           </div>
                           <p className="text-[11px] text-amber-700/90 font-medium">
-                            Batas Toleransi (Grace Until): <strong>{billingCustomer.grace_until ? billingCustomer.grace_until.split('T')[0] : '-'}</strong>
+                            Batas Toleransi (Grace Until): <strong>{formatDateSafe(billingCustomer.grace_until)}</strong>
                           </p>
                         </div>
                       </div>
@@ -1928,7 +1945,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                             <span>Lunas / Tidak Ada Tagihan Pending</span>
                           </div>
                           <p className="text-[11px] text-emerald-700/90 font-medium">
-                            Masa aktif langganan terbayar lunas hingga <strong>{billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}</strong>
+                            Masa aktif langganan terbayar lunas hingga <strong>{formatDateSafe(billingCustomer.expired_at)}</strong>
                           </p>
                         </div>
                       </div>
@@ -1944,7 +1961,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                           <span>Masa Aktif Habis (Isolir)</span>
                         </div>
                         <p className="text-[11px] text-rose-700/90 font-medium">
-                          Masa aktif telah berakhir pada <strong>{billingCustomer.expired_at ? billingCustomer.expired_at.split('T')[0] : '-'}</strong>
+                          Masa aktif telah berakhir pada <strong>{formatDateSafe(billingCustomer.expired_at)}</strong>
                         </p>
                       </div>
                     </div>
@@ -1982,7 +1999,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                       <div key={inv.id} className="p-3.5 bg-slate-50 hover:bg-blue-50/50 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 text-xs transition-all">
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-black text-blue-700">{inv.invoice_number}</span>
+                            <span className="font-mono font-black text-blue-700">{inv.invoice_number || inv.id || 'INV-001'}</span>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                               inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
                             }`}>
@@ -1990,7 +2007,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                             </span>
                           </div>
                           <p className="text-[11px] text-slate-500 mt-1">
-                            Issued: {inv.issue_date ? inv.issue_date.split('T')[0] : '-'} | Due: <strong className="text-slate-700">{inv.due_date ? inv.due_date.split('T')[0] : '-'}</strong>
+                            Issued: {formatDateSafe(inv.issue_date || inv.created_at)} | Due: <strong className="text-slate-700">{formatDateSafe(inv.due_date)}</strong>
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
