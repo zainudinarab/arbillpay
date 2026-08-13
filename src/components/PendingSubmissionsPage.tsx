@@ -25,6 +25,11 @@ interface PendingSubmissionsPageProps {
   onLogout: () => void;
 }
 
+const isPendingStatus = (status: any) => {
+  const s = String(status || '').toLowerCase().trim();
+  return s === 'pending' || s === 'non-active' || s === 'inactive' || s === 'menunggu persetujuan' || s === 'pending_approval' || (s !== 'active' && s !== 'aktif' && s !== 'terminated' && s !== 'isolir' && s !== 'isolated');
+};
+
 export default function PendingSubmissionsPage({ profile, t, onLogout }: PendingSubmissionsPageProps) {
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +42,7 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
     try {
       const res = await getCustomersFromFirestore();
       if (res.success && Array.isArray(res.customers)) {
-        const pending = res.customers.filter((c: any) => c.status === 'pending');
+        const pending = res.customers.filter((c: any) => isPendingStatus(c.status));
         setPendingList(pending);
       }
     } catch (err) {

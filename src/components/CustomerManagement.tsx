@@ -856,8 +856,13 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     }
   };
 
+  const isPendingStatus = (status: any) => {
+    const s = String(status || '').toLowerCase().trim();
+    return s === 'pending' || s === 'non-active' || s === 'inactive' || s === 'menunggu persetujuan' || s === 'pending_approval' || (s !== 'active' && s !== 'aktif' && s !== 'terminated' && s !== 'isolir' && s !== 'isolated');
+  };
+
   // Status Filter counts (Matching Live Mikrotik Active PPP Connections)
-  const pendingCount = customers.filter(c => c.status === 'pending').length;
+  const pendingCount = customers.filter(c => isPendingStatus(c.status)).length;
   const activeOnlineCount = customers.filter(c => c.status === 'active' && isUserOnline(c)).length;
   const activeOfflineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
   const nonActiveCount = customers.filter(c => c.status === 'isolated' || c.status === 'non-active' || c.status === 'off').length;

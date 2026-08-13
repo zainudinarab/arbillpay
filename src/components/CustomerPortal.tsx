@@ -100,7 +100,7 @@ function getChannelFeeLabel(ch: any, amount: number): string {
         package_name: registerPkg.name,
         speed_limit: registerPkg.speed_limit || registerPkg.rate_limit || '10 Mbps',
         connection_type: isHotspot ? 'hotspot' : 'pppoe',
-        status: 'non-active',
+        status: 'pending',
         created_at: new Date().toISOString()
       };
 
@@ -534,7 +534,7 @@ export default function CustomerPortal({
         package_name: registerPkg.name || 'Member Package',
         speed_limit: registerPkg.speed_limit || registerPkg.rate_limit || '10 Mbps',
         connection_type: isHotspot ? 'hotspot' : 'pppoe',
-        status: 'non-active',
+        status: 'pending',
         created_at: new Date().toISOString()
       };
 

@@ -85,7 +85,10 @@ export default function App() {
     try {
       const res = await getCustomersFromFirestore();
       if (res.success && Array.isArray(res.customers)) {
-        const count = res.customers.filter((c: any) => c.status === 'pending').length;
+        const count = res.customers.filter((c: any) => {
+          const s = String(c.status || '').toLowerCase().trim();
+          return s === 'pending' || s === 'non-active' || s === 'inactive' || s === 'menunggu persetujuan' || s === 'pending_approval' || (s !== 'active' && s !== 'aktif' && s !== 'terminated' && s !== 'isolir' && s !== 'isolated');
+        }).length;
         setPendingCount(count);
       }
     } catch (err) {}
