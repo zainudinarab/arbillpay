@@ -650,6 +650,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     }
   };
 
+  const handleOpenAddModal = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !packageId) {
