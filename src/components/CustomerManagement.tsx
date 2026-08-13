@@ -857,10 +857,38 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   };
 
   // Status Filter counts (Matching Live Mikrotik Active PPP Connections)
+  const pendingCount = customers.filter(c => c.status === 'pending').length;
   const activeOnlineCount = customers.filter(c => c.status === 'active' && isUserOnline(c)).length;
   const activeOfflineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
-  const nonActiveCount = customers.filter(c => c.status === 'isolated' || c.status === 'non-active' || c.status === 'off' || c.status === 'pending').length;
+  const nonActiveCount = customers.filter(c => c.status === 'isolated' || c.status === 'non-active' || c.status === 'off').length;
   const terminatedCount = customers.filter(c => c.status === 'terminated').length;
+
+  const handleApprovePendingCustomer = async (cust: CustomerItem) => {
+    setActionLoadingId(cust.id);
+    try {
+      const updatedCust: CustomerItem = {
+        ...cust,
+        status: 'active'
+      };
+
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/customers/${cust.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'active' })
+        }).catch(() => null);
+      }
+
+      await saveCustomerToFirestore(updatedCust).catch(() => null);
+      setCustomers(prev => prev.map(c => c.id === cust.id ? updatedCust : c));
+      setToastMsg({ type: 'success', text: `✨ Pengajuan member "${cust.name}" BERHASIL DISETUJUI & DIAKTIFKAN!` });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal mengaktifkan member: ' + err?.message });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   // Package Distribution Counts (Right Card in Screenshot 1)
   const packageCounts: { [pkgName: string]: number } = {};
@@ -884,9 +912,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                           (c.provinsi || '').toLowerCase().includes(term);
     const matchesPackage = selectedPackageFilter === 'all' || c.package_id === selectedPackageFilter;
     const matchesStatus = statusFilter === 'all' || 
+                          (statusFilter === 'pending' && c.status === 'pending') ||
                           (statusFilter === 'online' && c.status === 'active' && isUserOnline(c)) ||
                           (statusFilter === 'offline' && c.status === 'active' && !isUserOnline(c)) ||
-                          (statusFilter === 'non-active' && (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off' || c.status === 'pending')) ||
+                          (statusFilter === 'non-active' && (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off')) ||
                           (statusFilter === 'terminated' && c.status === 'terminated');
     return matchesSearch && matchesPackage && matchesStatus;
   });
@@ -948,25 +977,34 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
             </button>
 
             <button
-              onClick={() => setShowImportModal(true)}
-              className="px-5 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-blue-100 flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <Download size={15} />
-              <span>Impor dari Mikrotik</span>
-            </button>
-
-            <button
-              onClick={() => { resetForm(); setShowAddModal(true); }}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-emerald-100 flex items-center gap-2 transition-all cursor-pointer"
+              onClick={handleOpenAddModal}
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-blue-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-blue-100 flex items-center gap-2 transition-all cursor-pointer"
             >
               <UserPlus size={15} />
-              <span>+ Pelanggan Baru</span>
+              <span>+ Tambah Pelanggan Baru</span>
             </button>
           </div>
         </div>
 
-        {/* Status Filter Badges (Matching Screenshot 1) */}
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Status Filter Buttons */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 font-sans">
+          <button
+            onClick={() => setStatusFilter('pending')}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
+              statusFilter === 'pending' 
+                ? 'bg-amber-500 text-white border-amber-500 shadow-sm' 
+                : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <Zap size={14} className={pendingCount > 0 ? 'animate-bounce text-amber-700' : ''} />
+            <span>⏳ Pengajuan Pending</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-black ${
+              pendingCount > 0 ? 'bg-amber-600 text-white animate-pulse' : 'bg-white text-amber-800'
+            }`}>
+              {pendingCount}
+            </span>
+          </button>
+
           <button
             onClick={() => setStatusFilter('online')}
             className={`px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer border ${
@@ -975,7 +1013,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
             }`}
           >
-            <Globe size={14} />
+            <Wifi size={14} />
             <span>Active: Online</span>
             <span className="px-2 py-0.5 rounded-full bg-white text-emerald-800 text-[11px] font-black">{activeOnlineCount}</span>
           </button>
@@ -1189,7 +1227,17 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
                           {/* MIKROTIK SYNC & DISCONNECT BUTTON COLUMN */}
                           <td className="py-3.5 px-4 text-center">
-                            {!cust.is_synced ? (
+                            {cust.status === 'pending' ? (
+                              <button
+                                onClick={() => handleApprovePendingCustomer(cust)}
+                                disabled={actionLoadingId === cust.id}
+                                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-200"
+                                title="Klik untuk menyetujui dan mengaktifkan pengajuan langganan member ini"
+                              >
+                                {actionLoadingId === cust.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                <span>✅ Setujui & Aktifkan</span>
+                              </button>
+                            ) : !cust.is_synced ? (
                               <button
                                 onClick={() => handleSyncCustomer(cust)}
                                 disabled={actionLoadingId === cust.id}

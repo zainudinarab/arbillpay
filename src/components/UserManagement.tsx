@@ -883,9 +883,9 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       {sub.package_name || sub.packageName || 'Paket Internet Member'}
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                      sub.status === 'active' || sub.status === 'aktif' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                      sub.status === 'active' || sub.status === 'aktif' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-900 border border-amber-300'
                     }`}>
-                      {sub.status === 'active' || sub.status === 'aktif' ? '● Aktif' : '○ Menunggu Persetujuan'}
+                      {sub.status === 'active' || sub.status === 'aktif' ? '● Aktif' : '⏳ Menunggu Persetujuan (Pending)'}
                     </span>
                   </div>
 
@@ -895,6 +895,20 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                     <div>Biaya: <strong className="text-emerald-600">Rp {(Number(sub.price) || 0).toLocaleString('id-ID')} / bln</strong></div>
                     <div>Tgl Daftar: <strong className="text-slate-500">{sub.created_at ? new Date(sub.created_at).toLocaleDateString('id-ID') : '-'}</strong></div>
                   </div>
+
+                  {sub.status === 'pending' && (
+                    <button
+                      onClick={async () => {
+                        await saveCustomerToFirestore({ ...sub, status: 'active' });
+                        setToastMsg({ type: 'success', text: `✨ Layanan member "${sub.package_name || 'Internet'}" untuk ${selectedUserSubs.user.name} BERHASIL DIAKTIFKAN!` });
+                        setSelectedUserSubs(null);
+                        fetchUsers();
+                      }}
+                      className="w-full mt-2 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-100 transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>✅ Setujui & Aktifkan Member Ini</span>
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
