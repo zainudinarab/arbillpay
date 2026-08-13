@@ -573,6 +573,10 @@ const safeFormatDate = (val: any): string => {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('arbil_current_user');
+    localStorage.removeItem('arabpay_token');
+    localStorage.removeItem('arabpay_user');
+    localStorage.removeItem('my_member_registrations');
+    localStorage.removeItem('purchased_vouchers_history');
     setShowAdminLoginModal(false);
   };
 

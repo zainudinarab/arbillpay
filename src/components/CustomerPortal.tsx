@@ -175,11 +175,8 @@ export default function CustomerPortal({
   const [regSuccess, setRegSuccess] = useState(false);
   const [regError, setRegError] = useState('');
 
-  // Member Registrations status state (persisted locally & fetched from API)
-  const [myRegistrations, setMyRegistrations] = useState<any[]>(() => {
-    const raw = localStorage.getItem('my_member_registrations');
-    return raw ? JSON.parse(raw) : [];
-  });
+  // Member Registrations status state (fetched LIVE from Database for active user)
+  const [myRegistrations, setMyRegistrations] = useState<any[]>([]);
 
   // Quick Bill Check (For Visitors)
   const [searchIdentity, setSearchIdentity] = useState('');
@@ -198,11 +195,8 @@ export default function CustomerPortal({
     return bearer === 'customer' ? 200 : 0;
   });
 
-  // Voucher History State (local & API)
-  const [localPurchasedVouchers, setLocalPurchasedVouchers] = useState<any[]>(() => {
-    const rawHist = localStorage.getItem('purchased_vouchers_history');
-    return rawHist ? JSON.parse(rawHist) : [];
-  });
+  // Voucher History State (fetched LIVE from Database for active user)
+  const [localPurchasedVouchers, setLocalPurchasedVouchers] = useState<any[]>([]);
 
   // Modal State
   const [selectedPackage, setSelectedPackage] = useState<any>(null);
@@ -441,62 +435,64 @@ export default function CustomerPortal({
     }
   };
 
-  // Fetch LIVE Member Registration status (with Firestore cloud fallback for cross-browser sync)
+  // Fetch LIVE Member Registration status (Strictly from Database for logged-in user)
   const fetchLiveMemberRegistrationsStatus = async () => {
-    const targetId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id;
+    if (!currentUser) {
+      setMyRegistrations([]);
+      setInvoices([]);
+      setCustomerData(null);
+      setLocalPurchasedVouchers([]);
+      return;
+    }
 
-    // 1. Direct Firebase Cloud Firestore database query for cross-browser & cross-device sync
+    const targetId = currentUser.phone_number || currentUser.arabpay_user_id || currentUser.id;
+
+    // 1. Direct Firebase Cloud Firestore database query by active user ID
     if (targetId) {
       const fbData = await getCustomersFromFirestore(targetId);
-      if (fbData.success && Array.isArray(fbData.customers) && fbData.customers.length > 0) {
+      if (fbData.success && Array.isArray(fbData.customers)) {
         setMyRegistrations(fbData.customers);
-        localStorage.setItem('my_member_registrations', JSON.stringify(fbData.customers));
+      }
+      const fbVouchers = await getPurchasedVouchersFromFirestore(targetId);
+      if (fbVouchers.success && Array.isArray(fbVouchers.vouchers)) {
+        setLocalPurchasedVouchers(fbVouchers.vouchers);
       }
     }
 
     // 2. PostgreSQL Backend status check if backend URL is configured
-    const rawLocal = localStorage.getItem('my_member_registrations');
-    const localList: any[] = rawLocal ? JSON.parse(rawLocal) : [];
+    if (currentUser.phone_number) {
+      try {
+        const apiUrl = getApiUrl();
+        if (!apiUrl) return;
 
-    const ids = localList.map(r => r.id).filter(Boolean);
-    const usernames = localList.map(r => r.pppoe_username).filter(Boolean);
-    const phones = localList.map(r => r.phone_number).filter(Boolean);
-    if (currentUser?.phone_number) phones.push(currentUser.phone_number);
+        const res = await fetch(`${apiUrl}/api/customers/check-my-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone_numbers: [currentUser.phone_number] })
+        }).catch(() => null);
 
-    if (ids.length === 0 && usernames.length === 0 && phones.length === 0) return;
+        if (!res || !res.ok) return;
 
-    try {
-      const apiUrl = getApiUrl();
-      if (!apiUrl) return; // Pure Firebase serverless mode: do not call non-existent backend API endpoints
+        const data = await res.json().catch(() => null);
+        if (data && data.success && Array.isArray(data.customers)) {
+          setMyRegistrations(data.customers);
 
-      const res = await fetch(`${apiUrl}/api/customers/check-my-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, usernames, phone_numbers: phones })
-      }).catch(() => null);
-
-      if (!res || !res.ok) return;
-
-      const data = await res.json().catch(() => null);
-      if (data && data.success && Array.isArray(data.customers) && data.customers.length > 0) {
-        setMyRegistrations(data.customers);
-        localStorage.setItem('my_member_registrations', JSON.stringify(data.customers));
-
-        const allInvoices: any[] = [];
-        for (const cust of data.customers) {
-          try {
-            const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
-            if (invRes && invRes.ok) {
-              const invData = await invRes.json().catch(() => null);
-              if (invData && invData.success && Array.isArray(invData.invoices)) {
-                allInvoices.push(...invData.invoices);
+          const allInvoices: any[] = [];
+          for (const cust of data.customers) {
+            try {
+              const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
+              if (invRes && invRes.ok) {
+                const invData = await invRes.json().catch(() => null);
+                if (invData && invData.success && Array.isArray(invData.invoices)) {
+                  allInvoices.push(...invData.invoices);
+                }
               }
-            }
-          } catch (e) { }
+            } catch (e) { }
+          }
+          setInvoices(allInvoices);
         }
-        setInvoices(allInvoices);
-      }
-    } catch (err) { }
+      } catch (err) { }
+    }
   };
 
   // Submit new Member Registration (Saved as Non-Aktif / Off for Admin Approval)
