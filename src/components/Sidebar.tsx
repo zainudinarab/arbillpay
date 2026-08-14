@@ -21,7 +21,8 @@ import {
   LogOut,
   Radio,
   MapPin,
-  Wifi
+  Wifi,
+  Bell
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
