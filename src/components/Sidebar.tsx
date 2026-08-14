@@ -106,6 +106,7 @@ export default function Sidebar({
         { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'vouchers', label: 'Voucher Hotspot', icon: Ticket, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'regions', label: 'Data Wilayah', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
       ]
     },
