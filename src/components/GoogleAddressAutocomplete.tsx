@@ -206,9 +206,10 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
       kabupaten: item.kabupaten,
       kecamatan: item.kecamatan,
       desa: item.desa,
+      dusun: item.dusun || value.dusun || '',
       kode_pos: item.zip || value.kode_pos || ''
     });
-    setSearchQuery(`${item.desa}, ${item.kecamatan}, ${item.kabupaten}`);
+    setSearchQuery(`${item.dusun ? item.dusun + ', ' : ''}${item.desa}, ${item.kecamatan}, ${item.kabupaten}`);
     setIsOpen(false);
   };
 
