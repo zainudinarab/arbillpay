@@ -119,6 +119,26 @@ export default function App() {
   const [showSimulator, setShowSimulator] = useState<boolean>(false);
   const [unlinkedMatchCustomer, setUnlinkedMatchCustomer] = useState<any>(null);
   const [isLinking, setIsLinking] = useState(false);
+  const [customModalAlert, setCustomModalAlert] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'error' | 'warning' | 'success' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning'
+  });
+
+  const showAlert = (message: string, title = 'Pemberitahuan Sistem', type: 'error' | 'warning' | 'success' | 'info' = 'warning') => {
+    setCustomModalAlert({
+      isOpen: true,
+      title,
+      message,
+      type
+    });
+  };
 
   const handleVerifyAndSaveNewSecret = async () => {
     setSecretLoading(true);
@@ -169,7 +189,7 @@ export default function App() {
       localStorage.setItem('arabpay_client_secret', cleanSecret);
       setIsSecretInvalidated(false);
       setNewSecretInput('');
-      alert('✨ Client Secret Berhasil Dikonfirmasi & Dipulihkan! Sambungan Server-to-Server Kembali Aktif.');
+      showAlert('✨ Client Secret Berhasil Dikonfirmasi & Dipulihkan! Sambungan Server-to-Server Kembali Aktif.', 'Koneksi Pulih', 'success');
     } catch (err: any) {
       setSecretErrorMsg('Gagal memverifikasi ke server ArabPay: ' + err?.message);
     } finally {
@@ -323,7 +343,6 @@ export default function App() {
           if (!tokenData || (!tokenData.token && !tokenData.access_token)) {
             console.error('🔒 [SECURITY LOCK] ArabPay OAuth Token Exchange FAILED/REJECTED. Client Secret is INVALID or ROTATED!');
             setIsSecretInvalidated(true);
-            alert('🔒 Akses Ditolak: Penukaran token ditolak oleh server ArabPay. Client Secret merchant Anda tidak valid atau telah di-rotate di server ArabPay!');
             handleLogout();
             return;
           }
@@ -403,7 +422,7 @@ export default function App() {
               };
             } else {
               console.warn('❌ [OAUTH SSO REJECT] Incomplete ArabPay user profile. Missing Name/Phone/Email:', uData);
-              alert('⚠️ Login ArabPay Gagal: Profil akun ArabPay Anda belum lengkap. Silakan lengkapi Nama dan Nomor WhatsApp/Email di akun ArabPay Anda terlebih dahulu.');
+              showAlert('⚠️ Login ArabPay Gagal: Profil akun ArabPay Anda belum lengkap. Silakan lengkapi Nama dan Nomor WhatsApp/Email di akun ArabPay Anda terlebih dahulu.', 'Profil Belum Lengkap', 'warning');
               return;
             }
           } else {
@@ -423,7 +442,7 @@ export default function App() {
             } else {
               // REJECT: Data profil dari ArabPay kosong atau tidak terverifikasi -> TIDAK BUAT USER DUMMY!
               console.warn('❌ [OAUTH SSO REJECT] Data profil ArabPay tidak ditemukan atau tidak lengkap untuk code:', code);
-              alert('⚠️ Login ArabPay Gagal: Data akun dari ArabPay tidak lengkap. Pastikan Nama & Nomor HP/Email terisi di profil ArabPay Anda.');
+              showAlert('⚠️ Login ArabPay Gagal: Data akun dari ArabPay tidak lengkap. Pastikan Nama & Nomor HP/Email terisi di profil ArabPay Anda.', 'Profil Tidak Lengkap', 'warning');
               return;
             }
           }
@@ -1387,6 +1406,43 @@ const safeFormatDate = (val: any): string => {
               className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
             >
               <span>{secretLoading ? 'Memverifikasi...' : '⚡ Verifikasi & Pulihkan Akses Server'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Custom Reusable Notification Modal (Replaces browser default alert()) */}
+      {customModalAlert.isOpen && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scale-up text-center">
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border ${
+              customModalAlert.type === 'error' ? 'bg-rose-50 text-rose-600 border-rose-200' :
+              customModalAlert.type === 'success' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+              customModalAlert.type === 'warning' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+              'bg-blue-50 text-blue-600 border-blue-200'
+            }`}>
+              {customModalAlert.type === 'error' ? '🔒' : customModalAlert.type === 'success' ? '✨' : customModalAlert.type === 'warning' ? '⚠️' : 'ℹ️'}
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="font-extrabold text-lg text-slate-900 tracking-tight">
+                {customModalAlert.title}
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                {customModalAlert.message}
+              </p>
+            </div>
+
+            <button
+              onClick={() => setCustomModalAlert(prev => ({ ...prev, isOpen: false }))}
+              className={`w-full py-3 font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer text-white ${
+                customModalAlert.type === 'error' ? 'bg-rose-600 hover:bg-rose-700' :
+                customModalAlert.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                customModalAlert.type === 'warning' ? 'bg-amber-600 hover:bg-amber-700' :
+                'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              Mengerti & Tutup
             </button>
           </div>
         </div>
