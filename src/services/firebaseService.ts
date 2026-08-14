@@ -304,10 +304,10 @@ export const getPurchasedVouchersFromFirestore = async (userId?: string) => {
 
 export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string }) => {
   try {
-    const db = getFirestoreInstance();
     const docRef = doc(db, 'settings', 'merchant_credentials');
     await setDoc(docRef, {
       ...creds,
+      installed: true,
       updated_at: new Date().toISOString()
     }, { merge: true });
     return { success: true };
@@ -319,7 +319,6 @@ export const saveMerchantCredentialsToFirestore = async (creds: { client_id: str
 
 export const getMerchantCredentialsFromFirestore = async () => {
   try {
-    const db = getFirestoreInstance();
     const docRef = doc(db, 'settings', 'merchant_credentials');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
