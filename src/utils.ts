@@ -45,25 +45,42 @@ export function buildFormattedInvoiceId(
 ): { invoiceId: string; displayCustCode: string } {
   const subPeriodStr = String(subPeriod).padStart(2, '0');
 
-  // Extract raw ID string
-  let custIdStr = String(cust.id || '').trim();
-  if (custIdStr.toLowerCase().startsWith('cust_')) {
-    custIdStr = custIdStr.slice(5);
+  const rawId = String(cust?.id || '');
+  const rawCode = String(cust?.customer_code || '');
+  const rawPhone = String(cust?.phone_number || cust?.phone || '');
+
+  // Strip 'cust_', 'cust-', or 'cust' prefixes
+  let cleanNumber = rawId
+    .replace(/^cust_/i, '')
+    .replace(/^cust-/i, '')
+    .replace(/^cust/i, '')
+    .trim();
+
+  // If cleanNumber is empty or literal 'CUST', try from customer_code
+  if (!cleanNumber || cleanNumber.toUpperCase() === 'CUST') {
+    cleanNumber = rawCode
+      .replace(/^cust_/i, '')
+      .replace(/^cust-/i, '')
+      .replace(/^cust/i, '')
+      .trim();
   }
 
-  let custCodeStr = String(cust.customer_code || '').trim();
-  if (custCodeStr.toUpperCase().startsWith('CUST-')) {
-    custCodeStr = custCodeStr.slice(5);
-  } else if (custCodeStr.toUpperCase() === 'CUST') {
-    custCodeStr = '';
+  // If still empty or literal 'CUST', try phone_number
+  if (!cleanNumber || cleanNumber.toUpperCase() === 'CUST') {
+    cleanNumber = rawPhone.replace(/\D/g, '').trim();
   }
 
-  // Choose the actual customer numeric/unique ID (never literal 'CUST')
-  const specificId = (custCodeStr && custCodeStr.toUpperCase() !== 'CUST') ? custCodeStr : custIdStr;
-  const cleanId = String(specificId || cust.phone_number || Date.now()).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  // Final fallback: Alphanumeric characters of rawId
+  if (!cleanNumber || cleanNumber.toUpperCase() === 'CUST') {
+    cleanNumber = rawId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  }
 
-  const displayCustCode = `CUST-${cleanId}`;
-  const invoiceId = `INV-${monthCode}-${subPeriodStr}-CUST-${cleanId}`;
+  const finalIdStr = (cleanNumber && cleanNumber.toUpperCase() !== 'CUST')
+    ? cleanNumber.toUpperCase()
+    : Date.now().toString();
+
+  const displayCustCode = `CUST-${finalIdStr}`;
+  const invoiceId = `INV-${monthCode}-${subPeriodStr}-${displayCustCode}`;
 
   return { invoiceId, displayCustCode };
 }
