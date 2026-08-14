@@ -145,7 +145,7 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
             <form onSubmit={handleEmergencySubmit} className="space-y-4 text-left animate-fade-in">
               <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center gap-2 text-indigo-900 text-xs font-bold">
                 <Key size={16} className="text-indigo-600 shrink-0" />
-                <span>Masukkan ID & PIN Darurat Pengelola:</span>
+                <span>Masukkan ID & Password Darurat Owner:</span>
               </div>
 
               <div>
@@ -161,12 +161,12 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password / PIN Owner:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password Darurat Owner:</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ketikkan Password / PIN..."
+                  placeholder="Ketikkan Password Darurat..."
                   className="w-full px-4 py-3 bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                 />
               </div>
