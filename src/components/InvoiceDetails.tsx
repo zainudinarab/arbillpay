@@ -264,12 +264,17 @@ export default function InvoiceDetails({
       const simulatedUrl = `${window.location.origin}/?view=checkout&id=${invoice.id}#/overview`;
       const totalFormatted = formatCurrency(invoice.total, profile.currency);
       const isIndo = profile.language === 'id';
+      const startDateFormatted = formatDate(invoice.issueDate, 'id');
+      const endDateFormatted = formatDate(invoice.dueDate, 'id');
+      const itemDesc = invoice.items && invoice.items.length > 0 ? invoice.items.map(i => i.description).join(', ') : 'Layanan Internet / WiFi';
 
       const waText = isIndo
         ? `Halo Bpk/Ibu *${invoice.client?.name || 'Pelanggan'}*,\n\n` +
           `Berikut rincian tagihan internet Anda dari *${profile.companyName || 'ArbillPay'}*:\n\n` +
           `📄 No. Tagihan: *${invoice.invoiceNumber}*\n` +
-          `📅 Tanggal: *${invoice.issueDate}*\n` +
+          `📦 Layanan: *${itemDesc}*\n` +
+          `📅 Periode Pemakaian: *${startDateFormatted} s/d ${endDateFormatted}*\n` +
+          `⏰ Jatuh Tempo: *${endDateFormatted}*\n` +
           `💵 Total Tagihan: *${totalFormatted}*\n\n` +
           `Selesaikan pembayaran secara instan via ArabPay QRIS & E-Wallet di link berikut:\n` +
           `👉 ${simulatedUrl}\n\n` +
@@ -277,7 +282,9 @@ export default function InvoiceDetails({
         : `Hello *${invoice.client?.name || 'Customer'}*,\n\n` +
           `Here is your internet bill from *${profile.companyName || 'ArbillPay'}*:\n\n` +
           `📄 Invoice No: *${invoice.invoiceNumber}*\n` +
-          `📅 Issue Date: *${invoice.issueDate}*\n` +
+          `📦 Service: *${itemDesc}*\n` +
+          `📅 Service Period: *${startDateFormatted} to ${endDateFormatted}*\n` +
+          `⏰ Due Date: *${endDateFormatted}*\n` +
           `💵 Total Amount: *${totalFormatted}*\n\n` +
           `Pay instantly via ArabPay QRIS & E-Wallet at:\n` +
           `👉 ${simulatedUrl}\n\n` +
@@ -311,20 +318,31 @@ export default function InvoiceDetails({
   const totalFormatted = formatCurrency(invoice.total, profile.currency);
   const isIndo = profile.language === 'id';
   const simulatedUrl = `${window.location.origin}/?view=checkout&id=${invoice.id}`;
+  const startDateFormatted = formatDate(invoice.issueDate, 'id');
+  const endDateFormatted = formatDate(invoice.dueDate, 'id');
+  const itemDesc = invoice.items && invoice.items.length > 0 ? invoice.items.map(i => i.description).join(', ') : 'Layanan Internet / WiFi';
 
   const waText = isIndo
-    ? `Halo, berikut adalah tagihan Anda dari *${profile.companyName || 'ArbillPay'}*:\n\n` +
-      `• *No. Tagihan*: ${invoice.invoiceNumber}\n` +
-      `• *Total Tagihan*: ${totalFormatted}\n` +
-      `• *Jatuh Tempo*: ${formatDate(invoice.dueDate, 'id')}\n\n` +
-      `Silakan lakukan pembayaran atau lihat rincian lengkapnya secara online melalui tautan berikut:\n${simulatedUrl}\n\n` +
-      `Terima kasih!`
-    : `Hello, here is your invoice from *${profile.companyName || 'ArbillPay'}*:\n\n` +
-      `• *Invoice No*: ${invoice.invoiceNumber}\n` +
-      `• *Total Amount*: ${totalFormatted}\n` +
-      `• *Due Date*: ${formatDate(invoice.dueDate, 'en')}\n\n` +
-      `You can view details and make a payment online here:\n${simulatedUrl}\n\n` +
-      `Thank you!`;
+    ? `Halo Bpk/Ibu *${invoice.client?.name || 'Pelanggan'}*,\n\n` +
+      `Berikut rincian tagihan internet Anda dari *${profile.companyName || 'ArbillPay'}*:\n\n` +
+      `📄 No. Tagihan: *${invoice.invoiceNumber}*\n` +
+      `📦 Layanan: *${itemDesc}*\n` +
+      `📅 Periode Pemakaian: *${startDateFormatted} s/d ${endDateFormatted}*\n` +
+      `⏰ Jatuh Tempo: *${endDateFormatted}*\n` +
+      `💵 Total Tagihan: *${totalFormatted}*\n\n` +
+      `Selesaikan pembayaran secara instan via ArabPay QRIS & E-Wallet di link berikut:\n` +
+      `👉 ${simulatedUrl}\n\n` +
+      `Terima kasih! 🙏`
+    : `Hello *${invoice.client?.name || 'Customer'}*,\n\n` +
+      `Here is your internet bill from *${profile.companyName || 'ArbillPay'}*:\n\n` +
+      `📄 Invoice No: *${invoice.invoiceNumber}*\n` +
+      `📦 Service: *${itemDesc}*\n` +
+      `📅 Service Period: *${startDateFormatted} to ${endDateFormatted}*\n` +
+      `⏰ Due Date: *${endDateFormatted}*\n` +
+      `💵 Total Amount: *${totalFormatted}*\n\n` +
+      `Pay instantly via ArabPay QRIS & E-Wallet at:\n` +
+      `👉 ${simulatedUrl}\n\n` +
+      `Thank you! 🙏`;
 
   const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`;
 

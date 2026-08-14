@@ -390,11 +390,16 @@ export default function InvoiceList({
                                   e.stopPropagation();
                                   const checkoutUrl = `${window.location.origin}/?view=checkout&id=${inv.id}#/overview`;
                                   const clientPhone = inv.client?.phone || '';
+                                  const startDateFormatted = formatDate(inv.issueDate, 'id');
+                                  const endDateFormatted = formatDate(inv.dueDate, 'id');
+                                  const itemDesc = inv.items && inv.items.length > 0 ? inv.items.map(i => i.description).join(', ') : 'Layanan Internet / WiFi';
                                   
                                   const messageText = `Halo Bpk/Ibu *${inv.client.name}*,\n\n` +
                                     `Berikut rincian tagihan internet Anda dari *${profile.companyName}*:\n\n` +
                                     `📄 No. Tagihan: *${inv.invoiceNumber}*\n` +
-                                    `📅 Tanggal: *${inv.issueDate}*\n` +
+                                    `📦 Layanan: *${itemDesc}*\n` +
+                                    `📅 Periode Pemakaian: *${startDateFormatted} s/d ${endDateFormatted}*\n` +
+                                    `⏰ Jatuh Tempo: *${endDateFormatted}*\n` +
                                     `💵 Total Tagihan: *${formatCurrency(inv.total, profile.currency)}*\n\n` +
                                     `Selesaikan pembayaran secara instan via ArabPay QRIS & E-Wallet di link berikut:\n` +
                                     `👉 ${checkoutUrl}\n\n` +
