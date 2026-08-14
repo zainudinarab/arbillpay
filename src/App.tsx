@@ -343,9 +343,6 @@ export default function App() {
           // STRICT SECURITY LOCK: If server token exchange failed or secret is invalid, DENY LOGIN COMPLETELY!
           if (!tokenData || (!tokenData.token && !tokenData.access_token)) {
             console.warn('🔒 [SECURITY INFO] ArabPay OAuth Token Exchange rejected by server. Client Secret is invalid or rotated.');
-            showAlert('🔒 Akses Ditolak: Penukaran token ditolak oleh server ArabPay. Client Secret merchant Anda tidak valid atau telah di-rotate di server ArabPay!', 'Akses Ditolak', 'error');
-            localStorage.setItem('arbil_secret_invalidated', 'true');
-            setIsSecretInvalidated(true);
             setCurrentUser(null);
             localStorage.removeItem('arbil_current_user');
             localStorage.removeItem('arabpay_token');
@@ -1374,48 +1371,6 @@ const safeFormatDate = (val: any): string => {
             window.location.hash = '#/overview';
           }}
         />
-      )}
-
-      {/* 6. Emergency Lock Screen when Client Secret is Invalidated or Rotated on ArabPay Server */}
-      {isSecretInvalidated && (
-        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4 font-sans text-slate-800">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 space-y-5 animate-scale-up">
-            <div className="w-16 h-16 rounded-3xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto text-3xl shadow-inner border border-rose-200">
-              🔒
-            </div>
-            <div className="text-center space-y-1">
-              <h3 className="font-extrabold text-xl text-slate-900 tracking-tight">Koneksi Server Terputus!</h3>
-              <p className="text-xs text-rose-600 font-extrabold">
-                Client Secret ArabPay Tidak Valid / Telah Di-Rotate di Server
-              </p>
-              <p className="text-xs text-slate-500 pt-1 leading-relaxed">
-                Karena Client Secret di server ArabPay telah berubah, ArbillPay secara otomatis memutus seluruh akses SSO & transaksi demi keamanan data.
-              </p>
-            </div>
-
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-              <label className="block text-xs font-bold text-slate-700">Masukkan Client Secret ArabPay (Baru):</label>
-              <input
-                type="password"
-                placeholder="Ketikkan Client Secret baru..."
-                value={newSecretInput}
-                onChange={(e) => setNewSecretInput(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
-              />
-              {secretErrorMsg && (
-                <p className="text-[11px] font-bold text-rose-600 animate-fade-in">{secretErrorMsg}</p>
-              )}
-            </div>
-
-            <button
-              onClick={handleVerifyAndSaveNewSecret}
-              disabled={secretLoading}
-              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
-            >
-              <span>{secretLoading ? 'Memverifikasi...' : '⚡ Verifikasi & Pulihkan Akses Server'}</span>
-            </button>
-          </div>
-        </div>
       )}
 
       {/* 6.5 Top-Level Admin/Operator Login Modal */}
