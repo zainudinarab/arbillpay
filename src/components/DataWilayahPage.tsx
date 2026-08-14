@@ -43,6 +43,7 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
 
   // Add Manual Custom Village State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [customDusun, setCustomDusun] = useState('');
   const [customDesa, setCustomDesa] = useState('');
   const [customKecamatan, setCustomKecamatan] = useState('');
   const [customKabupaten, setCustomKabupaten] = useState('');
@@ -151,6 +152,7 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
 
     const newVillage = {
       id: `CUST_VILL_${Date.now()}`,
+      dusun: customDusun.trim().toUpperCase(),
       desa: customDesa.trim().toUpperCase(),
       kecamatan: customKecamatan.trim().toUpperCase(),
       kabupaten: (customKabupaten.trim() || selectedRegName || 'KABUPATEN JOMBANG').toUpperCase(),
@@ -163,10 +165,11 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
     await saveSyncedRegionsToFirestore(updatedList);
 
     setShowAddModal(false);
+    setCustomDusun('');
     setCustomDesa('');
     setCustomKecamatan('');
     setCustomKodePos('');
-    setToastMsg({ type: 'success', text: `✅ Desa "${newVillage.desa}" berhasil ditambahkan secara manual.` });
+    setToastMsg({ type: 'success', text: `✅ Dusun/Desa "${newVillage.dusun ? newVillage.dusun + ' - ' : ''}${newVillage.desa}" berhasil ditambahkan secara manual.` });
   };
 
   // Filter Villages for Display
@@ -381,7 +384,18 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
 
             <form onSubmit={handleAddCustomVillage} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Nama Desa / Dusun *</label>
+                <label className="block font-bold text-slate-300 mb-1">Nama Dusun <span className="text-slate-400 font-normal">(Opsional / Jika ada)</span></label>
+                <input
+                  type="text"
+                  value={customDusun}
+                  onChange={(e) => setCustomDusun(e.target.value)}
+                  placeholder="Contoh: DUSUN KRAJAN"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Nama Desa Induk *</label>
                 <input
                   type="text"
                   required
