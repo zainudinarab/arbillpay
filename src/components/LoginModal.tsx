@@ -154,7 +154,7 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
                   value={identity}
                   onChange={(e) => setIdentity(e.target.value)}
                   placeholder="zainudinarab atau 085746520724"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   autoFocus
                 />
               </div>
@@ -166,7 +166,7 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Ketikkan Password / PIN..."
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  className="w-full px-4 py-3 bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                 />
               </div>
 
