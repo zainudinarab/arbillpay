@@ -596,6 +596,7 @@ const safeFormatDate = (val: any): string => {
               status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
               issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
               dueDate: safeFormatDate(inv.due_date || inv.dueDate),
+              enabledPaymentMethods: inv.enabledPaymentMethods || inv.enabled_payment_methods || ['qris', 'gopay', 'ovo', 'dana', 'bca_va'],
               notes: inv.notes || '',
               terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
               isArchived: inv.is_archived || false
@@ -640,6 +641,7 @@ const safeFormatDate = (val: any): string => {
             status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
             issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
             dueDate: safeFormatDate(inv.due_date || inv.dueDate),
+            enabledPaymentMethods: inv.enabledPaymentMethods || inv.enabled_payment_methods || ['qris', 'gopay', 'ovo', 'dana', 'bca_va'],
             notes: inv.notes || '',
             terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
             isArchived: inv.is_archived || false

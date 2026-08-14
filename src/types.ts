@@ -38,7 +38,7 @@ export interface Invoice {
   paymentMethod?: string;
   notes?: string;
   paymentDate?: string;
-  enabledPaymentMethods: string[]; // e.g. ['qris', 'gopay', 'ovo', 'dana', 'bca']
+  enabledPaymentMethods?: string[]; // e.g. ['qris', 'gopay', 'ovo', 'dana', 'bca']
   isArchived?: boolean;
 }
 
