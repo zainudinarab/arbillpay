@@ -194,24 +194,85 @@ export async function fetchVillages(districtId: string): Promise<VillageItem[]> 
 }
 
 /**
+ * Official Indonesian Postal Code Dictionary for Known Regencies & Districts
+ */
+export const OFFICIAL_KECAMATAN_POSTAL_CODES: Record<string, string> = {
+  // KABUPATEN JOMBANG
+  'DIWEK': '61471',
+  'JOMBANG': '61411',
+  'PETERONGAN': '61481',
+  'SUMOBITO': '61483',
+  'MOJOWARNO': '61475',
+  'BARENG': '61474',
+  'WONOSALAM': '61477',
+  'PLOSO': '61453',
+  'KUDU': '61454',
+  'NGUSIKAN': '61454',
+  'PERAK': '61461',
+  'BANDARKEDUNGMULYO': '61462',
+  'GUDO': '61463',
+  'NGORO': '61473',
+  'JOGOROTO': '61485',
+  'KESAMBEN': '61484',
+  'TEMBELANG': '61452',
+  'MEGALUH': '61457',
+  'KABUH': '61455',
+
+  // KABUPATEN SIDOARJO
+  'KRIAN': '61262',
+  'WARU': '61256',
+  'TAMAN': '61257',
+  'SIDOARJO': '61211',
+  'CANDI': '61271',
+  'PORONG': '61274',
+  'GARTEN': '61252',
+  'GEDANGAN': '61254',
+
+  // KOTA SURABAYA
+  'WONOKROMO': '60243',
+  'GUBENG': '60281',
+  'TEGALSARI': '60261',
+  'GENTENG': '60275',
+  'RUNGKUT': '60293',
+  'SUKOLILO': '60111',
+  'JAMBANGAN': '60232',
+
+  // KOTA BANDUNG
+  'SUMUR BANDUNG': '40111',
+  'COBLONG': '40132',
+  'CICENDO': '40171'
+};
+
+/**
  * Fetch Postal Code (Kode Pos) automatically by searching District / Village
  */
 export async function fetchPostalCode(query: string): Promise<string> {
   if (!query) return '';
-  const cleanQ = query.trim().toLowerCase();
-  const cacheKey = `postal_${cleanQ}`;
+  const cleanQ = query.trim().toUpperCase();
+
+  // 1. Check Official Built-in Dictionary first (0ms instant!)
+  for (const [kec, zip] of Object.entries(OFFICIAL_KECAMATAN_POSTAL_CODES)) {
+    if (cleanQ.includes(kec)) {
+      return zip;
+    }
+  }
+
+  const cacheKey = `postal_${cleanQ.toLowerCase()}`;
   if (cache[cacheKey]) return cache[cacheKey][0] || '';
 
   try {
-    const res = await fetch(`https://kodedopos.github.io/api/search.json?q=${encodeURIComponent(cleanQ)}`);
+    const res = await fetch(`https://kodedopos.github.io/api/search.json?q=${encodeURIComponent(cleanQ.toLowerCase())}`);
     if (res.ok) {
       const data = await res.json();
       if (data && data.data && data.data.length > 0) {
         const zip = String(data.data[0].postalcode || data.data[0].postal_code || '');
-        cache[cacheKey] = [zip];
-        return zip;
+        if (zip) {
+          cache[cacheKey] = [zip];
+          return zip;
+        }
       }
     }
   } catch (err) {}
+
   return '';
 }

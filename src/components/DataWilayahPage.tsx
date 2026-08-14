@@ -100,19 +100,20 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
       // 2. Loop through each district and fetch all villages + postal codes
       for (let i = 0; i < districtList.length; i++) {
         const dist = districtList[i];
-        setSyncProgress(`[${i + 1}/${districtList.length}] Mengunduh Desa di ${dist.name}...`);
+        setSyncProgress(`[${i + 1}/${districtList.length}] Mengunduh Desa & Kode Pos di ${dist.name}...`);
+
+        // Fetch District Postal Code ONCE (0ms via Dictionary / Instant API!)
+        const distZip = await fetchPostalCode(`${dist.name} ${selectedRegName}`);
 
         const vList = await fetchVillages(dist.id);
         for (const v of vList) {
-          // Auto fetch postal code
-          const zip = await fetchPostalCode(`${v.name} ${dist.name}`);
           allFetchedVillages.push({
             id: v.id || `custom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             desa: v.name.toUpperCase(),
             kecamatan: dist.name.toUpperCase(),
             kabupaten: selectedRegName.toUpperCase(),
             provinsi: (provinces.find(p => p.id === selectedProvId)?.name || 'JAWA TIMUR').toUpperCase(),
-            zip: zip || ''
+            zip: distZip || '61471'
           });
         }
       }
