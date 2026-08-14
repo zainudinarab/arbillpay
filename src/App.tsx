@@ -1273,36 +1273,25 @@ const safeFormatDate = (val: any): string => {
                   </span>
                 </div>
 
-                {/* Top Summary Card */}
-                <div className="bg-[#131E3D] border border-slate-800/90 rounded-2xl p-5 space-y-2.5 text-xs">
+                {/* Top Summary Card (Simplified & Ultra-Clean) */}
+                <div className="bg-[#131E3D] border border-slate-800/90 rounded-2xl p-4 space-y-2 text-xs font-sans">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Layanan WiFi / Internet</span>
-                    <span className="font-bold text-indigo-400">Tagihan Internet</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Durasi / Periode</span>
-                    <span className="font-semibold text-white">1 Bulan</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Paket / Layanan</span>
-                    <span className="font-semibold text-white">{checkoutInvoice.client.company || 'Home WiFi Broadband'}</span>
-                  </div>
-
-                  <div className="border-t border-slate-800/80 my-2 pt-2 flex justify-between items-center">
                     <span className="text-slate-400 font-medium">Harga Tagihan</span>
-                    <span className="font-mono font-bold text-white text-sm">{formatCurrency(checkoutInvoice.subtotal, profile.currency)}</span>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {formatCurrency(checkoutInvoice.total, profile.currency)}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400 font-medium">Biaya Layanan</span>
                     <span className="font-mono font-bold text-amber-400 text-xs">
-                      {checkoutPaymentMethod === 'ewallet' ? '+Rp 2.500' : 'GRATIS'}
+                      {checkoutPaymentMethod === 'ewallet' ? '+Rp 1.000' : 'GRATIS'}
                     </span>
                   </div>
 
-                  <div className="border-t border-slate-800/80 my-2 pt-2 flex justify-between items-center">
-                    <span className="font-bold text-white text-sm">Total Potong Saldo / Bayar</span>
+                  <div className="border-t border-slate-800/80 my-1.5 pt-2 flex justify-between items-center">
+                    <span className="font-bold text-white text-sm">Total Harus Dibayar</span>
                     <span className="font-mono font-black text-emerald-400 text-lg">
-                      {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 2500 : 0), profile.currency)}
+                      {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 1000 : 0), profile.currency)}
                     </span>
                   </div>
                 </div>
@@ -1333,7 +1322,7 @@ const safeFormatDate = (val: any): string => {
                           <span className="font-extrabold text-sm text-white">ArabPay E-Wallet</span>
                         </div>
                         <span className="text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-400/30">
-                          +Rp 2.500
+                          +Rp 1.000
                         </span>
                       </div>
 
@@ -1382,7 +1371,7 @@ const safeFormatDate = (val: any): string => {
                   >
                     <Lock size={18} />
                     <span>
-                      Lanjut Bayar — {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 2500 : 0), profile.currency)}
+                      Lanjut Bayar — {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 1000 : 0), profile.currency)}
                     </span>
                     <ArrowRight size={18} />
                   </button>
