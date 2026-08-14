@@ -273,11 +273,11 @@ export default function Sidebar({
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <div className={`w-8 h-8 rounded-full ${themeStyles.activeBg} font-black flex items-center justify-center text-xs shrink-0 shadow-xs border border-slate-100`}>
-              {profile.name.replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()}
+              {(profile?.name || 'Admin').replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0] || '').join('').toUpperCase() || 'A'}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-sans font-bold text-xs text-slate-800 truncate leading-tight" title={profile.name}>{profile.name}</p>
-              <p className="text-[10px] font-sans font-semibold text-slate-400 truncate mt-0.5" title={profile.role}>{profile.role}</p>
+              <p className="font-sans font-bold text-xs text-slate-800 truncate leading-tight" title={profile?.name || 'Admin'}>{profile?.name || 'Admin'}</p>
+              <p className="text-[10px] font-sans font-semibold text-slate-400 truncate mt-0.5" title={profile?.role || 'owner'}>{profile?.role || 'owner'}</p>
             </div>
           </div>
           {onLogout && (

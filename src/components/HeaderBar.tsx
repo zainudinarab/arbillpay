@@ -41,8 +41,8 @@ export default function HeaderBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const initials = profile.name
-    ? profile.name.replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+  const initials = profile?.name
+    ? profile.name.replace(/[\(\)]/g, '').split(' ').slice(0, 2).map(n => n[0] || '').join('').toUpperCase()
     : 'U';
 
   const theme = profile.themeColor || 'blue';
