@@ -1421,6 +1421,7 @@ const safeFormatDate = (val: any): string => {
       {/* 6.5 Top-Level Admin/Operator Login Modal */}
       {showAdminLoginModal && (
         <LoginModal
+          initialMode={window.location.hash.includes('admin-login') ? 'admin' : 'sso'}
           onLoginSuccess={(u) => {
             setShowAdminLoginModal(false);
             handleLoginSuccess(u);

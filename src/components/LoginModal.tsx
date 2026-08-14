@@ -9,12 +9,14 @@ interface LoginModalProps {
   initialMode?: 'sso' | 'admin';
 }
 
-export default function LoginModal({ onLoginSuccess, onClose, initialMode = 'admin' }: LoginModalProps) {
+export default function LoginModal({ onLoginSuccess, onClose, initialMode }: LoginModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showEmergencyAdmin, setShowEmergencyAdmin] = useState(() => {
+    if (initialMode === 'sso') return false;
+    if (initialMode === 'admin') return true;
     const hash = window.location.hash.replace('#/', '').replace('#', '');
     const pathname = window.location.pathname.replace('/', '');
-    return initialMode === 'admin' || hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login';
+    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login';
   });
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');

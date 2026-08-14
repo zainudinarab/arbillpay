@@ -2804,6 +2804,7 @@ export default function CustomerPortal({
       {/* Login Modal Overlay */}
       {showLoginModal && (
         <LoginModal
+          initialMode={window.location.hash.includes('admin-login') ? 'admin' : 'sso'}
           onLoginSuccess={(user) => {
             onLoginSuccess(user);
             setShowLoginModal(false);
