@@ -152,11 +152,40 @@ export const saveInvoiceToFirestore = async (invoice: any) => {
   try {
     const invId = String(invoice.id || `inv_${Date.now()}`);
     const invRef = doc(db, 'invoices', invId);
-    await setDoc(invRef, sanitizeForFirestore({
+    
+    const invoicePayload = sanitizeForFirestore({
       ...invoice,
       id: invId,
       updated_at: new Date().toISOString()
-    }), { merge: true });
+    });
+
+    await setDoc(invRef, invoicePayload, { merge: true });
+
+    // ⚡ Optimasi Hemat Baca: Sinkronkan ringkasan tagihan aktif di dokumen Customer terkait
+    const custId = invoice.customer_id || invoice.client_id;
+    if (custId) {
+      try {
+        const custRef = doc(db, 'customers', String(custId));
+        const custSnap = await getDoc(custRef);
+        if (custSnap.exists()) {
+          const isUnpaid = String(invoice.status || '').toUpperCase() === 'UNPAID';
+          await setDoc(custRef, {
+            has_unpaid_invoice: isUnpaid,
+            current_invoice: {
+              invoice_id: invId,
+              invoice_number: invoice.invoice_number || invId,
+              amount: invoice.amount || invoice.total_amount || 0,
+              due_date: invoice.due_date || '',
+              status: invoice.status || 'UNPAID'
+            },
+            updated_at: new Date().toISOString()
+          }, { merge: true });
+        }
+      } catch (custErr) {
+        console.warn('Could not sync invoice summary to customer document:', custErr);
+      }
+    }
+
     return { success: true, id: invId };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save invoice:', err);
