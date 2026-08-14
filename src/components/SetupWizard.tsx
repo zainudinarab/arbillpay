@@ -51,10 +51,12 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     );
   }
 
-  // Form: ArabPay Merchant Credentials
+  // Form: ArabPay Merchant Credentials & Local Admin Credentials
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [panelUrl, setPanelUrl] = useState('https://arabpay.my.id');
+  const [adminUsername, setAdminUsername] = useState('zainudinarab');
+  const [ownerAdminPassword, setOwnerAdminPassword] = useState('');
 
   // Loading & Result State
   const [verifying, setVerifying] = useState(false);
@@ -69,6 +71,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     owner_user_id?: string;
     owner_phone?: string;
     owner_name?: string;
+    owner_username?: string;
   } | null>(null);
 
   // Step 1: Verify Credentials & Auto-Import Merchant Profile from ArabPay
@@ -197,6 +200,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       const bName = verifiedData?.client_name || 'Arbill Net Merchant';
       const oName = verifiedData?.owner_name || 'Owner Merchant';
       const oPhone = verifiedData?.owner_phone || '';
+      const cleanUsername = adminUsername.trim() || 'zainudinarab';
+      const cleanAdminPass = ownerAdminPassword.trim();
+
+      if (!cleanAdminPass || cleanAdminPass.length < 4) {
+        setError('Password Lokal / Admin Owner wajib diisi (minimal 4 karakter)');
+        setSaving(false);
+        return;
+      }
 
       // Clear all sample/cached data for a 100% clean installation
       resetAllLocalStateAndDatabase();
@@ -215,7 +226,10 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         client_id: cleanClientId,
         client_secret: cleanClientSecret,
         owner_user_id: ownerId,
-        owner_phone: oPhone
+        owner_phone: oPhone,
+        owner_name: oName,
+        owner_username: cleanUsername,
+        owner_password: cleanAdminPass
       });
 
       // Always save setup flags to localStorage for instant Client-Side persistence!
@@ -432,7 +446,34 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                   />
                 </div>
 
-                <div className="flex justify-between items-center pt-1 border-t border-slate-800/80">
+                <div className="space-y-1 pt-2 border-t border-slate-800/80">
+                  <label className="text-indigo-300 font-extrabold block text-xs flex items-center gap-1.5">
+                    <span>🔑 Username Admin Owner:</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Username untuk login admin..."
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-bold text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-emerald-400 font-extrabold block text-xs flex items-center gap-1.5">
+                    <span>⚡ Password Lokal / Admin Owner (*Wajib):</span>
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Masukkan Password Darurat / Admin baru..."
+                    value={ownerAdminPassword}
+                    onChange={(e) => setOwnerAdminPassword(e.target.value)}
+                    required
+                    className="w-full px-3 py-2.5 bg-slate-900 border border-emerald-500/60 focus:border-emerald-400 rounded-xl text-white font-bold text-xs focus:ring-1 focus:ring-emerald-400 placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800/80">
                   <span className="text-slate-400">Owner User ID (ArabPay):</span>
                   <span className="font-mono text-indigo-400 font-extrabold text-xs">{verifiedData?.owner_user_id || '019f74af9fcdWDgDxM8g'}</span>
                 </div>
