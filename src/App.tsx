@@ -1458,7 +1458,10 @@ const safeFormatDate = (val: any): string => {
             </div>
 
             <button
-              onClick={() => setCustomModalAlert(prev => ({ ...prev, isOpen: false }))}
+              onClick={() => {
+                sessionStorage.removeItem('arbil_modal_alert');
+                setCustomModalAlert({ isOpen: false, title: '', message: '', type: 'warning' });
+              }}
               className={`w-full py-3 font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer text-white ${
                 customModalAlert.type === 'error' ? 'bg-rose-600 hover:bg-rose-700' :
                 customModalAlert.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700' :
