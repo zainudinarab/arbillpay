@@ -67,46 +67,18 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
             return;
           }
         } catch (apiErr) {
-          console.warn('Backend API login failed, attempting serverless Owner verification:', apiErr);
+          console.warn('Backend API login failed, attempting Cloud Firestore database verification:', apiErr);
         }
       }
 
-      // 2. Direct Serverless / Client-Side Owner Verification
-      const isOwnerIdentity = (
-        cleanId === '019f74af9fcdWDgDxM8g' ||
-        cleanId === '085746520724' ||
-        cleanId === 'ketua11@gmail.com' ||
-        cleanId.toLowerCase() === 'zainudinarab' ||
-        cleanId.toLowerCase() === 'admin' ||
-        cleanId.toLowerCase() === 'owner'
-      );
-
-      // Verify Owner PIN / Password
-      const isOwnerPasswordValid = (
-        cleanPass === '123456' ||
-        cleanPass === 'admin' ||
-        cleanPass === 'admin123' ||
-        cleanPass === '085746520724' ||
-        cleanPass.length >= 4
-      );
-
-      if (isOwnerIdentity && isOwnerPasswordValid) {
-        const ownerUser: UserAccount = {
-          id: '019f74af9fcdWDgDxM8g',
-          username: 'zainudinarab',
-          name: 'Zainudin Arab (Owner)',
-          email: 'ketua11@gmail.com',
-          phone_number: '085746520724',
-          role: 'owner',
-          arabpay_user_id: '019f74af9fcdWDgDxM8g',
-          arabpay_balance: 150000
-        };
-
+      // 2. Direct Cloud Firestore Database Verification
+      const fbOwnerRes = await verifyOwnerLoginWithFirestore(cleanId, cleanPass);
+      if (fbOwnerRes && fbOwnerRes.success && fbOwnerRes.user) {
         setIsLoading(false);
-        onLoginSuccess(ownerUser);
+        onLoginSuccess(fbOwnerRes.user as any);
         return;
       } else {
-        setErrorMsg('❌ Akses Ditolak: ID atau Password Owner darurat tidak cocok. Masukkan ID Owner (085746520724 / zainudinarab).');
+        setErrorMsg('❌ Akses Ditolak: ID atau Password Owner darurat tidak cocok dengan data terdaftar di Firestore.');
       }
     } catch (err: any) {
       setErrorMsg('Gagal melakukan verifikasi login darurat: ' + err?.message);
