@@ -84,6 +84,8 @@ export interface BusinessProfile {
   mapLat?: number;
   mapLng?: number;
   mapZoom?: number;
+  waGatewayToken?: string;
+  waGatewayUrl?: string;
   storageUsed: number; // in GB
   storageMax: number; // in GB
 }

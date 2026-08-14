@@ -50,6 +50,8 @@ export default function SettingsPage({
   const [mapLat, setMapLat] = useState<number>(profile.mapLat !== undefined ? profile.mapLat : -7.2585);
   const [mapLng, setMapLng] = useState<number>(profile.mapLng !== undefined ? profile.mapLng : 112.7550);
   const [mapZoom, setMapZoom] = useState<number>(profile.mapZoom !== undefined ? profile.mapZoom : 16);
+  const [waGatewayToken, setWaGatewayToken] = useState(profile.waGatewayToken || '');
+  const [waGatewayUrl, setWaGatewayUrl] = useState(profile.waGatewayUrl || 'https://api.fonnte.com/send');
   const [isGettingGps, setIsGettingGps] = useState<boolean>(false);
   const [success, setSuccess] = useState(false);
 
@@ -132,7 +134,9 @@ export default function SettingsPage({
       themeColor,
       mapLat,
       mapLng,
-      mapZoom
+      mapZoom,
+      waGatewayToken,
+      waGatewayUrl
     };
     onUpdateProfile(updatedProfile);
 
@@ -481,6 +485,42 @@ export default function SettingsPage({
                         <option value={16}>16 - Zoom Desa / Komplek (Default)</option>
                         <option value={18}>18 - Zoom Mikro (Sangat Dekat)</option>
                       </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* WhatsApp Gateway Integration Card */}
+                <div className="sm:col-span-2 pt-4 border-t border-slate-100 space-y-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Globe className="w-4 h-4 text-emerald-600" />
+                      <span>📱 Pengaturan WhatsApp Gateway (Kirim Otomatis via Sistem / Background)</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Masukkan Token WA Gateway (Fonnte / WABlas / Custom Gateway API) agar pengiriman tagihan dilakukan secara otomatis oleh sistem tanpa membuka WhatsApp Web.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 block">Token API WA Gateway (Fonnte / WABlas)</label>
+                      <input
+                        type="password"
+                        value={waGatewayToken}
+                        onChange={(e) => setWaGatewayToken(e.target.value)}
+                        placeholder="Contoh: xK892msn1kS99..."
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-600 block">URL Endpoint API Gateway</label>
+                      <input
+                        type="text"
+                        value={waGatewayUrl}
+                        onChange={(e) => setWaGatewayUrl(e.target.value)}
+                        placeholder="https://api.fonnte.com/send"
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
                     </div>
                   </div>
                 </div>

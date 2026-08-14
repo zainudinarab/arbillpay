@@ -18,6 +18,7 @@ import {
 import { Invoice, BusinessProfile } from '../types';
 import { formatCurrency, formatDate } from '../utils';
 import HeaderBar from './HeaderBar';
+import { sendWhatsAppMessageDirect } from '../services/whatsappService';
 
 interface InvoiceListProps {
   invoices: Invoice[];
@@ -288,17 +289,27 @@ export default function InvoiceList({
                           <div className="flex items-center gap-2">
                             <p className="font-sans font-bold text-sm text-slate-800">{inv.client.name}</p>
                             {inv.client.phone && (
-                              <a
-                                href={`https://wa.me/${inv.client.phone.replace(/[^0-9]/g, '')}?text=Halo%20${encodeURIComponent(inv.client.name)},%20tagihan%20internet%20ArbillPay%20sebesar%20${encodeURIComponent(formatCurrency(inv.total, profile.currency))}%20telah%20terbit.`}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                type="button"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const msg = `Halo ${inv.client.name}, tagihan internet ArbillPay (${inv.client.company}) sebesar ${formatCurrency(inv.total, profile.currency)} telah terbit. Silakan lakukan pembayaran via ArabPay QRIS. Terima kasih!`;
+                                  const res = await sendWhatsAppMessageDirect({
+                                    phone: inv.client.phone,
+                                    message: msg,
+                                    gatewayToken: profile.waGatewayToken,
+                                    gatewayUrl: profile.waGatewayUrl
+                                  });
+                                  if (res.mode === 'gateway') {
+                                    alert(res.message);
+                                  }
+                                }}
                                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-[10px] font-medium transition cursor-pointer"
-                                title="Kirim WA Tagihan"
+                                title="Kirim WA Tagihan (Direct Gateway / 1-Klik)"
                               >
                                 <MessageCircle size={10} />
                                 {inv.client.phone}
-                              </a>
+                              </button>
                             )}
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
