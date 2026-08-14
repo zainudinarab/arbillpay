@@ -489,42 +489,6 @@ export default function SettingsPage({
                   </div>
                 </div>
 
-                {/* WhatsApp Gateway Integration Card */}
-                <div className="sm:col-span-2 pt-4 border-t border-slate-100 space-y-3">
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                      <Globe className="w-4 h-4 text-emerald-600" />
-                      <span>📱 Pengaturan WhatsApp Gateway (Kirim Otomatis via Sistem / Background)</span>
-                    </h4>
-                    <p className="text-[11px] text-slate-400">
-                      Masukkan Token WA Gateway (Fonnte / WABlas / Custom Gateway API) agar pengiriman tagihan dilakukan secara otomatis oleh sistem tanpa membuka WhatsApp Web.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-600 block">Token API WA Gateway (Fonnte / WABlas)</label>
-                      <input
-                        type="password"
-                        value={waGatewayToken}
-                        onChange={(e) => setWaGatewayToken(e.target.value)}
-                        placeholder="Contoh: xK892msn1kS99..."
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-bold text-slate-600 block">URL Endpoint API Gateway</label>
-                      <input
-                        type="text"
-                        value={waGatewayUrl}
-                        onChange={(e) => setWaGatewayUrl(e.target.value)}
-                        placeholder="https://api.fonnte.com/send"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
               </div>
 
               {/* Form Action */}
@@ -668,38 +632,6 @@ export default function SettingsPage({
                   </button>
                 </div>
               </form>
-            </div>
-
-            {/* Card: Sinkronisasi Data Wilayah Indonesia */}
-            <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-                    <Globe size={22} />
-                  </div>
-                  <div>
-                    <h3 className="font-sans font-bold text-sm text-white">Sinkronisasi Database Wilayah Indonesia</h3>
-                    <p className="text-[11px] text-slate-400">
-                      Unduh & simpan data 38 Provinsi, Kabupaten/Kota, Kecamatan, & Kode Pos ke Database Sendiri (Cloud Database & Local Cache) agar pencarian alamat 100% cepat, stabil, & bebas lemot.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-800">
-                <div className="text-[11px] text-slate-400">
-                  Status: <span className="text-emerald-400 font-bold">{syncStatus || 'Siap Disinkronkan (38 Provinsi Ready)'}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSyncRegions}
-                  disabled={isSyncingRegions}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <RefreshCw size={14} className={isSyncingRegions ? 'animate-spin' : ''} />
-                  <span>{isSyncingRegions ? 'Proses Menyimpan Data...' : '⚡ Sinkronkan Data Wilayah Ke Database Sendiri'}</span>
-                </button>
-              </div>
             </div>
 
           </div>
