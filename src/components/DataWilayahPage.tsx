@@ -41,14 +41,67 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
   const [syncedVillages, setSyncedVillages] = useState<any[]>([]);
   const [searchFilter, setSearchFilter] = useState('');
 
-  // Add Manual Custom Village State
+  // Add Manual Custom Village State (Cascading Dropdowns)
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalAddType, setModalAddType] = useState<'dusun' | 'desa'>('dusun');
+  
+  const [modalProvId, setModalProvId] = useState('35'); // Default Jawa Timur
+  const [modalRegId, setModalRegId] = useState('');
+  const [modalDistId, setModalDistId] = useState('');
+  const [modalVillId, setModalVillId] = useState('');
+
+  const [modalRegencies, setModalRegencies] = useState<RegionItem[]>([]);
+  const [modalDistricts, setModalDistricts] = useState<RegionItem[]>([]);
+  const [modalVillages, setModalVillages] = useState<VillageItem[]>([]);
+
+  const [modalLoadingReg, setModalLoadingReg] = useState(false);
+  const [modalLoadingDist, setModalLoadingDist] = useState(false);
+  const [modalLoadingVill, setModalLoadingVill] = useState(false);
+
   const [customDusun, setCustomDusun] = useState('');
-  const [customDesa, setCustomDesa] = useState('');
-  const [customKecamatan, setCustomKecamatan] = useState('');
-  const [customKabupaten, setCustomKabupaten] = useState('');
-  const [customProvinsi, setCustomProvinsi] = useState('');
+  const [customDesaInput, setCustomDesaInput] = useState('');
   const [customKodePos, setCustomKodePos] = useState('');
+
+  // Modal Cascading Effects
+  useEffect(() => {
+    if (!modalProvId) { setModalRegencies([]); return; }
+    setModalLoadingReg(true);
+    fetchRegencies(modalProvId).then(data => {
+      setModalRegencies(data);
+      setModalLoadingReg(false);
+
+      if (modalProvId === '35') {
+        const jombang = data.find(r => r.name.includes('JOMBANG'));
+        if (jombang) setModalRegId(jombang.id);
+      }
+    });
+  }, [modalProvId]);
+
+  useEffect(() => {
+    if (!modalRegId) { setModalDistricts([]); return; }
+    setModalLoadingDist(true);
+    fetchDistricts(modalRegId).then(data => {
+      setModalDistricts(data);
+      setModalLoadingDist(false);
+    });
+  }, [modalRegId]);
+
+  useEffect(() => {
+    if (!modalDistId) { setModalVillages([]); return; }
+    setModalLoadingVill(true);
+    fetchVillages(modalDistId).then(data => {
+      setModalVillages(data);
+      setModalLoadingVill(false);
+
+      const distObj = modalDistricts.find(d => d.id === modalDistId);
+      const regObj = modalRegencies.find(r => r.id === modalRegId);
+      if (distObj && regObj) {
+        fetchPostalCode(`${distObj.name} ${regObj.name}`).then(zip => {
+          if (zip) setCustomKodePos(zip);
+        });
+      }
+    });
+  }, [modalDistId]);
 
   // Load Regencies when Province changes
   useEffect(() => {
@@ -142,34 +195,67 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
     }
   };
 
-  // Add Manual Custom Village Handler
+  // Add Manual Custom Village/Dusun Handler with Cascading Dropdowns
   const handleAddCustomVillage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customDesa || !customKecamatan) {
-      setToastMsg({ type: 'error', text: 'Nama Desa dan Kecamatan wajib diisi!' });
+
+    const pObj = provinces.find(p => p.id === modalProvId);
+    const rObj = modalRegencies.find(r => r.id === modalRegId);
+    const dObj = modalDistricts.find(d => d.id === modalDistId);
+    const vObj = modalVillages.find(v => v.id === modalVillId);
+
+    const provName = pObj ? pObj.name : 'JAWA TIMUR';
+    const regName = rObj ? rObj.name : 'KABUPATEN JOMBANG';
+    const distName = dObj ? dObj.name : '';
+
+    let desaName = '';
+    let dusunName = '';
+
+    if (modalAddType === 'dusun') {
+      if (!vObj) {
+        setToastMsg({ type: 'error', text: 'Silakan pilih Desa Induk terlebih dahulu!' });
+        return;
+      }
+      if (!customDusun.trim()) {
+        setToastMsg({ type: 'error', text: 'Nama Dusun Baru wajib diisi!' });
+        return;
+      }
+      desaName = vObj.name;
+      dusunName = customDusun.trim().toUpperCase();
+    } else {
+      if (!customDesaInput.trim()) {
+        setToastMsg({ type: 'error', text: 'Nama Desa Baru wajib diisi!' });
+        return;
+      }
+      desaName = customDesaInput.trim().toUpperCase();
+    }
+
+    if (!distName) {
+      setToastMsg({ type: 'error', text: 'Kecamatan wajib dipilih!' });
       return;
     }
 
-    const newVillage = {
+    const newEntry = {
       id: `CUST_VILL_${Date.now()}`,
-      dusun: customDusun.trim().toUpperCase(),
-      desa: customDesa.trim().toUpperCase(),
-      kecamatan: customKecamatan.trim().toUpperCase(),
-      kabupaten: (customKabupaten.trim() || selectedRegName || 'KABUPATEN JOMBANG').toUpperCase(),
-      provinsi: (customProvinsi.trim() || 'JAWA TIMUR').toUpperCase(),
+      dusun: dusunName,
+      desa: desaName,
+      kecamatan: distName,
+      kabupaten: regName,
+      provinsi: provName,
       zip: customKodePos.trim() || '61471'
     };
 
-    const updatedList = [newVillage, ...syncedVillages.filter(v => v.id !== newVillage.id)];
+    const updatedList = [newEntry, ...syncedVillages.filter(v => v.id !== newEntry.id)];
     setSyncedVillages(updatedList);
     await saveSyncedRegionsToFirestore(updatedList);
 
     setShowAddModal(false);
     setCustomDusun('');
-    setCustomDesa('');
-    setCustomKecamatan('');
-    setCustomKodePos('');
-    setToastMsg({ type: 'success', text: `✅ Dusun/Desa "${newVillage.dusun ? newVillage.dusun + ' - ' : ''}${newVillage.desa}" berhasil ditambahkan secara manual.` });
+    setCustomDesaInput('');
+    setToastMsg({
+      type: 'success',
+      text: `✅ ${dusunName ? 'Dusun "' + dusunName + '" di Desa ' + desaName : 'Desa "' + desaName + '"'} berhasil ditambahkan!`
+    });
   };
 
   // Filter Villages for Display
@@ -370,79 +456,153 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
         </div>
       </main>
 
-      {/* Modal Add Manual Custom Village */}
+      {/* Modal Add Manual Custom Village/Dusun */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl p-6 space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-base text-white flex items-center gap-2">
                 <Plus size={18} className="text-emerald-400" />
-                Tambah Desa / Dusun Lokal Manual
+                Tambah Dusun / Desa Manual (0% Typo)
               </h3>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
             </div>
 
+            {/* Mode Switcher */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+              <button
+                type="button"
+                onClick={() => setModalAddType('dusun')}
+                className={`py-2 rounded-lg font-bold transition ${
+                  modalAddType === 'dusun' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🏡 Tambah Dusun Baru
+              </button>
+              <button
+                type="button"
+                onClick={() => setModalAddType('desa')}
+                className={`py-2 rounded-lg font-bold transition ${
+                  modalAddType === 'desa' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🏢 Tambah Desa Baru
+              </button>
+            </div>
+
             <form onSubmit={handleAddCustomVillage} className="space-y-3.5 text-xs">
+              {/* 1. Provinsi Dropdown */}
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Nama Dusun <span className="text-slate-400 font-normal">(Opsional / Jika ada)</span></label>
-                <input
-                  type="text"
-                  value={customDusun}
-                  onChange={(e) => setCustomDusun(e.target.value)}
-                  placeholder="Contoh: DUSUN KRAJAN"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-emerald-500"
-                />
+                <label className="block font-bold text-slate-300 mb-1">1. Pilih Provinsi</label>
+                <select
+                  value={modalProvId}
+                  onChange={(e) => setModalProvId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-emerald-500"
+                >
+                  {provinces.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               </div>
 
+              {/* 2. Kabupaten Dropdown */}
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Nama Desa Induk *</label>
-                <input
-                  type="text"
-                  required
-                  value={customDesa}
-                  onChange={(e) => setCustomDesa(e.target.value)}
-                  placeholder="Contoh: CUKIR"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-emerald-500"
-                />
+                <label className="block font-bold text-slate-300 mb-1">
+                  2. Pilih Kabupaten / Kota {modalLoadingReg && <RefreshCw className="inline w-3 h-3 animate-spin text-emerald-400 ml-1" />}
+                </label>
+                <select
+                  value={modalRegId}
+                  onChange={(e) => setModalRegId(e.target.value)}
+                  disabled={!modalProvId}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                >
+                  <option value="">-- Pilih Kabupaten/Kota --</option>
+                  {modalRegencies.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
               </div>
 
+              {/* 3. Kecamatan Dropdown */}
               <div>
-                <label className="block font-bold text-slate-300 mb-1">Kecamatan *</label>
-                <input
-                  type="text"
-                  required
-                  value={customKecamatan}
-                  onChange={(e) => setCustomKecamatan(e.target.value)}
-                  placeholder="Contoh: DIWEK"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-emerald-500"
-                />
+                <label className="block font-bold text-slate-300 mb-1">
+                  3. Pilih Kecamatan {modalLoadingDist && <RefreshCw className="inline w-3 h-3 animate-spin text-emerald-400 ml-1" />}
+                </label>
+                <select
+                  value={modalDistId}
+                  onChange={(e) => setModalDistId(e.target.value)}
+                  disabled={!modalRegId}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                >
+                  <option value="">-- Pilih Kecamatan --</option>
+                  {modalDistricts.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* 4A. If adding Dusun: Select Desa Induk from Dropdown & Type Dusun Name */}
+              {modalAddType === 'dusun' && (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">
+                      4. Pilih Desa Induk {modalLoadingVill && <RefreshCw className="inline w-3 h-3 animate-spin text-emerald-400 ml-1" />}
+                    </label>
+                    <select
+                      value={modalVillId}
+                      onChange={(e) => setModalVillId(e.target.value)}
+                      disabled={!modalDistId}
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:border-emerald-500 disabled:opacity-50"
+                    >
+                      <option value="">-- Pilih Desa Induk --</option>
+                      {modalVillages.map(v => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-amber-400 mb-1">5. Ketik Nama Dusun Baru *</label>
+                    <input
+                      type="text"
+                      required
+                      value={customDusun}
+                      onChange={(e) => setCustomDusun(e.target.value)}
+                      placeholder="Contoh: DUSUN KRAJAN"
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-amber-500/50 rounded-xl text-white uppercase focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* 4B. If adding Desa: Type New Desa Name */}
+              {modalAddType === 'desa' && (
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Kabupaten / Kota</label>
+                  <label className="block font-bold text-amber-400 mb-1">4. Ketik Nama Desa Baru *</label>
                   <input
                     type="text"
-                    value={customKabupaten}
-                    onChange={(e) => setCustomKabupaten(e.target.value)}
-                    placeholder="Contoh: KABUPATEN JOMBANG"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white uppercase focus:outline-none focus:border-emerald-500"
+                    required
+                    value={customDesaInput}
+                    onChange={(e) => setCustomDesaInput(e.target.value)}
+                    placeholder="Contoh: DESA SUKAREJA"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-amber-500/50 rounded-xl text-white uppercase focus:outline-none focus:border-amber-400"
                   />
                 </div>
+              )}
 
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1">Kode Pos</label>
-                  <input
-                    type="text"
-                    value={customKodePos}
-                    onChange={(e) => setCustomKodePos(e.target.value)}
-                    placeholder="61471"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono uppercase focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+              {/* 5. Kode Pos */}
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Kode Pos <span className="text-emerald-400 font-normal">(Otomatis Terisi)</span></label>
+                <input
+                  type="text"
+                  value={customKodePos}
+                  onChange={(e) => setCustomKodePos(e.target.value)}
+                  placeholder="61471"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-emerald-400 font-mono font-bold uppercase focus:outline-none focus:border-emerald-500"
+                />
               </div>
 
-              <div className="pt-3 flex justify-end gap-2">
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
@@ -452,9 +612,9 @@ export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPag
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg cursor-pointer"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg cursor-pointer flex items-center gap-1.5"
                 >
-                  Simpan Desa Manual
+                  <Plus size={15} /> Simpan {modalAddType === 'dusun' ? 'Dusun' : 'Desa'} Baru
                 </button>
               </div>
             </form>
