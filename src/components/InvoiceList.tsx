@@ -388,13 +388,25 @@ export default function InvoiceList({
                               <button
                                 onClick={async (e) => {
                                   e.stopPropagation();
-                                  try {
-                                    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-                                    const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' });
-                                    const data = await res.json();
-                                    alert(data.message || (data.success ? '📱 WA terkirim!' : 'Gagal kirim WA'));
-                                  } catch (err: any) {
-                                    alert(`Gagal: ${err?.message || 'Error'}`);
+                                  const checkoutUrl = `${window.location.origin}/?view=checkout&id=${inv.id}#/overview`;
+                                  const clientPhone = inv.client?.phone || '';
+                                  
+                                  const messageText = `Halo Bpk/Ibu *${inv.client.name}*,\n\n` +
+                                    `Berikut rincian tagihan internet Anda dari *${profile.companyName}*:\n\n` +
+                                    `📄 No. Tagihan: *${inv.invoiceNumber}*\n` +
+                                    `📅 Tanggal: *${inv.issueDate}*\n` +
+                                    `💵 Total Tagihan: *${formatCurrency(inv.total, profile.currency)}*\n\n` +
+                                    `Selesaikan pembayaran secara instan via ArabPay QRIS & E-Wallet di link berikut:\n` +
+                                    `👉 ${checkoutUrl}\n\n` +
+                                    `Terima kasih! 🙏`;
+
+                                  const result = await sendWhatsAppMessageDirect({
+                                    phone: clientPhone,
+                                    message: messageText
+                                  });
+
+                                  if (result.mode === 'gateway') {
+                                    alert(result.message || '✅ Pesan WA terkirim otomatis oleh sistem!');
                                   }
                                 }}
                                 className="p-1.5 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-lg transition-all cursor-pointer"

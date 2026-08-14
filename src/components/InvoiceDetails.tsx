@@ -20,6 +20,7 @@ import { Invoice, BusinessProfile } from '../types';
 import { formatCurrency, formatDate } from '../utils';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { sendWhatsAppMessageDirect } from '../services/whatsappService';
 
 interface InvoiceDetailsProps {
   invoice: Invoice;
@@ -258,17 +259,39 @@ export default function InvoiceDetails({
 
   const handleSendWaGateway = async () => {
     setShowShareDropdown(false);
-    setShareFeedback('⏳ Sedang mengirim notifikasi WhatsApp via Gateway...');
+    setShareFeedback('⏳ Sedang memproses pengiriman notifikasi WhatsApp...');
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/invoices/${invoice.id}/send-wa`, {
-        method: 'POST'
+      const simulatedUrl = `${window.location.origin}/?view=checkout&id=${invoice.id}#/overview`;
+      const totalFormatted = formatCurrency(invoice.total, profile.currency);
+      const isIndo = profile.language === 'id';
+
+      const waText = isIndo
+        ? `Halo Bpk/Ibu *${invoice.client?.name || 'Pelanggan'}*,\n\n` +
+          `Berikut rincian tagihan internet Anda dari *${profile.companyName || 'ArbillPay'}*:\n\n` +
+          `📄 No. Tagihan: *${invoice.invoiceNumber}*\n` +
+          `📅 Tanggal: *${invoice.issueDate}*\n` +
+          `💵 Total Tagihan: *${totalFormatted}*\n\n` +
+          `Selesaikan pembayaran secara instan via ArabPay QRIS & E-Wallet di link berikut:\n` +
+          `👉 ${simulatedUrl}\n\n` +
+          `Terima kasih! 🙏`
+        : `Hello *${invoice.client?.name || 'Customer'}*,\n\n` +
+          `Here is your internet bill from *${profile.companyName || 'ArbillPay'}*:\n\n` +
+          `📄 Invoice No: *${invoice.invoiceNumber}*\n` +
+          `📅 Issue Date: *${invoice.issueDate}*\n` +
+          `💵 Total Amount: *${totalFormatted}*\n\n` +
+          `Pay instantly via ArabPay QRIS & E-Wallet at:\n` +
+          `👉 ${simulatedUrl}\n\n` +
+          `Thank you! 🙏`;
+
+      const result = await sendWhatsAppMessageDirect({
+        phone: invoice.client?.phone || '',
+        message: waText
       });
-      const data = await res.json();
-      if (data.success) {
-        setShareFeedback(data.message || '📱 WhatsApp berhasil terkirim!');
+
+      if (result.mode === 'gateway') {
+        setShareFeedback(result.message || '📱 Notifikasi WhatsApp berhasil terkirim via Gateway!');
       } else {
-        setShareFeedback(data.message || '❌ Gagal mengirim WhatsApp.');
+        setShareFeedback('💬 Membuka WhatsApp 1-Klik...');
       }
     } catch (err: any) {
       setShareFeedback(`❌ Gagal: ${err?.message || 'Error'}`);
