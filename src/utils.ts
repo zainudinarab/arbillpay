@@ -67,12 +67,17 @@ export function generateSequentialInvoices(cust: any, packagePrice: number, pack
     
     const dueDay = Math.min(instDay, 28);
     const dueIso = `${y}-${(m + 1).toString().padStart(2, '0')}-${dueDay.toString().padStart(2, '0')}`;
-    const safeCustCode = cust.customer_code || `CUST-${String(cust.id || '').slice(-4).toUpperCase()}`;
+
+    // ⚡ ID Invoice 100% Unik per Customer & Periode
+    const rawId = String(cust.id || cust.customer_code || cust.phone_number || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const uniqueSuffix = rawId.length >= 8 ? rawId.slice(-8) : (rawId || Math.random().toString(36).substring(2, 8).toUpperCase());
+    const displayCustCode = cust.customer_code || `CUST-${uniqueSuffix}`;
+    const uniqueInvoiceId = `INV-${monthCode}-${uniqueSuffix}`;
 
     invoices.push({
-      id: `INV-${monthCode}-${safeCustCode}`,
+      id: uniqueInvoiceId,
       customer_id: cust.id,
-      customer_code: safeCustCode,
+      customer_code: displayCustCode,
       customer_name: cust.name,
       customer_phone: cust.phone_number || '',
       pppoe_username: cust.pppoe_username || '',
