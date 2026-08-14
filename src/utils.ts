@@ -36,6 +36,30 @@ export function formatDate(dateString: string, lang: 'id' | 'en' = 'id'): string
 }
 
 /**
+ * Builds formatted Invoice ID: INV-YYYYMM-01-CUST-178670126729 (ALL CAPITAL)
+ */
+export function buildFormattedInvoiceId(
+  monthCode: string,
+  subPeriod: string | number = 1,
+  cust: any
+): { invoiceId: string; displayCustCode: string } {
+  const subPeriodStr = String(subPeriod).padStart(2, '0');
+
+  let rawCustId = String(cust.customer_code || cust.id || cust.phone_number || '').trim();
+  
+  if (rawCustId.toLowerCase().startsWith('cust_')) {
+    rawCustId = 'CUST-' + rawCustId.slice(5);
+  } else if (!rawCustId.toUpperCase().startsWith('CUST-') && !rawCustId.toUpperCase().startsWith('CUST')) {
+    rawCustId = 'CUST-' + rawCustId;
+  }
+  
+  const displayCustCode = rawCustId.toUpperCase().replace(/[^A-Z0-9\-]/g, '');
+  const invoiceId = `INV-${monthCode}-${subPeriodStr}-${displayCustCode}`;
+
+  return { invoiceId, displayCustCode };
+}
+
+/**
  * Generates sequential monthly invoices starting from installation_date up to current month
  */
 export function generateSequentialInvoices(cust: any, packagePrice: number, packageName: string): any[] {
@@ -68,14 +92,11 @@ export function generateSequentialInvoices(cust: any, packagePrice: number, pack
     const dueDay = Math.min(instDay, 28);
     const dueIso = `${y}-${(m + 1).toString().padStart(2, '0')}-${dueDay.toString().padStart(2, '0')}`;
 
-    // ⚡ ID Invoice 100% Unik per Customer & Periode
-    const rawId = String(cust.id || cust.customer_code || cust.phone_number || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const uniqueSuffix = rawId.length >= 8 ? rawId.slice(-8) : (rawId || Math.random().toString(36).substring(2, 8).toUpperCase());
-    const displayCustCode = cust.customer_code || `CUST-${uniqueSuffix}`;
-    const uniqueInvoiceId = `INV-${monthCode}-${uniqueSuffix}`;
+    // ⚡ ID Invoice 100% Unik & Berformat Persis: INV-202604-01-CUST-178670126729 (ALL CAPITAL)
+    const { invoiceId, displayCustCode } = buildFormattedInvoiceId(monthCode, 1, cust);
 
     invoices.push({
-      id: uniqueInvoiceId,
+      id: invoiceId,
       customer_id: cust.id,
       customer_code: displayCustCode,
       customer_name: cust.name,
