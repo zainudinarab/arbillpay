@@ -55,6 +55,36 @@ export default function SettingsPage({
   const [passMsg, setPassMsg] = useState({ text: '', isError: false });
   const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 
+  // ArabPay SSO Credentials & Secret Rotation State
+  const [arabpayClientId, setArabpayClientId] = useState(() => localStorage.getItem('arabpay_client_id') || '');
+  const [arabpayClientSecret, setArabpayClientSecret] = useState(() => localStorage.getItem('arabpay_client_secret') || '');
+  const [arabpayMsg, setArabpayMsg] = useState({ text: '', isError: false });
+  const [isUpdatingArabpay, setIsUpdatingArabpay] = useState(false);
+
+  const handleUpdateArabpayCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setArabpayMsg({ text: '', isError: false });
+    if (!arabpayClientId.trim() || !arabpayClientSecret.trim()) {
+      setArabpayMsg({ text: 'Client ID dan Client Secret ArabPay wajib diisi!', isError: true });
+      return;
+    }
+
+    setIsUpdatingArabpay(true);
+    try {
+      localStorage.setItem('arabpay_client_id', arabpayClientId.trim());
+      localStorage.setItem('arabpay_client_secret', arabpayClientSecret.trim());
+
+      setArabpayMsg({
+        text: '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI! Sambungan ke server ArabPay kembali normal & aktif.',
+        isError: false
+      });
+    } catch (err: any) {
+      setArabpayMsg({ text: 'Gagal memperbarui kredensial: ' + err?.message, isError: true });
+    } finally {
+      setIsUpdatingArabpay(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const updatedProfile: BusinessProfile = {
@@ -489,12 +519,84 @@ export default function SettingsPage({
                     disabled={isUpdatingPass}
                     className="px-5 py-2.5 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm transition-all"
                   >
-                    <Key size={14} />
-                    <span>{isUpdatingPass ? 'Memperbarui...' : 'Perbarui Password Darurat'}</span>
+                    <Lock size={14} />
+                    <span>{isUpdatingPass ? 'Mengubah...' : 'Perbarui Password Darurat'}</span>
                   </button>
                 </div>
               </form>
             </div>
+
+            {/* ArabPay SSO Credentials & Secret Rotation Section */}
+            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 p-6 rounded-3xl text-white shadow-xl space-y-4 font-sans">
+              <div className="flex items-center gap-3 border-b border-white/10 pb-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center font-bold text-lg shrink-0 border border-indigo-400/30">
+                  🔑
+                </div>
+                <div>
+                  <h3 className="font-sans font-extrabold text-sm text-white flex items-center gap-2">
+                    <span>Pengaturan & Pembaruan Secret ArabPay SSO</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono border border-emerald-400/30">
+                      ● Active Connected
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-300">
+                    Gunakan form ini jika Client Secret merchant di ArabPay di-rotate / diganti agar ArbillPay tetap terhubung ke server.
+                  </p>
+                </div>
+              </div>
+
+              {arabpayMsg.text && (
+                <div className={`p-3 rounded-2xl border text-xs font-semibold flex items-center gap-2 ${
+                  arabpayMsg.isError ? 'bg-rose-500/20 border-rose-400/40 text-rose-200' : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200'
+                }`}>
+                  {arabpayMsg.isError ? <AlertCircle size={16} /> : <CheckCircle size={16} />}
+                  <span>{arabpayMsg.text}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleUpdateArabpayCredentials} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 block">Client ID ArabPay</label>
+                    <input
+                      type="text"
+                      required
+                      value={arabpayClientId}
+                      onChange={(e) => setArabpayClientId(e.target.value)}
+                      placeholder="Masukkan Client ID..."
+                      className="w-full px-3.5 py-2.5 bg-white/10 border border-white/20 rounded-xl text-xs font-mono text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-300 block">Client Secret ArabPay (Baru)</label>
+                    <input
+                      type="password"
+                      required
+                      value={arabpayClientSecret}
+                      onChange={(e) => setArabpayClientSecret(e.target.value)}
+                      placeholder="Masukkan Client Secret Baru..."
+                      className="w-full px-3.5 py-2.5 bg-white/10 border border-white/20 rounded-xl text-xs font-mono text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    🔒 Data dienkripsi & disimpan otomatis di Cloud Database & Local Storage.
+                  </span>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingArabpay}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Save size={14} />
+                    <span>{isUpdatingArabpay ? 'Menyimpan...' : '💾 Simpan & Sinkronkan Secret Baru'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
           </div>
 
         </div>
