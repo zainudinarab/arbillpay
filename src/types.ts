@@ -29,6 +29,8 @@ export interface Invoice {
   client: Client;
   issueDate: string;
   dueDate: string;
+  startDate?: string;
+  endDate?: string;
   items: InvoiceItem[];
   subtotal: number;
   taxRate: number; // percentage (e.g. 11 for PPN 11%)

@@ -66,6 +66,15 @@ export default function InvoiceForm({
     nextWeek.setDate(nextWeek.getDate() + 14); // Default 14 days payment term
     return nextWeek.toISOString().split('T')[0];
   });
+
+  const [startDate, setStartDate] = useState(invoiceToEdit?.startDate || invoiceToEdit?.issueDate || new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    if (invoiceToEdit?.endDate) return invoiceToEdit.endDate;
+    if (invoiceToEdit?.dueDate) return invoiceToEdit.dueDate;
+    const nextMonth = new Date();
+    nextMonth.setDate(nextMonth.getDate() + 30);
+    return nextMonth.toISOString().split('T')[0];
+  });
   
   // Line Items
   const [items, setItems] = useState<InvoiceItem[]>(() => {
@@ -185,6 +194,8 @@ export default function InvoiceForm({
       client,
       issueDate,
       dueDate,
+      startDate,
+      endDate,
       items,
       subtotal,
       taxRate,
@@ -282,7 +293,34 @@ export default function InvoiceForm({
                 </div>
               )}
 
-              {/* Dates */}
+              {/* Periode Pemakaian Layanan (Mulai s/d Sampai) */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-emerald-600 uppercase tracking-wide">📅 PERIODE PEMAKAIAN (MULAI)</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-emerald-50/50 border border-emerald-200 rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-emerald-600 uppercase tracking-wide">🏁 PERIODE PEMAKAIAN (SAMPAI)</label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    required
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-emerald-50/50 border border-emerald-200 rounded-xl text-sm font-sans focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all text-slate-700"
+                  />
+                </div>
+              </div>
+
+              {/* Tanggal Buat & Jatuh Tempo */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">{t.issueDate}</label>
                 <div className="relative">
