@@ -63,7 +63,7 @@ import NotificationSettingsPage from './components/NotificationSettingsPage';
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 
 // Import Icons for customer checkout
-import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight } from 'lucide-react';
+import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
 import { formatCurrency, formatDate } from './utils';
 
 import LoginModal from './components/LoginModal';
@@ -121,6 +121,7 @@ export default function App() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [showSimulator, setShowSimulator] = useState<boolean>(false);
+  const [checkoutPaymentMethod, setCheckoutPaymentMethod] = useState<'ewallet' | 'gateway'>('ewallet');
   const [unlinkedMatchCustomer, setUnlinkedMatchCustomer] = useState<any>(null);
   const [isLinking, setIsLinking] = useState(false);
   const [customModalAlert, setCustomModalAlert] = useState<{
@@ -1164,9 +1165,9 @@ const safeFormatDate = (val: any): string => {
         </header>
 
         {/* Checkout Main */}
-        <main className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Left Column: Client Invoice Copy */}
-          <div className="md:col-span-2 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6">
+        <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
+          {/* Left Column: Client Invoice Copy (5 Columns) */}
+          <div className="md:col-span-5 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6 h-fit">
             <div className="flex justify-between items-start border-b border-slate-100 pb-5">
               <div>
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">TAGIHAN DARI</span>
@@ -1236,10 +1237,10 @@ const safeFormatDate = (val: any): string => {
             </div>
           </div>
 
-          {/* Right Column: Dynamic Payment Panel */}
-          <div className="md:col-span-1 space-y-6">
+          {/* Right Column: Widened ArabPay Payment Confirmation Panel (7 Columns) */}
+          <div className="md:col-span-7 space-y-6">
             {checkoutInvoice.status === 'paid' ? (
-              <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 text-center space-y-4 shadow-sm flex flex-col items-center justify-center min-h-[300px]">
+              <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center space-y-4 shadow-sm flex flex-col items-center justify-center min-h-[350px]">
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center animate-pulse">
                   <CheckCircle size={32} />
                 </div>
@@ -1252,100 +1253,138 @@ const safeFormatDate = (val: any): string => {
                 <button
                   onClick={() => {
                     setIsCustomerView(false);
-                    // Clear query params to return to merchant dashboard gracefully
                     window.history.pushState({}, document.title, window.location.pathname);
                   }}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
+                  className="w-full max-w-xs py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
                 >
                   Kembali ke Aplikasi Utama
                 </button>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center">
-                      AP
-                    </div>
-                    <div>
-                      <h3 className="font-sans font-bold text-sm text-slate-800">Pembayaran ArabPay Gateway</h3>
-                      <p className="text-[10px] text-emerald-600 font-semibold">● ArabPay Instant Payment Gate</p>
-                    </div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-mono text-[10px] font-bold">
-                    BEBAS BIAYA ADMIN
+              <div className="bg-[#0B132B] border border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6 text-white font-sans">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                  <h3 className="font-black text-base text-white flex items-center gap-2.5">
+                    <ShoppingCart size={22} className="text-indigo-400" />
+                    <span>Konfirmasi Pembayaran</span>
+                  </h3>
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold border border-emerald-500/30">
+                    ● ArabPay Connected
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-500 font-medium">Pilih metode pembayaran resmi ArabPay yang Anda inginkan:</p>
+                {/* Top Summary Card */}
+                <div className="bg-[#131E3D] border border-slate-800/90 rounded-2xl p-5 space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-medium">Layanan WiFi / Internet</span>
+                    <span className="font-bold text-indigo-400">Tagihan Internet</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-medium">Durasi / Periode</span>
+                    <span className="font-semibold text-white">1 Bulan</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-medium">Paket / Layanan</span>
+                    <span className="font-semibold text-white">{checkoutInvoice.client.company || 'Home WiFi Broadband'}</span>
+                  </div>
 
-                {/* ArabPay Payment Methods List */}
-                <div className="space-y-2.5 pt-1">
-                  {/* Option 1: ArabPay QRIS All Payment */}
-                  <button
-                    onClick={() => setShowSimulator(true)}
-                    className="w-full text-left p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-50/40 hover:bg-emerald-50 transition-all flex items-center justify-between group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-sm shrink-0">
-                        <QrCode size={20} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700">ArabPay QRIS All Payment</span>
-                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">INSTANT</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Scan via GoPay, OVO, DANA, ShopeePay, BCA, Mandiri, BRI, DLL.</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
-                  </button>
+                  <div className="border-t border-slate-800/80 my-2 pt-2 flex justify-between items-center">
+                    <span className="text-slate-400 font-medium">Harga Tagihan</span>
+                    <span className="font-mono font-bold text-white text-sm">{formatCurrency(checkoutInvoice.subtotal, profile.currency)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-medium">Biaya Layanan</span>
+                    <span className="font-mono font-bold text-amber-400 text-xs">
+                      {checkoutPaymentMethod === 'ewallet' ? '+Rp 2.500' : 'GRATIS'}
+                    </span>
+                  </div>
 
-                  {/* Option 2: ArabPay Saldo E-Wallet */}
-                  <button
-                    onClick={() => setShowSimulator(true)}
-                    className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-slate-900 text-emerald-400 shadow-sm shrink-0 font-black text-xs">
-                        AP
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700">ArabPay Saldo E-Wallet</span>
-                          <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">0% CHG</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">Potong Saldo Akun ArabPay (Lunas Seketika)</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
-                  </button>
-
-                  {/* Option 3: ArabPay Virtual Account */}
-                  <button
-                    onClick={() => setShowSimulator(true)}
-                    className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-sm shrink-0">
-                        <ShieldCheck size={20} />
-                      </div>
-                      <div>
-                        <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700 block">ArabPay Virtual Account (VA)</span>
-                        <p className="text-[11px] text-slate-500 mt-0.5">BCA, BNI, BRI, Mandiri, Permata Virtual Account</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
-                  </button>
+                  <div className="border-t border-slate-800/80 my-2 pt-2 flex justify-between items-center">
+                    <span className="font-bold text-white text-sm">Total Potong Saldo / Bayar</span>
+                    <span className="font-mono font-black text-emerald-400 text-lg">
+                      {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 2500 : 0), profile.currency)}
+                    </span>
+                  </div>
                 </div>
 
+                {/* PILIH CARA BAYAR Section */}
+                <div className="space-y-3">
+                  <p className="text-[11px] font-sans font-bold text-slate-400 uppercase tracking-wider">PILIH CARA BAYAR</p>
+
+                  {/* Radio Option 1: ArabPay E-Wallet */}
+                  <div
+                    onClick={() => setCheckoutPaymentMethod('ewallet')}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                      checkoutPaymentMethod === 'ewallet'
+                        ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/80'
+                        : 'border-slate-800 bg-slate-900/60 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                      checkoutPaymentMethod === 'ewallet' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-600'
+                    }`}>
+                      {checkoutPaymentMethod === 'ewallet' && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Zap size={15} className="text-amber-400 fill-amber-400" />
+                          <span className="font-extrabold text-sm text-white">ArabPay E-Wallet</span>
+                        </div>
+                        <span className="text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-400/30">
+                          +Rp 2.500
+                        </span>
+                      </div>
+
+                      <div className="inline-block bg-emerald-950/90 border border-emerald-700/60 text-emerald-400 font-mono font-bold text-xs px-3 py-1 rounded-xl">
+                        Saldo Aktif: Rp {(currentUser?.arabpay_balance ?? 1692700).toLocaleString('id-ID')}
+                      </div>
+
+                      <p className="text-[11px] text-slate-400 pt-0.5">
+                        Bayar instan menggunakan saldo dompet digital ArabPay Anda.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Radio Option 2: Bayar Langsung via ArabPay Gateway (QRIS / VA) */}
+                  <div
+                    onClick={() => setCheckoutPaymentMethod('gateway')}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                      checkoutPaymentMethod === 'gateway'
+                        ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/80'
+                        : 'border-slate-800 bg-slate-900/60 hover:bg-slate-900'
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                      checkoutPaymentMethod === 'gateway' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-600'
+                    }`}>
+                      {checkoutPaymentMethod === 'gateway' && <div className="w-2 h-2 rounded-full bg-white" />}
+                    </div>
+
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={15} className="text-blue-400" />
+                        <span className="font-extrabold text-sm text-white">Bayar Langsung via ArabPay Gateway (QRIS / VA)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 pt-0.5">
+                        Bayar langsung menggunakan transfer bank VA atau scan QRIS secara instant melalui perantara ArabPay.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Action Button */}
                 <div className="pt-2">
                   <button
                     onClick={() => setShowSimulator(true)}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-2xl shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-2xl shadow-xl shadow-emerald-900/40 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
                   >
-                    <ShieldCheck size={16} />
-                    <span>Lanjutkan Pembayaran ArabPay</span>
+                    <Lock size={18} />
+                    <span>
+                      Lanjut Bayar — {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 2500 : 0), profile.currency)}
+                    </span>
+                    <ArrowRight size={18} />
                   </button>
                 </div>
               </div>
