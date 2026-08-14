@@ -81,6 +81,12 @@ export default function SettingsPage({
     }
   };
 
+  // ArabPay SSO Credentials & Secret Rotation State
+  const [arabpayClientId, setArabpayClientId] = useState(() => localStorage.getItem('arabpay_client_id') || '');
+  const [arabpayClientSecret, setArabpayClientSecret] = useState(() => localStorage.getItem('arabpay_client_secret') || '');
+  const [arabpayMsg, setArabpayMsg] = useState({ text: '', isError: false });
+  const [isUpdatingArabpay, setIsUpdatingArabpay] = useState(false);
+
   const handleUpdateArabpayCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setArabpayMsg({ text: '', isError: false });
