@@ -11,6 +11,7 @@ import {
   RegionItem, 
   VillageItem 
 } from '../services/indonesiaRegionService';
+import { getSyncedRegionsFromFirestore } from '../services/firebaseService';
 
 export interface FullAddressSelection {
   provinsi: string;
@@ -88,6 +89,17 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
   const [loadingDist, setLoadingDist] = useState(false);
   const [loadingVill, setLoadingVill] = useState(false);
 
+  const [syncedDb, setSyncedDb] = useState<any[]>([]);
+
+  // Load Synced Regions from Cloud Database / Local Cache
+  useEffect(() => {
+    getSyncedRegionsFromFirestore().then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        setSyncedDb(data);
+      }
+    });
+  }, []);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -139,12 +151,13 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
 
     const cleanQ = q.trim().toLowerCase();
 
-    // 1. Instant Local Match
-    const localMatches = INDONESIA_INSTANT_DATABASE.filter(item => 
-      item.desa.toLowerCase().includes(cleanQ) ||
-      item.kecamatan.toLowerCase().includes(cleanQ) ||
-      item.kabupaten.toLowerCase().includes(cleanQ) ||
-      item.provinsi.toLowerCase().includes(cleanQ)
+    // 1. Instant Local & Synced Match
+    const fullDatabase = [...syncedDb, ...INDONESIA_INSTANT_DATABASE];
+    const localMatches = fullDatabase.filter(item => 
+      (item.desa || '').toLowerCase().includes(cleanQ) ||
+      (item.kecamatan || '').toLowerCase().includes(cleanQ) ||
+      (item.kabupaten || '').toLowerCase().includes(cleanQ) ||
+      (item.provinsi || '').toLowerCase().includes(cleanQ)
     );
 
     setSuggestions(localMatches);
