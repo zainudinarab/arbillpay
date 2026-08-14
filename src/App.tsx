@@ -605,42 +605,76 @@ const safeFormatDate = (val: any): string => {
       }
 
       if (!fetched) {
-        const fbData = await getInvoicesFromFirestore();
+        const [fbData, custData] = await Promise.all([
+          getInvoicesFromFirestore(),
+          getCustomersFromFirestore()
+        ]);
+
+        const customerMap = new Map<string, any>();
+        if (custData.success && Array.isArray(custData.customers)) {
+          custData.customers.forEach((c: any) => {
+            if (c.id) customerMap.set(String(c.id), c);
+            if (c.customer_code) customerMap.set(String(c.customer_code), c);
+            if (c.phone_number) customerMap.set(String(c.phone_number), c);
+          });
+        }
+
         if (fbData.success && Array.isArray(fbData.invoices) && fbData.invoices.length > 0) {
-          const mapped: Invoice[] = fbData.invoices.filter((inv: any) => inv.id !== '_init').map((inv: any) => ({
-            id: inv.id,
-            invoiceNumber: inv.invoice_number || inv.invoiceNumber || inv.id,
-            client: {
-              id: inv.customer_id || inv.id,
-              name: inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan',
-              email: inv.customer_email || inv.client?.email || 'client@example.com',
-              company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
-              address: inv.notes || '',
-              phone: inv.customer_phone_real || inv.customer_phone || ''
-            },
-            items: [
-              {
-                id: `item-${inv.id}`,
-                description: inv.notes || `Tagihan Internet (${inv.package_name || 'Broadband'})`,
-                quantity: 1,
-                price: Number(inv.total || inv.amount || 0),
-                unitPrice: Number(inv.total || inv.amount || 0),
-                amount: Number(inv.total || inv.amount || 0)
-              }
-            ],
-            subtotal: Number(inv.total || inv.amount || 0),
-            taxRate: 0,
-            taxAmount: 0,
-            discount: 0,
-            total: Number(inv.total || inv.amount || 0),
-            status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
-            issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
-            dueDate: safeFormatDate(inv.due_date || inv.dueDate),
-            enabledPaymentMethods: inv.enabledPaymentMethods || inv.enabled_payment_methods || ['qris', 'gopay', 'ovo', 'dana', 'bca_va'],
-            notes: inv.notes || '',
-            terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
-            isArchived: inv.is_archived || false
-          }));
+          const mapped: Invoice[] = fbData.invoices.filter((inv: any) => inv.id !== '_init').map((inv: any) => {
+            const custId = String(inv.customer_id || inv.client?.id || inv.id);
+            const matchedCust = customerMap.get(custId) || {};
+
+            const custName = matchedCust.name || inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan';
+            const custPhone = matchedCust.phone_number || inv.customer_phone_real || inv.customer_phone || inv.client?.phone || '';
+            const pkgName = matchedCust.package_name || inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member');
+
+            const addressParts = [
+              matchedCust.dusun,
+              matchedCust.desa,
+              matchedCust.kecamatan,
+              matchedCust.kabupaten,
+              matchedCust.kode_pos
+            ].filter(Boolean);
+
+            const fullAddress = addressParts.length > 0
+              ? addressParts.join(', ')
+              : (matchedCust.address || inv.address || inv.client?.address || inv.notes || '');
+
+            return {
+              id: inv.id,
+              invoiceNumber: inv.invoice_number || inv.invoiceNumber || inv.id,
+              client: {
+                id: custId,
+                name: custName,
+                email: matchedCust.email || inv.customer_email || inv.client?.email || 'client@example.com',
+                company: pkgName,
+                address: fullAddress,
+                phone: custPhone
+              },
+              items: [
+                {
+                  id: `item-${inv.id}`,
+                  description: inv.notes || `Tagihan Internet (${pkgName})`,
+                  quantity: 1,
+                  price: Number(inv.total || inv.amount || 0),
+                  unitPrice: Number(inv.total || inv.amount || 0),
+                  amount: Number(inv.total || inv.amount || 0)
+                }
+              ],
+              subtotal: Number(inv.total || inv.amount || 0),
+              taxRate: 0,
+              taxAmount: 0,
+              discount: 0,
+              total: Number(inv.total || inv.amount || 0),
+              status: inv.status === 'paid' ? 'paid' : inv.status === 'overdue' ? 'overdue' : 'pending',
+              issueDate: safeFormatDate(inv.issue_date || inv.issueDate || inv.created_at),
+              dueDate: safeFormatDate(inv.due_date || inv.dueDate),
+              enabledPaymentMethods: inv.enabledPaymentMethods || inv.enabled_payment_methods || ['qris', 'gopay', 'ovo', 'dana', 'bca_va'],
+              notes: inv.notes || '',
+              terms: 'Pembayaran dapat dilakukan via ArabPay QRIS / Transfer / Kasir.',
+              isArchived: inv.is_archived || false
+            };
+          });
           setInvoices(mapped);
         }
       }

@@ -274,16 +274,39 @@ export default function InvoiceList({
                       }}
                     >
                       <td className="p-4 pl-6">
-                        <span className="font-sans font-semibold text-sm text-slate-800 group-hover:text-[#2563EB] transition-colors">
+                        <span className="font-sans font-bold text-xs text-slate-800 group-hover:text-[#2563EB] transition-colors block">
                           {inv.invoiceNumber}
                         </span>
+                        {inv.client.id && (
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {inv.client.id}
+                          </span>
+                        )}
                       </td>
                       <td className="p-4">
                         <div>
-                          <p className="font-sans font-medium text-sm text-slate-700">{inv.client.name}</p>
-                          {inv.client.company && (
-                            <p className="text-xs text-slate-400 font-normal">{inv.client.company}</p>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <p className="font-sans font-bold text-sm text-slate-800">{inv.client.name}</p>
+                            {inv.client.phone && (
+                              <a
+                                href={`https://wa.me/${inv.client.phone.replace(/[^0-9]/g, '')}?text=Halo%20${encodeURIComponent(inv.client.name)},%20tagihan%20internet%20ArbillPay%20sebesar%20${encodeURIComponent(formatCurrency(inv.total, profile.currency))}%20telah%20terbit.`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-[10px] font-medium transition cursor-pointer"
+                                title="Kirim WA Tagihan"
+                              >
+                                <MessageCircle size={10} />
+                                {inv.client.phone}
+                              </a>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-slate-700">{inv.client.company}</span>
+                            {inv.client.address && (
+                              <span className="text-slate-400 text-[11px] truncate max-w-xs">📍 {inv.client.address}</span>
+                            )}
+                          </p>
                         </div>
                       </td>
                       <td className="p-4 text-xs font-sans text-slate-500 font-medium">
