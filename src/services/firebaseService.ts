@@ -678,4 +678,39 @@ export const getSyncedRegionsFromFirestore = async (): Promise<any[]> => {
   return [];
 };
 
+// --- 9. NOTIFICATION GATEWAY SETTINGS (GoWA, WAHA, WuzAPI, Fonnte) ---
+export const saveNotificationGatewaySettingsToFirestore = async (config: any) => {
+  try {
+    const notifRef = doc(db, 'settings', 'notification_gateway');
+    await setDoc(notifRef, sanitizeForFirestore({
+      ...config,
+      updated_at: new Date().toISOString()
+    }), { merge: true });
+    localStorage.setItem('arbill_notification_gateway', JSON.stringify(config));
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIRESTORE NOTIFICATION GATEWAY ERROR]', err);
+    return { success: false, error: err?.message };
+  }
+};
+
+export const getNotificationGatewaySettingsFromFirestore = async (): Promise<{ success: boolean; config?: any }> => {
+  try {
+    const local = localStorage.getItem('arbill_notification_gateway');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (parsed && typeof parsed === 'object') return { success: true, config: parsed };
+    }
+
+    const notifRef = doc(db, 'settings', 'notification_gateway');
+    const snap = await getDoc(notifRef);
+    if (snap.exists()) {
+      const config = snap.data();
+      localStorage.setItem('arbill_notification_gateway', JSON.stringify(config));
+      return { success: true, config };
+    }
+  } catch (err) {}
+  return { success: false };
+};
+
 

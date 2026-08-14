@@ -58,6 +58,7 @@ import HotspotVoucherManagement from './components/HotspotVoucherManagement';
 import IpPoolManagement from './components/IpPoolManagement';
 import GenieAcsManagement from './components/GenieAcsManagement';
 import DataWilayahPage from './components/DataWilayahPage';
+import NotificationSettingsPage from './components/NotificationSettingsPage';
 // MapViewPage removed — use LaravelFtthMapPage at #/map-ftth instead
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 
@@ -974,6 +975,15 @@ const safeFormatDate = (val: any): string => {
       case 'settings':
         return (
           <SettingsPage
+            profile={profile}
+            onUpdateProfile={handleUpdateProfile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'notifications':
+        return (
+          <NotificationSettingsPage
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
             t={t}

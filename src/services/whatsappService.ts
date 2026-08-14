@@ -1,8 +1,10 @@
 /**
- * WhatsApp Gateway Dispatcher Service for ArbillPay System
- * Supports Direct Background System Dispatch (Fonnte / WABlas / Custom WA Gateway)
+ * WhatsApp Multi-Engine Gateway Dispatcher Service for ArbillPay System
+ * Supports Direct Background System Dispatch for GoWA, WAHA, WuzAPI, and Fonnte
  * AND Fallback 1-Click WhatsApp App / Web Link
  */
+
+import { getNotificationGatewaySettingsFromFirestore } from './firebaseService';
 
 export interface SendWAMessageParams {
   phone: string;
@@ -20,27 +22,87 @@ export async function sendWhatsAppMessageDirect(params: SendWAMessageParams): Pr
     cleanPhone = '62' + cleanPhone.slice(1);
   }
 
-  // 1. If Direct WA Gateway Token is configured in Settings ➔ Direct Background System Dispatch!
-  if (gatewayToken && gatewayToken.trim()) {
-    try {
-      const url = gatewayUrl || 'https://api.fonnte.com/send';
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': gatewayToken.trim(),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          target: cleanPhone,
-          message: message
-        })
-      });
+  // 1. Fetch saved gateway configuration
+  let config: any = null;
+  try {
+    const res = await getNotificationGatewaySettingsFromFirestore();
+    if (res.success && res.config) {
+      config = res.config;
+    }
+  } catch (err) {}
 
-      if (response.ok) {
-        return { success: true, mode: 'gateway', message: '✅ Pesan WA berhasil dikirim otomatis oleh sistem!' };
+  const activeEngine = config?.activeEngine || 'gowa';
+
+  if (activeEngine !== 'disabled') {
+    let targetUrl = gatewayUrl || '';
+    let token = gatewayToken || '';
+    let headers: any = { 'Content-Type': 'application/json' };
+    let body: any = {};
+
+    // 🟢 A. GoWA Engine Config
+    if (activeEngine === 'gowa') {
+      targetUrl = config?.gowa?.url || gatewayUrl || 'http://localhost:3000/api/send';
+      token = config?.gowa?.token || gatewayToken || '';
+      headers['Authorization'] = token;
+      headers['X-API-KEY'] = token;
+      body = {
+        target: cleanPhone,
+        phone: cleanPhone,
+        message: message
+      };
+    }
+    // 🔵 B. WAHA Engine Config
+    else if (activeEngine === 'waha') {
+      targetUrl = config?.waha?.url || gatewayUrl || 'http://localhost:3000/api/sendText';
+      token = config?.waha?.token || gatewayToken || '';
+      const session = config?.waha?.session || 'default';
+      if (token) headers['X-Api-Key'] = token;
+      body = {
+        chatId: `${cleanPhone}@c.us`,
+        session: session,
+        text: message
+      };
+    }
+    // 🟠 C. WuzAPI Engine Config
+    else if (activeEngine === 'wuzapi') {
+      targetUrl = config?.wuzapi?.url || gatewayUrl || 'http://localhost:8080/chat/send/text';
+      token = config?.wuzapi?.token || gatewayToken || '';
+      if (token) headers['token'] = token;
+      body = {
+        Phone: cleanPhone,
+        Body: message
+      };
+    }
+    // 🟣 D. Fonnte Engine Config
+    else {
+      targetUrl = config?.fonnte?.url || gatewayUrl || 'https://api.fonnte.com/send';
+      token = config?.fonnte?.token || gatewayToken || '';
+      if (token) headers['Authorization'] = token;
+      body = {
+        target: cleanPhone,
+        message: message
+      };
+    }
+
+    // Execute HTTP POST if Token / URL is configured
+    if (targetUrl && (token || activeEngine === 'gowa' || activeEngine === 'waha')) {
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body)
+        });
+
+        if (response.ok) {
+          return {
+            success: true,
+            mode: 'gateway',
+            message: `✅ Pesan WA berhasil dikirim otomatis oleh Engine ${activeEngine.toUpperCase()}!`
+          };
+        }
+      } catch (err: any) {
+        console.warn(`WA Gateway API (${activeEngine}) failed, falling back to 1-Click WhatsApp:`, err);
       }
-    } catch (err: any) {
-      console.warn('WA Gateway API failed, falling back to 1-Click WhatsApp:', err);
     }
   }
 
