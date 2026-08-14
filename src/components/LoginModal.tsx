@@ -6,11 +6,16 @@ import { getApiUrl } from '../config/api';
 interface LoginModalProps {
   onLoginSuccess: (user: UserAccount) => void;
   onClose?: () => void;
+  initialMode?: 'sso' | 'admin';
 }
 
-export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps) {
+export default function LoginModal({ onLoginSuccess, onClose, initialMode = 'admin' }: LoginModalProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [showEmergencyAdmin, setShowEmergencyAdmin] = useState(false);
+  const [showEmergencyAdmin, setShowEmergencyAdmin] = useState(() => {
+    const hash = window.location.hash.replace('#/', '').replace('#', '');
+    const pathname = window.location.pathname.replace('/', '');
+    return initialMode === 'admin' || hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login';
+  });
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -109,11 +114,15 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-md animate-fade-in">
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden space-y-0">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-sans">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden space-y-0 animate-scale-up">
         
         {/* Top Header Card */}
-        <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800 p-8 text-white text-center relative overflow-hidden">
+        <div className={`p-8 text-white text-center relative overflow-hidden transition-all ${
+          showEmergencyAdmin 
+            ? 'bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900' 
+            : 'bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-800'
+        }`}>
           {onClose && (
             <button 
               type="button"
@@ -124,22 +133,30 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
             </button>
           )}
           <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-emerald-400/20 rounded-full blur-xl pointer-events-none" />
+          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-indigo-500/20 rounded-full blur-xl pointer-events-none" />
 
           <div className="relative z-10 flex flex-col items-center">
-            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white mb-3 shadow-lg border border-white/30 font-black text-xl">
-              AP
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white mb-3 shadow-lg border border-white/30 font-black text-xl backdrop-blur-md ${
+              showEmergencyAdmin ? 'bg-indigo-600/40 text-indigo-300' : 'bg-white/20'
+            }`}>
+              {showEmergencyAdmin ? '👑' : 'AP'}
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-[10px] font-bold tracking-wider uppercase mb-1 border border-white/20">
               <ShieldCheck size={12} />
-              Kemitraan Resmi ArabPay E-Wallet
+              {showEmergencyAdmin ? 'PORTAL KHUSUS SUPER ADMIN / OWNER' : 'KEMITRAAN RESMI ARABPAY E-WALLET'}
             </div>
-            <h2 className="font-extrabold text-2xl tracking-tight text-white">Arbill Login Gateway</h2>
-            <p className="text-xs text-emerald-100 mt-1 font-medium max-w-xs">Aplikasi Arbill dikunci eksklusif: Semua pengguna wajib terautentikasi via ArabPay SSO.</p>
+            <h2 className="font-extrabold text-2xl tracking-tight text-white">
+              {showEmergencyAdmin ? 'Login Admin / Owner' : 'Arbill Login Gateway'}
+            </h2>
+            <p className="text-xs text-slate-200 mt-1 font-medium max-w-xs leading-relaxed">
+              {showEmergencyAdmin 
+                ? 'Portal Akses Darurat Khusus Pengelola & Pemilik Sistem (Super Admin Dashboard).' 
+                : 'Aplikasi Arbill dikunci eksklusif: Semua pengguna wajib terautentikasi via ArabPay SSO.'}
+            </p>
           </div>
         </div>
 
-        {/* Form Area - ArabPay Primary SSO */}
+        {/* Form Area */}
         <div className="p-8 space-y-6">
           {errorMsg && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-700 text-xs font-semibold animate-shake">
@@ -148,78 +165,92 @@ export default function LoginModal({ onLoginSuccess, onClose }: LoginModalProps)
             </div>
           )}
 
-          {/* MAIN SOLE LOGIN BUTTON: ARABPAY SSO */}
-          <div className="space-y-4">
-            <button
-              type="button"
-              onClick={handleArabPayLogin}
-              disabled={isLoading}
-              className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-base rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-emerald-500/25 cursor-pointer transition-all border border-emerald-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
-            >
-              <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-sm shadow-inner">
-                AP
+          {/* DEDICATED ADMIN / OWNER EMERGENCY LOGIN FORM */}
+          {showEmergencyAdmin ? (
+            <form onSubmit={handleEmergencySubmit} className="space-y-4 text-left animate-fade-in">
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center gap-2 text-indigo-900 text-xs font-bold">
+                <Key size={16} className="text-indigo-600 shrink-0" />
+                <span>Masukkan ID & PIN Darurat Pengelola:</span>
               </div>
-              <span>{isLoading ? 'Mengarahkan ke ArabPay...' : 'Masuk dengan ArabPay (SSO)'}</span>
-              <ArrowRight size={18} />
-            </button>
 
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
-              <div className="flex items-center gap-2 text-slate-800 text-xs font-bold">
-                <CheckCircle2 size={16} className="text-emerald-600" />
-                <span>Otentikasi Satu Pintu Terenkripsi</span>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">ID / Phone / Username Owner:</label>
+                <input
+                  type="text"
+                  value={identity}
+                  onChange={(e) => setIdentity(e.target.value)}
+                  placeholder="zainudinarab atau 085746520724"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  autoFocus
+                />
               </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Login dan pendaftaran dilakukan otomatis via ArabPay. Anda akan diarahkan ke portal aman <strong>https://arabpay.my.id</strong> untuk otorisasi.
-              </p>
-            </div>
-          </div>
 
-          {/* Emergency Admin Recovery Mode (Accordion) */}
-          <div className="pt-3 border-t border-slate-100 text-center">
-            <button
-              type="button"
-              onClick={() => setShowEmergencyAdmin(!showEmergencyAdmin)}
-              className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-all cursor-pointer underline"
-            >
-              {showEmergencyAdmin ? 'Sembunyikan Mode Darurat Owner' : 'Mode Pemulihan Darurat Owner (Local Login)'}
-            </button>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password / PIN Owner:</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Ketikkan Password / PIN..."
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                />
+              </div>
 
-            {showEmergencyAdmin && (
-              <form onSubmit={handleEmergencySubmit} className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-left animate-fade-in">
-                <div className="flex justify-between items-center text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                  <span>Akses Pemulihan Darurat Admin:</span>
-                  <span className="text-[10px] text-emerald-600 lowercase font-normal">(Default Pass: admin123)</span>
-                </div>
-                
-                <div>
-                  <input
-                    type="text"
-                    value={identity}
-                    onChange={(e) => setIdentity(e.target.value)}
-                    placeholder="Username / Email..."
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password..."
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-slate-800 hover:to-indigo-900 text-white font-extrabold text-xs rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>{isLoading ? 'Memverifikasi Hak Akses...' : '⚡ Masuk Ke Dashboard Owner (Super Admin)'}</span>
+              </button>
 
+              <div className="pt-2 text-center">
                 <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  type="button"
+                  onClick={() => setShowEmergencyAdmin(false)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer underline"
                 >
-                  {isLoading ? 'Memverifikasi...' : 'Masuk Darurat (Owner Only)'}
+                  ← Beralih ke Login Pelanggan (ArabPay SSO)
                 </button>
-              </form>
-            )}
-          </div>
+              </div>
+            </form>
+          ) : (
+            /* ARABPAY SSO LOGIN VIEW FOR CUSTOMERS */
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={handleArabPayLogin}
+                disabled={isLoading}
+                className="w-full py-4 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-base rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-emerald-500/25 cursor-pointer transition-all border border-emerald-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
+              >
+                <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white font-black text-sm shadow-inner">
+                  AP
+                </div>
+                <span>{isLoading ? 'Mengarahkan ke ArabPay...' : 'Masuk dengan ArabPay (SSO)'}</span>
+                <ArrowRight size={18} />
+              </button>
+
+              <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+                <div className="flex items-center gap-2 text-slate-800 text-xs font-bold">
+                  <CheckCircle2 size={16} className="text-emerald-600" />
+                  <span>Otentikasi Satu Pintu Terenkripsi</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Login dan pendaftaran dilakukan otomatis via ArabPay. Anda akan diarahkan ke portal aman <strong>https://arabpay.my.id</strong> untuk otorisasi.
+                </p>
+              </div>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowEmergencyAdmin(true)}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-all cursor-pointer underline"
+                >
+                  👑 Login Khusus Admin / Owner (Super Admin) →
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
