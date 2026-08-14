@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserAccount } from '../types';
 import { QrCode, ArrowRight, ShieldCheck, Lock, AlertCircle, Key, CheckCircle2 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
+import { verifyOwnerLoginWithFirestore } from '../services/firebaseService';
 
 interface LoginModalProps {
   onLoginSuccess: (user: UserAccount) => void;
