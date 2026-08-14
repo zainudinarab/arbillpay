@@ -246,8 +246,8 @@ export default function App() {
         // Direct Client-Side / Firebase Serverless OAuth Exchange with ArabPay Server!
         try {
           console.log('⚡ [OAUTH SSO LOG] Running Direct Client-Side OAuth Exchange with ArabPay Server...');
-          const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-          const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
+          const clientId = localStorage.getItem('arabpay_client_id') || (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+          const clientSecret = localStorage.getItem('arabpay_client_secret') || (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || '';
           const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
           
           const bodyObj = { code: code || '' };
@@ -287,13 +287,15 @@ export default function App() {
           if (tokenRes && tokenRes.ok) {
             tokenData = await tokenRes.json();
             console.log('✅ [OAUTH SSO LOG] Received token response from ArabPay Server:', tokenData);
-          } else if (tokenRes && (tokenRes.status === 401 || tokenRes.status === 403)) {
-            console.error('🔒 [SECURITY LOCK] ArabPay Server returned 401/403! Client Secret is INVALID or ROTATED.');
+          }
+
+          // STRICT SECURITY LOCK: If server token exchange failed or secret is invalid, DENY LOGIN COMPLETELY!
+          if (!tokenData || (!tokenData.token && !tokenData.access_token)) {
+            console.error('🔒 [SECURITY LOCK] ArabPay OAuth Token Exchange FAILED/REJECTED. Client Secret is INVALID or ROTATED!');
             setIsSecretInvalidated(true);
+            alert('🔒 Akses Ditolak: Penukaran token ditolak oleh server ArabPay. Client Secret merchant Anda tidak valid atau telah di-rotate di server ArabPay!');
             handleLogout();
             return;
-          } else if (tokenRes) {
-            console.warn('⚠️ [OAUTH SSO LOG] ArabPay Token endpoint response status:', tokenRes.status);
           }
 
           // Helper function to decode JWT payload in browser
@@ -306,9 +308,9 @@ export default function App() {
             } catch (e) { return null; }
           };
 
-          const rawToken = tokenData?.token || tokenData?.access_token || (code && code.includes('.') ? code : null);
-          const decodedPayload = rawToken ? decodeJwt(rawToken) : (code ? decodeJwt(code) : null);
-          const uData = tokenData?.user || decodedPayload;
+          const rawToken = tokenData.token || tokenData.access_token;
+          const decodedPayload = rawToken ? decodeJwt(rawToken) : null;
+          const uData = tokenData.user || decodedPayload;
 
           // Fetch live balance via Bearer token if rawToken exists
           let liveBalFromToken: number | null = null;
