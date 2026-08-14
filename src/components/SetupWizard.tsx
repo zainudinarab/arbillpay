@@ -10,7 +10,7 @@ import {
   Server
 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
-import { resetAllLocalStateAndDatabase, injectInitialMerchantData } from '../services/firebaseService';
+import { resetAllLocalStateAndDatabase, injectInitialMerchantData, saveMerchantCredentialsToFirestore } from '../services/firebaseService';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -164,10 +164,16 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         owner_user_id: ownerId,
       });
 
-      // Always save to localStorage for instant Client-Side persistence!
+      await saveMerchantCredentialsToFirestore({
+        client_id: cleanClientId,
+        client_secret: cleanClientSecret,
+        owner_user_id: ownerId,
+        owner_phone: oPhone
+      });
+
+      // Always save setup flags to localStorage for instant Client-Side persistence!
       localStorage.setItem('arbill_setup_completed', 'true');
       localStorage.setItem('arabpay_client_id', cleanClientId);
-      localStorage.setItem('arabpay_client_secret', cleanClientSecret);
       localStorage.setItem('arabpay_owner_user_id', ownerId);
       localStorage.setItem('arabpay_owner_phone', oPhone);
       localStorage.setItem('business_name', bName);

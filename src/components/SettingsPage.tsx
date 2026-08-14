@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BusinessProfile } from '../types';
 import HeaderBar from './HeaderBar';
+import { saveMerchantCredentialsToFirestore } from '../services/firebaseService';
 
 interface SettingsPageProps {
   profile: BusinessProfile;
@@ -72,10 +73,15 @@ export default function SettingsPage({
     setIsUpdatingArabpay(true);
     try {
       localStorage.setItem('arabpay_client_id', arabpayClientId.trim());
-      localStorage.setItem('arabpay_client_secret', arabpayClientSecret.trim());
+      localStorage.removeItem('arabpay_client_secret');
+
+      await saveMerchantCredentialsToFirestore({
+        client_id: arabpayClientId.trim(),
+        client_secret: arabpayClientSecret.trim()
+      });
 
       setArabpayMsg({
-        text: '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI! Sambungan ke server ArabPay kembali normal & aktif.',
+        text: '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI & TERSIMPAN DI DATABASE FIRESTORE! Sambungan ke server ArabPay kembali normal & aktif.',
         isError: false
       });
     } catch (err: any) {

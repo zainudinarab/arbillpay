@@ -302,12 +302,40 @@ export const getPurchasedVouchersFromFirestore = async (userId?: string) => {
   }
 };
 
+export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string }) => {
+  try {
+    const db = getFirestoreInstance();
+    const docRef = doc(db, 'settings', 'merchant_credentials');
+    await setDoc(docRef, {
+      ...creds,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIRESTORE ERROR] Could not save merchant credentials:', err);
+    return { success: false, error: err?.message };
+  }
+};
+
+export const getMerchantCredentialsFromFirestore = async () => {
+  try {
+    const db = getFirestoreInstance();
+    const docRef = doc(db, 'settings', 'merchant_credentials');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+  } catch (err) {
+    console.error('[FIRESTORE ERROR] Could not fetch merchant credentials:', err);
+  }
+  return null;
+};
+
 export const resetAllLocalStateAndDatabase = () => {
   try {
     const keysToKeep = [
       'arbill_setup_completed',
       'arabpay_client_id',
-      'arabpay_client_secret',
       'arabpay_owner_user_id',
       'arabpay_owner_phone',
       'business_name',

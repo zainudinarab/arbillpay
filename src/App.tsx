@@ -13,7 +13,7 @@ import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import DashboardOverview from './components/DashboardOverview';
 import { getApiUrl } from './config/api';
-import { getInvoicesFromFirestore, saveUserToFirestore, getCustomersFromFirestore } from './services/firebaseService';
+import { getInvoicesFromFirestore, saveUserToFirestore, getCustomersFromFirestore, getMerchantCredentialsFromFirestore } from './services/firebaseService';
 import PendingSubmissionsPage from './components/PendingSubmissionsPage';
 
 // Inside OAuth handler:
@@ -246,8 +246,9 @@ export default function App() {
         // Direct Client-Side / Firebase Serverless OAuth Exchange with ArabPay Server!
         try {
           console.log('⚡ [OAUTH SSO LOG] Running Direct Client-Side OAuth Exchange with ArabPay Server...');
-          const clientId = localStorage.getItem('arabpay_client_id') || (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-          const clientSecret = localStorage.getItem('arabpay_client_secret') || (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || '';
+          const liveCreds = await getMerchantCredentialsFromFirestore().catch(() => null);
+          const clientId = localStorage.getItem('arabpay_client_id') || liveCreds?.client_id || (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+          const clientSecret = liveCreds?.client_secret || (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || '';
           const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
           
           const bodyObj = { code: code || '' };
@@ -670,12 +671,22 @@ const safeFormatDate = (val: any): string => {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('arbil_current_user');
-    localStorage.removeItem('arabpay_token');
-    localStorage.removeItem('arabpay_user');
-    localStorage.removeItem('my_member_registrations');
-    localStorage.removeItem('purchased_vouchers_history');
+    
+    // COMPLETE SECURITY PURGE ON LOGOUT: Remove all user tokens, sessions & cached registrations
+    const userKeysToRemove = [
+      'arbil_current_user',
+      'arabpay_token',
+      'arabpay_user',
+      'my_member_registrations',
+      'purchased_vouchers_history',
+      'arabpay_client_secret',
+      'arbill_user_session'
+    ];
+    userKeysToRemove.forEach(k => localStorage.removeItem(k));
+    sessionStorage.clear();
+
     setShowAdminLoginModal(false);
+    setCurrentView('overview');
   };
 
   // Sync to Local Storage
