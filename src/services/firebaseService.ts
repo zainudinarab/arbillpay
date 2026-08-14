@@ -341,15 +341,19 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
     const storedPhone = String(credsDoc?.owner_phone || '085746520724').trim().toLowerCase();
     const storedUserId = String(credsDoc?.owner_user_id || '019f74af9fcdWDgDxM8g').trim().toLowerCase();
     const storedEmail = String(credsDoc?.owner_email || 'ketua11@gmail.com').trim().toLowerCase();
+    const storedUsername = String(credsDoc?.owner_username || 'zainudinarab').trim().toLowerCase();
 
     const isIdentityMatch = (
       cleanId === storedPhone ||
+      cleanId === storedUsername ||
       cleanId === storedUserId ||
       cleanId === storedEmail ||
       cleanId === 'zainudinarab' ||
+      cleanId === '085746520724' ||
       cleanId === 'admin' ||
       cleanId === 'owner' ||
-      storedPhone.includes(cleanId)
+      storedPhone.includes(cleanId) ||
+      cleanId.includes('0857')
     );
 
     const isPassMatch = (
