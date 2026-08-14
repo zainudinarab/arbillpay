@@ -156,8 +156,41 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode = 'adm
           </div>
         </div>
 
+        {/* Navigation Tabs Switcher */}
+        <div className="flex border-b border-slate-100 bg-slate-50/80 p-1.5 gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setShowEmergencyAdmin(false);
+              setErrorMsg('');
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-2xl font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              !showEmergencyAdmin
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <span>🌐 Login SSO User</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowEmergencyAdmin(true);
+              setErrorMsg('');
+            }}
+            className={`flex-1 py-2.5 px-3 rounded-2xl font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              showEmergencyAdmin
+                ? 'bg-slate-900 text-white shadow-md'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <span>👑 Login Admin</span>
+          </button>
+        </div>
+
         {/* Form Area */}
-        <div className="p-8 space-y-6">
+        <div className="p-6 space-y-5">
           {errorMsg && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-700 text-xs font-semibold animate-shake">
               <AlertCircle size={18} className="shrink-0 text-rose-500 mt-0.5" />
