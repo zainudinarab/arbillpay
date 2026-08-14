@@ -1166,8 +1166,8 @@ const safeFormatDate = (val: any): string => {
 
         {/* Checkout Main */}
         <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Left Column: Client Invoice Copy (5 Columns) */}
-          <div className="md:col-span-5 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6 h-fit">
+          {/* Left Column: Client Invoice Copy (7 Columns - Wider Tagihan) */}
+          <div className="md:col-span-7 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6 h-fit">
             <div className="flex justify-between items-start border-b border-slate-100 pb-5">
               <div>
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">TAGIHAN DARI</span>
@@ -1237,8 +1237,8 @@ const safeFormatDate = (val: any): string => {
             </div>
           </div>
 
-          {/* Right Column: Widened ArabPay Payment Confirmation Panel (7 Columns) */}
-          <div className="md:col-span-7 space-y-6">
+          {/* Right Column: Compact Payment Panel (5 Columns - White Template) */}
+          <div className="md:col-span-5 space-y-6">
             {checkoutInvoice.status === 'paid' ? (
               <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center space-y-4 shadow-sm flex flex-col items-center justify-center min-h-[350px]">
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center animate-pulse">
@@ -1261,36 +1261,36 @@ const safeFormatDate = (val: any): string => {
                 </button>
               </div>
             ) : (
-              <div className="bg-[#0B132B] border border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl space-y-6 text-white font-sans">
+              <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-5 font-sans">
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                  <h3 className="font-black text-base text-white flex items-center gap-2.5">
-                    <ShoppingCart size={22} className="text-indigo-400" />
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                  <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                    <ShoppingCart size={18} className="text-emerald-600" />
                     <span>Konfirmasi Pembayaran</span>
                   </h3>
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold border border-emerald-500/30">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-mono font-bold border border-emerald-100">
                     ● ArabPay Connected
                   </span>
                 </div>
 
-                {/* Top Summary Card (Simplified & Ultra-Clean) */}
-                <div className="bg-[#131E3D] border border-slate-800/90 rounded-2xl p-4 space-y-2 text-xs font-sans">
+                {/* Top Summary Card (Ultra-Clean & Compact) */}
+                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2 text-xs font-sans">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Harga Tagihan</span>
-                    <span className="font-mono font-bold text-white text-sm">
+                    <span className="text-slate-500 font-medium">Harga Tagihan</span>
+                    <span className="font-mono font-bold text-slate-800 text-sm">
                       {formatCurrency(checkoutInvoice.total, profile.currency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-400 font-medium">Biaya Layanan</span>
-                    <span className="font-mono font-bold text-amber-400 text-xs">
+                    <span className="text-slate-500 font-medium">Biaya Layanan</span>
+                    <span className="font-mono font-bold text-amber-600 text-xs">
                       {checkoutPaymentMethod === 'ewallet' ? '+Rp 1.000' : 'GRATIS'}
                     </span>
                   </div>
 
-                  <div className="border-t border-slate-800/80 my-1.5 pt-2 flex justify-between items-center">
-                    <span className="font-bold text-white text-sm">Total Harus Dibayar</span>
-                    <span className="font-mono font-black text-emerald-400 text-lg">
+                  <div className="border-t border-slate-200/60 my-1.5 pt-2 flex justify-between items-center">
+                    <span className="font-bold text-slate-800 text-xs">Total Harus Dibayar</span>
+                    <span className="font-mono font-black text-[#2563EB] text-base">
                       {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 1000 : 0), profile.currency)}
                     </span>
                   </div>
@@ -1298,39 +1298,39 @@ const safeFormatDate = (val: any): string => {
 
                 {/* PILIH CARA BAYAR Section */}
                 <div className="space-y-3">
-                  <p className="text-[11px] font-sans font-bold text-slate-400 uppercase tracking-wider">PILIH CARA BAYAR</p>
+                  <p className="text-[10px] font-sans font-bold text-slate-400 uppercase tracking-wider">PILIH CARA BAYAR</p>
 
                   {/* Radio Option 1: ArabPay E-Wallet */}
                   <div
                     onClick={() => setCheckoutPaymentMethod('ewallet')}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
                       checkoutPaymentMethod === 'ewallet'
-                        ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/80'
-                        : 'border-slate-800 bg-slate-900/60 hover:bg-slate-900'
+                        ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500/80'
+                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
                     }`}
                   >
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                      checkoutPaymentMethod === 'ewallet' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-600'
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                      checkoutPaymentMethod === 'ewallet' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white'
                     }`}>
-                      {checkoutPaymentMethod === 'ewallet' && <div className="w-2 h-2 rounded-full bg-white" />}
+                      {checkoutPaymentMethod === 'ewallet' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                     </div>
 
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Zap size={15} className="text-amber-400 fill-amber-400" />
-                          <span className="font-extrabold text-sm text-white">ArabPay E-Wallet</span>
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <Zap size={14} className="text-amber-500 fill-amber-500" />
+                          <span className="font-bold text-xs text-slate-800">ArabPay E-Wallet</span>
                         </div>
-                        <span className="text-[10px] font-mono font-bold bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-400/30">
+                        <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded">
                           +Rp 1.000
                         </span>
                       </div>
 
-                      <div className="inline-block bg-emerald-950/90 border border-emerald-700/60 text-emerald-400 font-mono font-bold text-xs px-3 py-1 rounded-xl">
+                      <div className="inline-block bg-emerald-100/80 border border-emerald-200 text-emerald-800 font-mono font-bold text-[11px] px-2.5 py-0.5 rounded-lg">
                         Saldo Aktif: Rp {(currentUser?.arabpay_balance ?? 1692700).toLocaleString('id-ID')}
                       </div>
 
-                      <p className="text-[11px] text-slate-400 pt-0.5">
+                      <p className="text-[11px] text-slate-400 leading-tight">
                         Bayar instan menggunakan saldo dompet digital ArabPay Anda.
                       </p>
                     </div>
@@ -1339,24 +1339,24 @@ const safeFormatDate = (val: any): string => {
                   {/* Radio Option 2: Bayar Langsung via ArabPay Gateway (QRIS / VA) */}
                   <div
                     onClick={() => setCheckoutPaymentMethod('gateway')}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5 ${
+                    className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
                       checkoutPaymentMethod === 'gateway'
-                        ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/80'
-                        : 'border-slate-800 bg-slate-900/60 hover:bg-slate-900'
+                        ? 'border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500/80'
+                        : 'border-slate-100 bg-slate-50/50 hover:bg-slate-50'
                     }`}
                   >
-                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                      checkoutPaymentMethod === 'gateway' ? 'border-indigo-400 bg-indigo-600 text-white' : 'border-slate-600'
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                      checkoutPaymentMethod === 'gateway' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white'
                     }`}>
-                      {checkoutPaymentMethod === 'gateway' && <div className="w-2 h-2 rounded-full bg-white" />}
+                      {checkoutPaymentMethod === 'gateway' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                     </div>
 
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
-                        <CreditCard size={15} className="text-blue-400" />
-                        <span className="font-extrabold text-sm text-white">Bayar Langsung via ArabPay Gateway (QRIS / VA)</span>
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <CreditCard size={14} className="text-blue-600" />
+                        <span className="font-bold text-xs text-slate-800">Bayar Langsung via ArabPay Gateway (QRIS / VA)</span>
                       </div>
-                      <p className="text-[11px] text-slate-400 pt-0.5">
+                      <p className="text-[11px] text-slate-400 leading-tight">
                         Bayar langsung menggunakan transfer bank VA atau scan QRIS secara instant melalui perantara ArabPay.
                       </p>
                     </div>
@@ -1364,16 +1364,16 @@ const safeFormatDate = (val: any): string => {
                 </div>
 
                 {/* Bottom Action Button */}
-                <div className="pt-2">
+                <div className="pt-1">
                   <button
                     onClick={() => setShowSimulator(true)}
-                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm rounded-2xl shadow-xl shadow-emerald-900/40 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-2xl shadow-md shadow-emerald-100 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.99]"
                   >
-                    <Lock size={18} />
+                    <Lock size={15} />
                     <span>
                       Lanjut Bayar — {formatCurrency(checkoutInvoice.total + (checkoutPaymentMethod === 'ewallet' ? 1000 : 0), profile.currency)}
                     </span>
-                    <ArrowRight size={18} />
+                    <ArrowRight size={15} />
                   </button>
                 </div>
               </div>
