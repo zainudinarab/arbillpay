@@ -433,9 +433,9 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
             type="text"
             required
             value={value.dusun || ''}
-            onChange={(e) => onChange({ ...value, dusun: e.target.value })}
-            placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
-            className={`w-full px-3.5 py-2 rounded-xl border text-xs font-sans transition focus:outline-none ${bgInput}`}
+            onChange={(e) => onChange({ ...value, dusun: e.target.value.toUpperCase() })}
+            placeholder="CONTOH: DUSUN KRAJAN RT 02 RW 01 / JL. PEMUDA NO. 5"
+            className={`w-full px-3.5 py-2 rounded-xl border text-xs font-sans uppercase transition focus:outline-none ${bgInput}`}
           />
         </div>
 
