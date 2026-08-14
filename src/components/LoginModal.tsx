@@ -158,41 +158,8 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
           </div>
         </div>
 
-        {/* Navigation Tabs Switcher */}
-        <div className="flex border-b border-slate-100 bg-slate-50/80 p-1.5 gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              setShowEmergencyAdmin(false);
-              setErrorMsg('');
-            }}
-            className={`flex-1 py-2.5 px-3 rounded-2xl font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              !showEmergencyAdmin
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-            }`}
-          >
-            <span>🌐 Login SSO User</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setShowEmergencyAdmin(true);
-              setErrorMsg('');
-            }}
-            className={`flex-1 py-2.5 px-3 rounded-2xl font-extrabold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              showEmergencyAdmin
-                ? 'bg-slate-900 text-white shadow-md'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-            }`}
-          >
-            <span>👑 Login Admin</span>
-          </button>
-        </div>
-
         {/* Form Area */}
-        <div className="p-6 space-y-5">
+        <div className="p-8 space-y-6">
           {errorMsg && (
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-700 text-xs font-semibold animate-shake">
               <AlertCircle size={18} className="shrink-0 text-rose-500 mt-0.5" />
@@ -238,16 +205,6 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
               >
                 <span>{isLoading ? 'Memverifikasi Hak Akses...' : '⚡ Masuk Ke Dashboard Owner (Super Admin)'}</span>
               </button>
-
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => setShowEmergencyAdmin(false)}
-                  className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer underline"
-                >
-                  ← Beralih ke Login Pelanggan (ArabPay SSO)
-                </button>
-              </div>
             </form>
           ) : (
             /* ARABPAY SSO LOGIN VIEW FOR CUSTOMERS */
@@ -273,16 +230,6 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
                 <p className="text-[11px] text-slate-500 leading-relaxed">
                   Login dan pendaftaran dilakukan otomatis via ArabPay. Anda akan diarahkan ke portal aman <strong>https://arabpay.my.id</strong> untuk otorisasi.
                 </p>
-              </div>
-
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => setShowEmergencyAdmin(true)}
-                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-all cursor-pointer underline"
-                >
-                  👑 Login Khusus Admin / Owner (Super Admin) →
-                </button>
               </div>
             </div>
           )}
