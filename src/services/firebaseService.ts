@@ -640,4 +640,42 @@ export const injectInitialMerchantData = (setupData: {
   }
 };
 
+// --- 8. INDONESIA REGION SYNC & CACHE ---
+export const saveSyncedRegionsToFirestore = async (customRegions: any[]) => {
+  try {
+    const regRef = doc(db, 'settings', 'indonesia_regions');
+    await setDoc(regRef, sanitizeForFirestore({
+      regions: customRegions,
+      synced_at: new Date().toISOString(),
+      count: customRegions.length
+    }), { merge: true });
+    localStorage.setItem('arbill_synced_regions', JSON.stringify(customRegions));
+    return { success: true, count: customRegions.length };
+  } catch (err: any) {
+    console.error('[FIRESTORE REGION SYNC ERROR]', err);
+    return { success: false, error: err?.message };
+  }
+};
+
+export const getSyncedRegionsFromFirestore = async (): Promise<any[]> => {
+  try {
+    const local = localStorage.getItem('arbill_synced_regions');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+
+    const regRef = doc(db, 'settings', 'indonesia_regions');
+    const snap = await getDoc(regRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.regions) && data.regions.length > 0) {
+        localStorage.setItem('arbill_synced_regions', JSON.stringify(data.regions));
+        return data.regions;
+      }
+    }
+  } catch (err) {}
+  return [];
+};
+
 

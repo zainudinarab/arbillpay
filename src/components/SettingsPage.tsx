@@ -15,11 +15,14 @@ import {
   Lock,
   Key,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Globe,
+  RefreshCw
 } from 'lucide-react';
 import { BusinessProfile } from '../types';
 import HeaderBar from './HeaderBar';
-import { saveMerchantCredentialsToFirestore } from '../services/firebaseService';
+import { saveMerchantCredentialsToFirestore, saveSyncedRegionsToFirestore } from '../services/firebaseService';
+import { ALL_38_PROVINCES } from '../services/indonesiaRegionService';
 
 interface SettingsPageProps {
   profile: BusinessProfile;
@@ -56,11 +59,27 @@ export default function SettingsPage({
   const [passMsg, setPassMsg] = useState({ text: '', isError: false });
   const [isUpdatingPass, setIsUpdatingPass] = useState(false);
 
-  // ArabPay SSO Credentials & Secret Rotation State
-  const [arabpayClientId, setArabpayClientId] = useState(() => localStorage.getItem('arabpay_client_id') || '');
-  const [arabpayClientSecret, setArabpayClientSecret] = useState(() => localStorage.getItem('arabpay_client_secret') || '');
-  const [arabpayMsg, setArabpayMsg] = useState({ text: '', isError: false });
-  const [isUpdatingArabpay, setIsUpdatingArabpay] = useState(false);
+  // Region Data Sync State
+  const [isSyncingRegions, setIsSyncingRegions] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('');
+
+  const handleSyncRegions = async () => {
+    setIsSyncingRegions(true);
+    setSyncStatus('Mengunduh & Memproses Database 38 Provinsi Indonesia...');
+
+    try {
+      const res = await saveSyncedRegionsToFirestore(ALL_38_PROVINCES);
+      if (res.success) {
+        setSyncStatus(`✅ Berhasil Disinkronkan! ${res.count} Provinsi & Database Wilayah Tersimpan di Cloud Database.`);
+      } else {
+        setSyncStatus('⚠️ Gagal menyimpan ke cloud, data tersimpan di cache lokal.');
+      }
+    } catch (err: any) {
+      setSyncStatus('❌ Gagal sinkronisasi data wilayah.');
+    } finally {
+      setIsSyncingRegions(false);
+    }
+  };
 
   const handleUpdateArabpayCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -603,6 +622,38 @@ export default function SettingsPage({
                   </button>
                 </div>
               </form>
+            </div>
+
+            {/* Card: Sinkronisasi Data Wilayah Indonesia */}
+            <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
+                    <Globe size={22} />
+                  </div>
+                  <div>
+                    <h3 className="font-sans font-bold text-sm text-white">Sinkronisasi Database Wilayah Indonesia</h3>
+                    <p className="text-[11px] text-slate-400">
+                      Unduh & simpan data 38 Provinsi, Kabupaten/Kota, Kecamatan, & Kode Pos ke Database Sendiri (Cloud Database & Local Cache) agar pencarian alamat 100% cepat, stabil, & bebas lemot.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                <div className="text-[11px] text-slate-400">
+                  Status: <span className="text-emerald-400 font-bold">{syncStatus || 'Siap Disinkronkan (38 Provinsi Ready)'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSyncRegions}
+                  disabled={isSyncingRegions}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={isSyncingRegions ? 'animate-spin' : ''} />
+                  <span>{isSyncingRegions ? 'Proses Menyimpan Data...' : '⚡ Sinkronkan Data Wilayah Ke Database Sendiri'}</span>
+                </button>
+              </div>
             </div>
 
           </div>
