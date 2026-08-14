@@ -261,7 +261,7 @@ export default function HotspotCustomerManagement({
   };
 
   const resetForm = () => {
-    setCustomerCode(`HS-${Math.random().toString(36).substring(2, 7).toUpperCase()}`);
+    setCustomerCode(`CUST-${Date.now()}`);
     setName('');
     setPhoneNumber('');
     setAddress('');
