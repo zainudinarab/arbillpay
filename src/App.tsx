@@ -71,6 +71,7 @@ import SetupWizard from './components/SetupWizard';
 import { UserAccount } from './types';
 
 export default function App() {
+  // 1. ALL useState HOOKS GROUPED AT THE VERY TOP LEVEL OF THE COMPONENT
   const [showSetupWizard, setShowSetupWizard] = useState<boolean>(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(() => {
     const hash = window.location.hash.replace('#/', '').replace('#', '');
@@ -84,6 +85,40 @@ export default function App() {
   const [newSecretInput, setNewSecretInput] = useState<string>('');
   const [secretErrorMsg, setSecretErrorMsg] = useState<string>('');
   const [secretLoading, setSecretLoading] = useState<boolean>(false);
+
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const savedUser = localStorage.getItem('arbil_current_user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+
+  const [clients, setClients] = useState<Client[]>(() => {
+    const local = localStorage.getItem('billava_clients');
+    return local ? JSON.parse(local) : defaultClients;
+  });
+
+  const [gateways, setGateways] = useState<PaymentGateway[]>(() => {
+    const local = localStorage.getItem('billava_gateways');
+    return local ? JSON.parse(local) : defaultGateways;
+  });
+
+  const [profile, setProfile] = useState<BusinessProfile>(() => {
+    const local = localStorage.getItem('billava_profile');
+    return local ? JSON.parse(local) : defaultBusinessProfile;
+  });
+
+  const [currentView, setCurrentView] = useState<string>(() => {
+    const hash = window.location.hash.replace('#/', '').replace('#', '');
+    if (hash && hash !== 'admin-login') return hash;
+    return 'overview';
+  });
+
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [showSimulator, setShowSimulator] = useState<boolean>(false);
+  const [unlinkedMatchCustomer, setUnlinkedMatchCustomer] = useState<any>(null);
+  const [isLinking, setIsLinking] = useState(false);
 
   const handleVerifyAndSaveNewSecret = async () => {
     setSecretLoading(true);
@@ -417,43 +452,6 @@ export default function App() {
     };
   }, []);
 
-  // --- AUTHENTICATION STATE ---
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
-    const savedUser = localStorage.getItem('arbil_current_user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
-
-  // --- STATE PERSISTENCE ---
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-
-  const [clients, setClients] = useState<Client[]>(() => {
-    const local = localStorage.getItem('billava_clients');
-    return local ? JSON.parse(local) : defaultClients;
-  });
-
-  const [gateways, setGateways] = useState<PaymentGateway[]>(() => {
-    const local = localStorage.getItem('billava_gateways');
-    return local ? JSON.parse(local) : defaultGateways;
-  });
-
-  const [profile, setProfile] = useState<BusinessProfile>(() => {
-    const local = localStorage.getItem('billava_profile');
-    return local ? JSON.parse(local) : defaultBusinessProfile;
-  });
-
-  // --- NAVIGATION & FLOW STATE (Synced with URL Hash / Routes) ---
-  const [currentView, setCurrentView] = useState<string>(() => {
-    const hash = window.location.hash.replace('#/', '').replace('#', '');
-    if (hash && hash !== 'admin-login') return hash;
-    return 'overview';
-  });
-
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
-  const [showSimulator, setShowSimulator] = useState<boolean>(false);
-
-
-
   // Sync currentView changes to URL Hash so refresh persists current page
   const navigateToView = (view: string) => {
     setCurrentView(view);
@@ -495,9 +493,6 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // --- ARABPAY PHONE MATCHING AUTO-SYNC STATE ---
-  const [unlinkedMatchCustomer, setUnlinkedMatchCustomer] = useState<any>(null);
-  const [isLinking, setIsLinking] = useState(false);
 
   // Check if current logged-in user matches any unlinked RT/RW Net Customer in DB
   useEffect(() => {
