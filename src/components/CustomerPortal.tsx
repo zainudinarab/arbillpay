@@ -84,8 +84,7 @@ function getChannelFeeLabel(ch: any, amount: number): string {
       const finalUsername = isHotspot ? regForm.username : (regForm.username || `user-${regForm.phone_number.slice(-4)}`);
       const finalPassword = isHotspot ? regForm.password : (regForm.password || '123456');
 
-      const existingCusts = await getCustomersFromFirestore().catch(() => ({ customers: [] }));
-      const nextCustCode = generateNextCustomerCode(existingCusts?.customers || []);
+      const nextCustCode = generateNextCustomerCode();
 
       const custObj = {
         id: nextCustCode,
@@ -527,8 +526,7 @@ export default function CustomerPortal({
       const finalUsername = isHotspot ? regForm.username : (regForm.username || `user-${regForm.phone_number.slice(-4)}`);
       const finalPassword = isHotspot ? regForm.password : (regForm.password || '123456');
 
-      const existingCusts = await getCustomersFromFirestore().catch(() => ({ customers: [] }));
-      const nextCustCode = generateNextCustomerCode(existingCusts?.customers || []);
+      const nextCustCode = generateNextCustomerCode();
 
       const custObj = {
         id: nextCustCode,

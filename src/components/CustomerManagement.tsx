@@ -605,7 +605,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   };
 
   const resetForm = () => {
-    const nextCode = generateNextCustomerCode(customers);
+    const nextCode = generateNextCustomerCode();
     const today = new Date().toISOString().split('T')[0];
     const initialPkgId = packages.length > 0 ? packages[0].id : '';
 
