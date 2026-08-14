@@ -220,10 +220,6 @@ export default function App() {
   // Check setup installation status on startup DIRECTLY & EXCLUSIVELY FROM CLOUD FIRESTORE
   useEffect(() => {
     const checkSetupStatusDirectFirebase = async () => {
-      // Auto-Inject Owner User document into users collection on startup
-      try {
-        await injectOwnerUserToFirestore('zainudinarab');
-      } catch (e) {}
       const hash = window.location.hash.replace('#/', '').replace('#', '');
       const pathname = window.location.pathname.replace('/', '');
 

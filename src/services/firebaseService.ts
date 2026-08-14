@@ -377,32 +377,6 @@ export const getMerchantCredentialsFromFirestore = async () => {
   return null;
 };
 
-export const injectOwnerUserToFirestore = async (customPassword?: string, customUsername?: string, customPhone?: string, customName?: string) => {
-  try {
-    const ownerUserId = '019f74af9fcdWDgDxM8g';
-    const userDocRef = doc(db, 'users', ownerUserId);
-    const passToSave = customPassword || 'zainudinarab';
-    const encryptedHash = await hashPassword(passToSave);
-    
-    await setDoc(userDocRef, {
-      id: ownerUserId,
-      username: customUsername || 'zainudinarab',
-      name: customName || 'Owner',
-      email: 'ketua11@gmail.com',
-      phone_number: customPhone || '085746520724',
-      role: 'owner',
-      password: encryptedHash,
-      password_hash: encryptedHash,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-
-    return { success: true, message: 'Data Owner berhasil diinjeksi ke koleksi users!' };
-  } catch (err: any) {
-    console.error('[FIRESTORE ERROR] Could not inject owner user:', err);
-    return { success: false, error: err?.message };
-  }
-};
-
 // Verifikasi Login Owner Langsung dari Koleksi USERS di Database Cloud Firestore dengan Enkripsi Hash
 export const verifyOwnerLoginWithFirestore = async (identity: string, pass: string) => {
   try {
@@ -413,11 +387,7 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
     // Check Koleksi USERS in Cloud Firestore
     try {
       const ownerUserDocRef = doc(db, 'users', '019f74af9fcdWDgDxM8g');
-      let userSnap = await getDoc(ownerUserDocRef);
-      if (!userSnap.exists()) {
-        await injectOwnerUserToFirestore('zainudinarab', 'zainudinarab', '085746520724');
-        userSnap = await getDoc(ownerUserDocRef);
-      }
+      const userSnap = await getDoc(ownerUserDocRef);
 
       if (userSnap.exists()) {
         const uData = userSnap.data();
