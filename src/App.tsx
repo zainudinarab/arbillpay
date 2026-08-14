@@ -1262,20 +1262,90 @@ const safeFormatDate = (val: any): string => {
               </div>
             ) : (
               <div className="bg-white rounded-3xl border border-slate-100 p-6 shadow-sm space-y-4">
-                <h3 className="font-sans font-bold text-sm text-slate-800">Selesaikan Pembayaran</h3>
-                <p className="text-xs text-slate-400">Pilih salah satu metode pembayaran e-wallet / bank aktif di bawah ini:</p>
-                
-                {/* Embedded quick check out */}
-                <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center">
+                      AP
+                    </div>
+                    <div>
+                      <h3 className="font-sans font-bold text-sm text-slate-800">Pembayaran ArabPay Gateway</h3>
+                      <p className="text-[10px] text-emerald-600 font-semibold">● ArabPay Instant Payment Gate</p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-mono text-[10px] font-bold">
+                    BEBAS BIAYA ADMIN
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-500 font-medium">Pilih metode pembayaran resmi ArabPay yang Anda inginkan:</p>
+
+                {/* ArabPay Payment Methods List */}
+                <div className="space-y-2.5 pt-1">
+                  {/* Option 1: ArabPay QRIS All Payment */}
                   <button
-                    onClick={() => {
-                      // Trigger payment simulator
-                      setShowSimulator(true);
-                    }}
-                    className="w-full py-3 bg-[#2563EB] hover:bg-blue-600 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-100 flex items-center justify-center gap-1.5 cursor-pointer"
+                    onClick={() => setShowSimulator(true)}
+                    className="w-full text-left p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-50/40 hover:bg-emerald-50 transition-all flex items-center justify-between group cursor-pointer"
                   >
-                    <QrCode size={16} />
-                    <span>Bayar Sekarang (Buka Simulator)</span>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-sm shrink-0">
+                        <QrCode size={20} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700">ArabPay QRIS All Payment</span>
+                          <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded">INSTANT</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Scan via GoPay, OVO, DANA, ShopeePay, BCA, Mandiri, BRI, DLL.</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
+                  </button>
+
+                  {/* Option 2: ArabPay Saldo E-Wallet */}
+                  <button
+                    onClick={() => setShowSimulator(true)}
+                    className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-slate-900 text-emerald-400 shadow-sm shrink-0 font-black text-xs">
+                        AP
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700">ArabPay Saldo E-Wallet</span>
+                          <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded">0% CHG</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">Potong Saldo Akun ArabPay (Lunas Seketika)</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
+                  </button>
+
+                  {/* Option 3: ArabPay Virtual Account */}
+                  <button
+                    onClick={() => setShowSimulator(true)}
+                    className="w-full text-left p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500 hover:bg-slate-50 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-sm shrink-0">
+                        <ShieldCheck size={20} />
+                      </div>
+                      <div>
+                        <span className="font-bold text-xs text-slate-800 group-hover:text-emerald-700 block">ArabPay Virtual Account (VA)</span>
+                        <p className="text-[11px] text-slate-500 mt-0.5">BCA, BNI, BRI, Mandiri, Permata Virtual Account</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-slate-400 group-hover:text-emerald-600" />
+                  </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowSimulator(true)}
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-2xl shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  >
+                    <ShieldCheck size={16} />
+                    <span>Lanjutkan Pembayaran ArabPay</span>
                   </button>
                 </div>
               </div>
