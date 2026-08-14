@@ -112,10 +112,11 @@ export const saveCustomerToFirestore = async (customer: any) => {
     const formattedCustId = rawCustId.toUpperCase();
     const custRef = doc(db, 'customers', formattedCustId);
 
+    const { customer_code, ...cleanCustPayload } = customer;
+
     await setDoc(custRef, sanitizeForFirestore({
-      ...customer,
+      ...cleanCustPayload,
       id: formattedCustId,
-      customer_code: customer.customer_code && customer.customer_code !== 'CUST' ? customer.customer_code.toUpperCase() : formattedCustId,
       updated_at: new Date().toISOString()
     }), { merge: true });
 

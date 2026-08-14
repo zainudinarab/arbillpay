@@ -123,8 +123,7 @@ export function generateSequentialInvoices(cust: any, packagePrice: number, pack
 
     invoices.push({
       id: invoiceId,
-      customer_id: cust.id,
-      customer_code: displayCustCode,
+      customer_id: cust.id || displayCustCode,
       customer_name: cust.name,
       customer_phone: cust.phone_number || '',
       pppoe_username: cust.pppoe_username || '',
