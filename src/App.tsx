@@ -342,7 +342,7 @@ export default function App() {
 
           // STRICT SECURITY LOCK: If server token exchange failed or secret is invalid, DENY LOGIN COMPLETELY!
           if (!tokenData || (!tokenData.token && !tokenData.access_token)) {
-            console.error('🔒 [SECURITY LOCK] ArabPay OAuth Token Exchange FAILED/REJECTED. Client Secret is INVALID or ROTATED!');
+            console.warn('🔒 [SECURITY INFO] ArabPay OAuth Token Exchange rejected by server. Client Secret is invalid or rotated.');
             showAlert('🔒 Akses Ditolak: Penukaran token ditolak oleh server ArabPay. Client Secret merchant Anda tidak valid atau telah di-rotate di server ArabPay!', 'Akses Ditolak', 'error');
             localStorage.setItem('arbil_secret_invalidated', 'true');
             setIsSecretInvalidated(true);
