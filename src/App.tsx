@@ -1039,6 +1039,7 @@ const safeFormatDate = (val: any): string => {
       case 'regions':
         return (
           <DataWilayahPage
+            profile={profile}
             t={t}
             onLogout={handleLogout}
           />

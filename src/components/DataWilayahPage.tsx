@@ -15,12 +15,15 @@ import {
 } from '../services/indonesiaRegionService';
 import { saveSyncedRegionsToFirestore, getSyncedRegionsFromFirestore } from '../services/firebaseService';
 
+import { BusinessProfile } from '../types';
+
 interface DataWilayahPageProps {
+  profile: BusinessProfile;
   t: any;
   onLogout?: () => void;
 }
 
-export default function DataWilayahPage({ t, onLogout }: DataWilayahPageProps) {
+export default function DataWilayahPage({ profile, t, onLogout }: DataWilayahPageProps) {
   const [provinces] = useState<RegionItem[]>(ALL_38_PROVINCES);
   const [regencies, setRegencies] = useState<RegionItem[]>([]);
   const [districts, setDistricts] = useState<RegionItem[]>([]);
@@ -180,6 +183,9 @@ export default function DataWilayahPage({ t, onLogout }: DataWilayahPageProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-12">
       <HeaderBar 
+        profile={profile}
+        t={t}
+        onLogout={onLogout}
         title="Manajemen Data Wilayah Indonesia" 
         subtitle="Sinkronkan database desa, kecamatan, kabupaten, & kode pos per wilayah agar 100% lengkap & stabil" 
       />
