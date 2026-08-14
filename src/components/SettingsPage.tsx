@@ -146,25 +146,26 @@ export default function SettingsPage({
 
     setIsUpdatingPass(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/auth/change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: phone || '019f74af9fcdWDgDxM8g',
-          newPassword: newEmergencyPassword.trim()
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPassMsg({ text: data.message || 'Password Darurat Owner berhasil diperbarui!', isError: false });
+      const cleanPass = newEmergencyPassword.trim();
+      
+      // Save directly to Cloud Firestore: settings/merchant_credentials (owner_pin)
+      const firestoreRes = await saveMerchantCredentialsToFirestore({
+        client_id: arabpayClientId || 'AP24228873',
+        client_secret: arabpayClientSecret || '',
+        owner_phone: phone || '085746520724',
+        owner_pin: cleanPass
+      } as any);
+
+      if (firestoreRes && firestoreRes.success) {
+        localStorage.setItem('arbil_owner_emergency_pin', cleanPass);
+        setPassMsg({ text: '✨ Password Darurat Owner Berhasil Diperbarui & Disimpan di Cloud Firestore!', isError: false });
         setNewEmergencyPassword('');
         setConfirmEmergencyPassword('');
       } else {
-        setPassMsg({ text: data.message || 'Gagal mengubah password.', isError: true });
+        setPassMsg({ text: firestoreRes?.error || 'Gagal memperbarui Password Darurat di Cloud Firestore.', isError: true });
       }
     } catch (err: any) {
-      setPassMsg({ text: 'Gagal menghubungi server backend.', isError: true });
+      setPassMsg({ text: 'Gagal memperbarui Password Darurat: ' + err?.message, isError: true });
     } finally {
       setIsUpdatingPass(false);
     }
