@@ -80,6 +80,67 @@ export default function App() {
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isSecretInvalidated, setIsSecretInvalidated] = useState<boolean>(false);
+  const [newSecretInput, setNewSecretInput] = useState<string>('');
+  const [secretErrorMsg, setSecretErrorMsg] = useState<string>('');
+  const [secretLoading, setSecretLoading] = useState<boolean>(false);
+
+  const handleVerifyAndSaveNewSecret = async () => {
+    setSecretLoading(true);
+    setSecretErrorMsg('');
+    try {
+      const cleanSecret = newSecretInput.trim();
+      if (!cleanSecret) {
+        setSecretErrorMsg('Client Secret baru wajib diisi!');
+        setSecretLoading(false);
+        return;
+      }
+
+      const clientId = localStorage.getItem('arabpay_client_id') || 'AP24228873';
+      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const bodyStr = JSON.stringify({ verify: true });
+
+      let signature = '';
+      try {
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(cleanSecret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(bodyStr + timestamp));
+        signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (cryptoErr) {}
+
+      const res = await fetch('https://arabpay.my.id/api/v1/oauth/verify-credentials', {
+        method: 'POST',
+        headers: {
+          'X-Client-ID': clientId,
+          'X-Timestamp': timestamp,
+          'X-Signature': signature,
+          'Content-Type': 'application/json'
+        },
+        body: bodyStr
+      }).catch(() => null);
+
+      if (res && (res.status === 401 || res.status === 403)) {
+        setSecretErrorMsg('❌ Client Secret Baru tersebut TIDAK VALID di server ArabPay! Periksa kembali.');
+        setSecretLoading(false);
+        return;
+      }
+
+      localStorage.setItem('arabpay_client_secret', cleanSecret);
+      setIsSecretInvalidated(false);
+      setNewSecretInput('');
+      alert('✨ Client Secret Berhasil Dikonfirmasi & Dipulihkan! Sambungan Server-to-Server Kembali Aktif.');
+    } catch (err: any) {
+      setSecretErrorMsg('Gagal memverifikasi ke server ArabPay: ' + err?.message);
+    } finally {
+      setSecretLoading(false);
+    }
+  };
 
   const fetchPendingCount = async () => {
     try {
@@ -226,6 +287,11 @@ export default function App() {
           if (tokenRes && tokenRes.ok) {
             tokenData = await tokenRes.json();
             console.log('✅ [OAUTH SSO LOG] Received token response from ArabPay Server:', tokenData);
+          } else if (tokenRes && (tokenRes.status === 401 || tokenRes.status === 403)) {
+            console.error('🔒 [SECURITY LOCK] ArabPay Server returned 401/403! Client Secret is INVALID or ROTATED.');
+            setIsSecretInvalidated(true);
+            handleLogout();
+            return;
           } else if (tokenRes) {
             console.warn('⚠️ [OAUTH SSO LOG] ArabPay Token endpoint response status:', tokenRes.status);
           }
@@ -1280,6 +1346,48 @@ const safeFormatDate = (val: any): string => {
             window.location.hash = '#/overview';
           }}
         />
+      )}
+
+      {/* 6. Emergency Lock Screen when Client Secret is Invalidated or Rotated on ArabPay Server */}
+      {isSecretInvalidated && (
+        <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4 font-sans text-slate-800">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 space-y-5 animate-scale-up">
+            <div className="w-16 h-16 rounded-3xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto text-3xl shadow-inner border border-rose-200">
+              🔒
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="font-extrabold text-xl text-slate-900 tracking-tight">Koneksi Server Terputus!</h3>
+              <p className="text-xs text-rose-600 font-extrabold">
+                Client Secret ArabPay Tidak Valid / Telah Di-Rotate di Server
+              </p>
+              <p className="text-xs text-slate-500 pt-1 leading-relaxed">
+                Karena Client Secret di server ArabPay telah berubah, ArbillPay secara otomatis memutus seluruh akses SSO & transaksi demi keamanan data.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              <label className="block text-xs font-bold text-slate-700">Masukkan Client Secret ArabPay (Baru):</label>
+              <input
+                type="password"
+                placeholder="Ketikkan Client Secret baru..."
+                value={newSecretInput}
+                onChange={(e) => setNewSecretInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:ring-2 focus:ring-rose-500 focus:outline-none"
+              />
+              {secretErrorMsg && (
+                <p className="text-[11px] font-bold text-rose-600 animate-fade-in">{secretErrorMsg}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleVerifyAndSaveNewSecret}
+              disabled={secretLoading}
+              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>{secretLoading ? 'Memverifikasi...' : '⚡ Verifikasi & Pulihkan Akses Server'}</span>
+            </button>
+          </div>
+        </div>
       )}
 
     </div>
