@@ -154,6 +154,7 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
     // 1. Instant Local & Synced Match
     const fullDatabase = [...syncedDb, ...INDONESIA_INSTANT_DATABASE];
     const localMatches = fullDatabase.filter(item => 
+      (item.dusun || '').toLowerCase().includes(cleanQ) ||
       (item.desa || '').toLowerCase().includes(cleanQ) ||
       (item.kecamatan || '').toLowerCase().includes(cleanQ) ||
       (item.kabupaten || '').toLowerCase().includes(cleanQ) ||
@@ -261,7 +262,7 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               onFocus={() => { if (suggestions.length > 0) setIsOpen(true); }}
-              placeholder="Ketik Desa / Kecamatan (Contoh: Cukir, Diwek, Jombang)..."
+              placeholder="Ketik Dusun / Desa / Kecamatan (Contoh: Krajan, Cukir, Diwek, Jombang)..."
               className={`w-full pl-10 pr-9 py-2.5 rounded-2xl border text-xs font-sans transition focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${bgInput}`}
             />
             {loading && (
@@ -286,7 +287,7 @@ export const GoogleAddressAutocomplete: React.FC<GoogleAddressAutocompleteProps>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-xs flex items-center justify-between">
-                      <span>Desa {item.desa}</span>
+                      <span>{item.dusun ? `Dusun ${item.dusun} (Desa ${item.desa})` : `Desa ${item.desa}`}</span>
                       {item.zip && (
                         <span className="text-[10px] font-mono font-bold text-emerald-500 bg-emerald-500/10 px-1.5 py-0.2 rounded">
                           {item.zip}
