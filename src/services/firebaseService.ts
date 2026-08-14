@@ -322,7 +322,7 @@ export const hashPassword = async (plainPassword: string): Promise<string> => {
   }
 };
 
-export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string; owner_password?: string; owner_name?: string; owner_username?: string; owner_email?: string }) => {
+export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string; owner_password?: string; owner_name?: string; owner_email?: string }) => {
   try {
     // 1. Save to settings/merchant_credentials (Clean link to users table)
     const ownerUserId = creds.owner_user_id || '019f74af9fcdWDgDxM8g';
@@ -346,7 +346,6 @@ export const saveMerchantCredentialsToFirestore = async (creds: { client_id: str
       updated_at: new Date().toISOString()
     };
 
-    if (creds.owner_username) userPayload.username = creds.owner_username;
     if (creds.owner_name) userPayload.name = creds.owner_name;
     if (creds.owner_email) userPayload.email = creds.owner_email;
     if (creds.owner_phone) userPayload.phone_number = creds.owner_phone;

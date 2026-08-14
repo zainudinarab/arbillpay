@@ -386,8 +386,7 @@ export default function App() {
             const uId = String(uData.user_id || uData.sub || uData.id || '');
             const rawEmail = (uData.email || uData.user_email || '').trim();
             const rawPhone = (uData.phone_number || uData.phone || uData.mobile || '').trim();
-            const rawName = (uData.name || uData.full_name || uData.username || '').trim();
-            const rawUsername = (uData.username || rawName || (uId ? `user_${uId.slice(-6)}` : '')).trim();
+            const rawName = (uData.name || uData.full_name || '').trim();
 
             const isOwner = (uId === '019f74af9fcdWDgDxM8g' || rawEmail === 'ketua11@gmail.com' || rawPhone === '085746520724');
 
@@ -412,7 +411,6 @@ export default function App() {
             if (isOwner || (rawName && (rawPhone || rawEmail))) {
               userObj = {
                 id: uId || `usr_${Date.now()}`,
-                username: rawUsername || `user_${Date.now().toString().slice(-6)}`,
                 name: rawName || 'Pelanggan ArabPay',
                 email: rawEmail,
                 phone_number: rawPhone,
@@ -433,7 +431,6 @@ export default function App() {
             if (isOwnerSession) {
               userObj = {
                 id: '019f74af9fcdWDgDxM8g',
-                username: 'zainudinarab',
                 name: 'Zainudin Arab',
                 email: 'ketua11@gmail.com',
                 phone_number: '085746520724',

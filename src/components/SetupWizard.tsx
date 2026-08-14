@@ -228,7 +228,6 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         owner_user_id: ownerId,
         owner_phone: oPhone,
         owner_name: oName,
-        owner_username: cleanUsername,
         owner_password: cleanAdminPass
       });
 
