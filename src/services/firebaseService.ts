@@ -384,97 +384,73 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
     const cleanPass = pass.trim();
     const inputHash = await hashPassword(cleanPass);
 
-    // Check Koleksi USERS in Cloud Firestore
-    try {
-      const ownerUserDocRef = doc(db, 'users', '019f74af9fcdWDgDxM8g');
-      const userSnap = await getDoc(ownerUserDocRef);
+    // 1. Ambil dokumen konfigurasi merchant untuk membaca link owner_user_id
+    const credsDoc = await getMerchantCredentialsFromFirestore();
+    const ownerUserId = credsDoc?.owner_user_id;
 
-      if (userSnap.exists()) {
-        const uData = userSnap.data();
-        const storedPass = String(uData.password || uData.password_hash || '').trim();
-        const storedUserPhone = String(uData.phone_number || uData.phone || '').trim().toLowerCase();
-        const storedUsername = String(uData.username || '').trim().toLowerCase();
-        const storedEmail = String(uData.email || '').trim().toLowerCase();
-
-        const matchId = (
-          (storedUserPhone && cleanId === storedUserPhone) ||
-          (storedUsername && cleanId === storedUsername) ||
-          (storedEmail && cleanId === storedEmail) ||
-          cleanId === 'zainudinarab' ||
-          cleanId === '085746520724' ||
-          cleanId === 'admin' ||
-          cleanId === 'owner'
-        );
-
-        const matchPass = (
-          (storedPass && inputHash === storedPass) ||
-          (storedPass && cleanPass === storedPass) ||
-          cleanPass.toLowerCase() === 'zainudinarab' ||
-          cleanPass === '123456'
-        );
-
-        if (matchId && matchPass) {
-          return {
-            success: true,
-            user: {
-              id: uData.id || '019f74af9fcdWDgDxM8g',
-              username: uData.username || cleanId,
-              name: uData.name || uData.username || 'Owner',
-              email: uData.email || '',
-              phone_number: uData.phone_number || uData.phone || '',
-              role: 'owner',
-              arabpay_user_id: uData.id || '019f74af9fcdWDgDxM8g',
-              arabpay_balance: uData.arabpay_balance || 150000
-            }
-          };
+    // 2. Query dokumen di koleksi USERS secara dinamis
+    let userDocData: any = null;
+    if (ownerUserId) {
+      try {
+        const ownerDocRef = doc(db, 'users', ownerUserId);
+        const userSnap = await getDoc(ownerDocRef);
+        if (userSnap.exists()) {
+          userDocData = userSnap.data();
         }
-      }
-    } catch (e) {
-      console.warn('Could not read users collection:', e);
+      } catch (e) {}
     }
 
-    // Fallback check for offline / backup
-    const credsDoc = await getMerchantCredentialsFromFirestore();
-    const localSavedPin = localStorage.getItem('arbil_owner_emergency_pin');
-
-    const storedPhone = String(credsDoc?.owner_phone || '').trim().toLowerCase();
-    const storedUserId = String(credsDoc?.owner_user_id || '').trim().toLowerCase();
-    const storedEmail = String(credsDoc?.owner_email || '').trim().toLowerCase();
-    const storedUsername = String(credsDoc?.owner_username || '').trim().toLowerCase();
-
-    const isIdentityMatch = (
-      (storedPhone && cleanId === storedPhone) ||
-      (storedUsername && cleanId === storedUsername) ||
-      (storedUserId && cleanId === storedUserId) ||
-      (storedEmail && cleanId === storedEmail) ||
-      cleanId === 'zainudinarab' ||
-      cleanId === '085746520724' ||
-      cleanId === 'admin' ||
-      cleanId === 'owner'
-    );
-
-    const isPassMatch = (
-      (credsDoc?.owner_password && cleanPass === String(credsDoc.owner_password).trim()) ||
-      (localSavedPin && cleanPass === localSavedPin.trim()) ||
-      cleanPass.toLowerCase() === 'zainudinarab' ||
-      cleanPass === '123456' ||
-      cleanPass === 'admin'
-    );
-
-    if (isIdentityMatch && isPassMatch) {
-      return {
-        success: true,
-        user: {
-          id: storedUserId || '019f74af9fcdWDgDxM8g',
-          username: storedUsername || cleanId,
-          name: credsDoc?.owner_name || storedUsername || 'Owner',
-          email: storedEmail || '',
-          phone_number: storedPhone || '',
-          role: 'owner',
-          arabpay_user_id: storedUserId || '019f74af9fcdWDgDxM8g',
-          arabpay_balance: 150000
+    // Jika tidak ditemukan via ownerUserId, query koleksi users berdasarkan username, phone_number, atau email
+    if (!userDocData) {
+      try {
+        const usersColl = collection(db, 'users');
+        const snap = await getDocs(usersColl);
+        const matchedDoc = snap.docs.find(d => {
+          const u = d.data();
+          const uPhone = String(u.phone_number || u.phone || '').trim().toLowerCase();
+          const uName = String(u.username || '').trim().toLowerCase();
+          const uEmail = String(u.email || '').trim().toLowerCase();
+          return cleanId === uPhone || cleanId === uName || cleanId === uEmail;
+        });
+        if (matchedDoc) {
+          userDocData = matchedDoc.data();
         }
-      };
+      } catch (e) {}
+    }
+
+    // 3. Verifikasi Identitas & Password Hash secara presisi terhadap data Firestore
+    if (userDocData) {
+      const storedPass = String(userDocData.password || userDocData.password_hash || '').trim();
+      const storedPhone = String(userDocData.phone_number || userDocData.phone || '').trim().toLowerCase();
+      const storedUsername = String(userDocData.username || '').trim().toLowerCase();
+      const storedEmail = String(userDocData.email || '').trim().toLowerCase();
+
+      const isIdMatch = (
+        (storedPhone && cleanId === storedPhone) ||
+        (storedUsername && cleanId === storedUsername) ||
+        (storedEmail && cleanId === storedEmail)
+      );
+
+      const isPassMatch = (
+        (storedPass && inputHash === storedPass) ||
+        (storedPass && cleanPass === storedPass)
+      );
+
+      if (isIdMatch && isPassMatch) {
+        return {
+          success: true,
+          user: {
+            id: userDocData.id || ownerUserId || 'owner',
+            username: userDocData.username || cleanId,
+            name: userDocData.name || userDocData.username || 'Owner',
+            email: userDocData.email || '',
+            phone_number: userDocData.phone_number || userDocData.phone || '',
+            role: 'owner',
+            arabpay_user_id: userDocData.id || ownerUserId || 'owner',
+            arabpay_balance: userDocData.arabpay_balance || 150000
+          }
+        };
+      }
     }
   } catch (err: any) {
     console.error('[FIRESTORE ERROR] Could not verify owner login:', err);
