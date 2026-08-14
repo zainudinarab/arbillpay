@@ -19,6 +19,38 @@ interface SetupWizardProps {
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
+  const isAlreadyCompleted = localStorage.getItem('arbill_setup_completed') === 'true' && Boolean(localStorage.getItem('arabpay_client_id'));
+
+  if (isAlreadyCompleted) {
+    return (
+      <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 font-sans text-slate-800">
+        <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 text-center space-y-5 animate-scale-up">
+          <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-3xl shadow-inner border border-rose-200">
+            🔒
+          </div>
+          <div>
+            <h3 className="font-extrabold text-xl text-slate-900 tracking-tight">Setup Wizard Dikunci Permanen</h3>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+              Aplikasi Arbill / ArabPay ini telah berhasil dikonfigurasi dan dikunci secara permanen demi keamanan. Pengaturan awal tidak dapat diakses ulang untuk mencegah perubahan tanpa izin.
+            </p>
+          </div>
+          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-[11px] text-amber-900 font-medium text-left">
+            💡 Untuk mengubah kunci SSO atau kredensial merchant, silakan gunakan menu <strong>Pengaturan System</strong> setelah login sebagai Owner.
+          </div>
+          <button
+            onClick={() => {
+              window.location.hash = '#/overview';
+              onComplete();
+            }}
+            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer"
+          >
+            ➡️ Kembali ke Aplikasi Utama
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Form: ArabPay Merchant Credentials
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');

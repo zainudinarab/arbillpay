@@ -105,14 +105,23 @@ export default function App() {
     const checkSetupStatus = async () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
       const pathname = window.location.pathname.replace('/', '');
+      const localInstalled = localStorage.getItem('arbill_setup_completed');
+      const localClientId = localStorage.getItem('arabpay_client_id');
+      const isAlreadyConfigured = localInstalled === 'true' && Boolean(localClientId);
+
       if (hash.includes('setup') || pathname.includes('setup')) {
+        if (isAlreadyConfigured) {
+          // SETUP ALREADY COMPLETED: PERMANENTLY LOCKED!
+          console.warn('🔒 Setup wizard is permanently locked because installation is already complete.');
+          window.location.hash = '#/overview';
+          setShowSetupWizard(false);
+          return;
+        }
         setShowSetupWizard(true);
         return;
       }
 
-      const localInstalled = localStorage.getItem('arbill_setup_completed');
-      const localClientId = localStorage.getItem('arabpay_client_id');
-      if (localInstalled !== 'true' || !localClientId) {
+      if (!isAlreadyConfigured) {
         setShowSetupWizard(true);
         return;
       }
@@ -122,7 +131,7 @@ export default function App() {
         if (apiUrl) {
           const res = await fetch(`${apiUrl}/api/setup/status`);
           const data = await res.json();
-          if (data && data.installed === false) {
+          if (data && data.installed === false && !isAlreadyConfigured) {
             setShowSetupWizard(true);
           }
         }
