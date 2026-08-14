@@ -102,14 +102,24 @@ export const getFtthMapFromFirestore = async () => {
 // --- 2. CUSTOMERS MANAGEMENT ---
 export const saveCustomerToFirestore = async (customer: any) => {
   try {
-    const custId = String(customer.id || `cust_${Date.now()}`);
-    const custRef = doc(db, 'customers', custId);
+    let rawCustId = String(customer.id || customer.customer_code || `CUST-${Date.now()}`).trim();
+    if (rawCustId.toLowerCase().startsWith('cust_')) {
+      rawCustId = `CUST-${rawCustId.slice(5)}`;
+    } else if (!rawCustId.toUpperCase().startsWith('CUST-') && !rawCustId.toUpperCase().startsWith('CUST')) {
+      rawCustId = `CUST-${rawCustId}`;
+    }
+
+    const formattedCustId = rawCustId.toUpperCase();
+    const custRef = doc(db, 'customers', formattedCustId);
+
     await setDoc(custRef, sanitizeForFirestore({
       ...customer,
-      id: custId,
+      id: formattedCustId,
+      customer_code: customer.customer_code && customer.customer_code !== 'CUST' ? customer.customer_code.toUpperCase() : formattedCustId,
       updated_at: new Date().toISOString()
     }), { merge: true });
-    return { success: true, id: custId };
+
+    return { success: true, id: formattedCustId };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save customer:', err);
     throw err;
