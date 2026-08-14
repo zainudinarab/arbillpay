@@ -447,19 +447,6 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 </div>
 
                 <div className="space-y-1 pt-2 border-t border-slate-800/80">
-                  <label className="text-indigo-300 font-extrabold block text-xs flex items-center gap-1.5">
-                    <span>🔑 Username Admin Owner:</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Username untuk login admin..."
-                    value={adminUsername}
-                    onChange={(e) => setAdminUsername(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-bold text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1">
                   <label className="text-emerald-400 font-extrabold block text-xs flex items-center gap-1.5">
                     <span>⚡ Password Lokal / Admin Owner (*Wajib):</span>
                   </label>

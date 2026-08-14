@@ -408,9 +408,8 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
         const matchedDoc = snap.docs.find(d => {
           const u = d.data();
           const uPhone = String(u.phone_number || u.phone || '').trim().toLowerCase();
-          const uName = String(u.username || '').trim().toLowerCase();
           const uEmail = String(u.email || '').trim().toLowerCase();
-          return cleanId === uPhone || cleanId === uName || cleanId === uEmail;
+          return cleanId === uPhone || cleanId === uEmail;
         });
         if (matchedDoc) {
           userDocData = matchedDoc.data();
@@ -422,12 +421,10 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
     if (userDocData) {
       const storedPass = String(userDocData.password || userDocData.password_hash || '').trim();
       const storedPhone = String(userDocData.phone_number || userDocData.phone || '').trim().toLowerCase();
-      const storedUsername = String(userDocData.username || '').trim().toLowerCase();
       const storedEmail = String(userDocData.email || '').trim().toLowerCase();
 
       const isIdMatch = (
         (storedPhone && cleanId === storedPhone) ||
-        (storedUsername && cleanId === storedUsername) ||
         (storedEmail && cleanId === storedEmail)
       );
 

@@ -149,12 +149,12 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ID / Phone / Username Owner:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP atau Email Owner:</label>
                 <input
                   type="text"
                   value={identity}
                   onChange={(e) => setIdentity(e.target.value)}
-                  placeholder="zainudinarab atau 085746520724"
+                  placeholder="Contoh: 085746520724 atau ketua11@gmail.com"
                   className="w-full px-4 py-3 bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-300 rounded-xl text-xs font-semibold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   autoFocus
                 />
