@@ -11,6 +11,7 @@ import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 import { generateNextCustomerCode } from '../utils';
+import { IndonesianAddressForm } from './IndonesianAddressForm';
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
@@ -2109,66 +2110,27 @@ export default function CustomerPortal({
                   </div>
                 </div>
 
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-                  <span className="text-[11px] font-bold text-amber-400 block uppercase tracking-wider">📍 Detail Alamat Lengkap & Wilayah</span>
-
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-400 block mb-1">Dusun / RT RW / Alamat Jalan *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
-                      value={regForm.dusun}
-                      onChange={(e) => setRegForm({ ...regForm, dusun: e.target.value })}
-                      className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-400 block mb-1">Desa / Kelurahan</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Desa Sukamaju"
-                        value={regForm.desa}
-                        onChange={(e) => setRegForm({ ...regForm, desa: e.target.value })}
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-400 block mb-1">Kecamatan</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Kec. Majujaya"
-                        value={regForm.kecamatan}
-                        onChange={(e) => setRegForm({ ...regForm, kecamatan: e.target.value })}
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-400 block mb-1">Kabupaten / Kota</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Kab. Bandung"
-                        value={regForm.kabupaten}
-                        onChange={(e) => setRegForm({ ...regForm, kabupaten: e.target.value })}
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-400 block mb-1">Provinsi</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Jawa Barat"
-                        value={regForm.provinsi}
-                        onChange={(e) => setRegForm({ ...regForm, provinsi: e.target.value })}
-                        className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl">
+                  <IndonesianAddressForm
+                    darkTheme={true}
+                    value={{
+                      provinsi: regForm.provinsi || '',
+                      kabupaten: regForm.kabupaten || '',
+                      kecamatan: regForm.kecamatan || '',
+                      desa: regForm.desa || '',
+                      dusun: regForm.dusun || '',
+                      kode_pos: regForm.kode_pos || ''
+                    }}
+                    onChange={(addr) => setRegForm({
+                      ...regForm,
+                      provinsi: addr.provinsi,
+                      kabupaten: addr.kabupaten,
+                      kecamatan: addr.kecamatan,
+                      desa: addr.desa,
+                      dusun: addr.dusun,
+                      kode_pos: addr.kode_pos
+                    })}
+                  />
                 </div>
 
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2 text-[11px] text-amber-300">

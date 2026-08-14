@@ -41,6 +41,7 @@ import {
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
+import { IndonesianAddressForm } from './IndonesianAddressForm';
 
 const formatDateSafe = (dateVal: any): string => {
   if (!dateVal) return '-';
@@ -444,6 +445,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [kecamatan, setKecamatan] = useState('');
   const [kabupaten, setKabupaten] = useState('');
   const [provinsi, setProvinsi] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [installationDate, setInstallationDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState<'active' | 'isolated' | 'non-active' | 'terminated'>('active');
 
@@ -1488,67 +1490,26 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                   </div>
 
                   {/* Structured Address Block */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">📍 Detail Alamat Lengkap & Wilayah (Filter)</span>
-                    
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Dusun / RT RW / Alamat Jalan</label>
-                      <input
-                        type="text"
-                        placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
-                        value={dusun}
-                        onChange={(e) => setDusun(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Desa / Kelurahan</label>
-                        <input
-                          type="text"
-                          placeholder="Desa Sukamaju"
-                          value={desa}
-                          onChange={(e) => setDesa(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Kecamatan</label>
-                        <input
-                          type="text"
-                          placeholder="Kec. Majujaya"
-                          value={kecamatan}
-                          onChange={(e) => setKecamatan(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Kabupaten / Kota</label>
-                        <input
-                          type="text"
-                          placeholder="Kab. Bandung"
-                          value={kabupaten}
-                          onChange={(e) => setKabupaten(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Provinsi</label>
-                        <input
-                          type="text"
-                          placeholder="Jawa Barat"
-                          value={provinsi}
-                          onChange={(e) => setProvinsi(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        />
-                      </div>
-                    </div>
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <IndonesianAddressForm
+                      darkTheme={false}
+                      value={{
+                        provinsi,
+                        kabupaten,
+                        kecamatan,
+                        desa,
+                        dusun,
+                        kode_pos: (postalCode || '')
+                      }}
+                      onChange={(addr) => {
+                        setProvinsi(addr.provinsi);
+                        setKabupaten(addr.kabupaten);
+                        setKecamatan(addr.kecamatan);
+                        setDesa(addr.desa);
+                        setDusun(addr.dusun);
+                        setPostalCode(addr.kode_pos);
+                      }}
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
