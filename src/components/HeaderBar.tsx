@@ -64,7 +64,7 @@ export default function HeaderBar({
           <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder={t.searchPlaceholder || "Search..."}
+            placeholder={t?.searchPlaceholder || "Search..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border-0 rounded-xl text-sm font-sans placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all text-slate-700"
@@ -85,7 +85,7 @@ export default function HeaderBar({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-xs font-medium text-slate-500">{t.realTimeFilter || 'Live Data'}</span>
+          <span className="text-xs font-medium text-slate-500">{t?.realTimeFilter || 'Live Data'}</span>
         </div>
 
         {/* Language Toggle */}

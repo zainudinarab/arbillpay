@@ -529,6 +529,7 @@ export default function SettingsPage({
                     <label className="text-xs font-semibold text-slate-500 block">Password Darurat Baru</label>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       required
                       placeholder="Masukkan password darurat baru..."
                       value={newEmergencyPassword}
@@ -541,6 +542,7 @@ export default function SettingsPage({
                     <label className="text-xs font-semibold text-slate-500 block">Konfirmasi Password Darurat</label>
                     <input
                       type="password"
+                      autoComplete="new-password"
                       required
                       placeholder="Ulangi password darurat baru..."
                       value={confirmEmergencyPassword}
@@ -597,6 +599,7 @@ export default function SettingsPage({
                     <label className="text-[11px] font-bold text-slate-300 block">Client ID ArabPay</label>
                     <input
                       type="text"
+                      autoComplete="username"
                       required
                       value={arabpayClientId}
                       onChange={(e) => setArabpayClientId(e.target.value)}
@@ -609,6 +612,7 @@ export default function SettingsPage({
                     <label className="text-[11px] font-bold text-slate-300 block">Client Secret ArabPay (Baru)</label>
                     <input
                       type="password"
+                      autoComplete="current-password"
                       required
                       value={arabpayClientSecret}
                       onChange={(e) => setArabpayClientSecret(e.target.value)}
