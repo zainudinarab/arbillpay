@@ -81,7 +81,9 @@ export default function App() {
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
-  const [isSecretInvalidated, setIsSecretInvalidated] = useState<boolean>(false);
+  const [isSecretInvalidated, setIsSecretInvalidated] = useState<boolean>(() => {
+    return localStorage.getItem('arbil_secret_invalidated') === 'true';
+  });
   const [newSecretInput, setNewSecretInput] = useState<string>('');
   const [secretErrorMsg, setSecretErrorMsg] = useState<string>('');
   const [secretLoading, setSecretLoading] = useState<boolean>(false);
@@ -124,20 +126,18 @@ export default function App() {
     title: string;
     message: string;
     type: 'error' | 'warning' | 'success' | 'info';
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    type: 'warning'
+  }>(() => {
+    try {
+      const saved = sessionStorage.getItem('arbil_modal_alert');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return { isOpen: false, title: '', message: '', type: 'warning' };
   });
 
   const showAlert = (message: string, title = 'Pemberitahuan Sistem', type: 'error' | 'warning' | 'success' | 'info' = 'warning') => {
-    setCustomModalAlert({
-      isOpen: true,
-      title,
-      message,
-      type
-    });
+    const alertObj = { isOpen: true, title, message, type };
+    setCustomModalAlert(alertObj);
+    sessionStorage.setItem('arbil_modal_alert', JSON.stringify(alertObj));
   };
 
   const handleVerifyAndSaveNewSecret = async () => {
@@ -187,6 +187,7 @@ export default function App() {
       }
 
       localStorage.setItem('arabpay_client_secret', cleanSecret);
+      localStorage.removeItem('arbil_secret_invalidated');
       setIsSecretInvalidated(false);
       setNewSecretInput('');
       showAlert('✨ Client Secret Berhasil Dikonfirmasi & Dipulihkan! Sambungan Server-to-Server Kembali Aktif.', 'Koneksi Pulih', 'success');
@@ -343,6 +344,7 @@ export default function App() {
           if (!tokenData || (!tokenData.token && !tokenData.access_token)) {
             console.error('🔒 [SECURITY LOCK] ArabPay OAuth Token Exchange FAILED/REJECTED. Client Secret is INVALID or ROTATED!');
             showAlert('🔒 Akses Ditolak: Penukaran token ditolak oleh server ArabPay. Client Secret merchant Anda tidak valid atau telah di-rotate di server ArabPay!', 'Akses Ditolak', 'error');
+            localStorage.setItem('arbil_secret_invalidated', 'true');
             setIsSecretInvalidated(true);
             setCurrentUser(null);
             localStorage.removeItem('arbil_current_user');
