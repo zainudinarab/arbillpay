@@ -324,20 +324,18 @@ export const hashPassword = async (plainPassword: string): Promise<string> => {
 
 export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string; owner_password?: string; owner_name?: string }) => {
   try {
-    // 1. Save to settings/merchant_credentials (Configuration only)
+    // 1. Save to settings/merchant_credentials (Clean link to users table)
+    const ownerUserId = creds.owner_user_id || '019f74af9fcdWDgDxM8g';
     const docRef = doc(db, 'settings', 'merchant_credentials');
     await setDoc(docRef, {
       client_id: creds.client_id,
       client_secret: creds.client_secret,
-      owner_user_id: creds.owner_user_id || '019f74af9fcdWDgDxM8g',
-      owner_phone: creds.owner_phone || '085746520724',
-      owner_username: 'zainudinarab',
+      owner_user_id: ownerUserId,
       installed: true,
       updated_at: new Date().toISOString()
     }, { merge: true });
 
     // 2. Save Owner User Credentials EXCLUSIVELY to users collection with SHA-256 ENCRYPTION
-    const ownerUserId = creds.owner_user_id || '019f74af9fcdWDgDxM8g';
     const userDocRef = doc(db, 'users', ownerUserId);
     const rawPass = creds.owner_password || 'zainudinarab';
     const encryptedHash = await hashPassword(rawPass);
