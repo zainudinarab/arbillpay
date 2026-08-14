@@ -45,16 +45,25 @@ export function buildFormattedInvoiceId(
 ): { invoiceId: string; displayCustCode: string } {
   const subPeriodStr = String(subPeriod).padStart(2, '0');
 
-  let rawCustId = String(cust.customer_code || cust.id || cust.phone_number || '').trim();
-  
-  if (rawCustId.toLowerCase().startsWith('cust_')) {
-    rawCustId = 'CUST-' + rawCustId.slice(5);
-  } else if (!rawCustId.toUpperCase().startsWith('CUST-') && !rawCustId.toUpperCase().startsWith('CUST')) {
-    rawCustId = 'CUST-' + rawCustId;
+  // Extract raw ID string
+  let custIdStr = String(cust.id || '').trim();
+  if (custIdStr.toLowerCase().startsWith('cust_')) {
+    custIdStr = custIdStr.slice(5);
   }
-  
-  const displayCustCode = rawCustId.toUpperCase().replace(/[^A-Z0-9\-]/g, '');
-  const invoiceId = `INV-${monthCode}-${subPeriodStr}-${displayCustCode}`;
+
+  let custCodeStr = String(cust.customer_code || '').trim();
+  if (custCodeStr.toUpperCase().startsWith('CUST-')) {
+    custCodeStr = custCodeStr.slice(5);
+  } else if (custCodeStr.toUpperCase() === 'CUST') {
+    custCodeStr = '';
+  }
+
+  // Choose the actual customer numeric/unique ID (never literal 'CUST')
+  const specificId = (custCodeStr && custCodeStr.toUpperCase() !== 'CUST') ? custCodeStr : custIdStr;
+  const cleanId = String(specificId || cust.phone_number || Date.now()).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
+  const displayCustCode = `CUST-${cleanId}`;
+  const invoiceId = `INV-${monthCode}-${subPeriodStr}-CUST-${cleanId}`;
 
   return { invoiceId, displayCustCode };
 }
