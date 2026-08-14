@@ -1418,6 +1418,22 @@ const safeFormatDate = (val: any): string => {
         </div>
       )}
 
+      {/* 6.5 Top-Level Admin/Operator Login Modal */}
+      {showAdminLoginModal && (
+        <LoginModal
+          onLoginSuccess={(u) => {
+            setShowAdminLoginModal(false);
+            handleLoginSuccess(u);
+          }}
+          onClose={() => {
+            setShowAdminLoginModal(false);
+            if (window.location.hash.includes('admin-login')) {
+              window.location.hash = '#/overview';
+            }
+          }}
+        />
+      )}
+
       {/* 7. Custom Reusable Notification Modal (Replaces browser default alert()) */}
       {customModalAlert.isOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-fade-in">

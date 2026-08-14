@@ -142,7 +142,9 @@ interface CustomerPortalProps {
 export default function CustomerPortal({
   currentUser,
   onLoginSuccess,
-  onLogout
+  onLogout,
+  showLoginModal: propShowLoginModal,
+  setShowLoginModal: propSetShowLoginModal
 }: CustomerPortalProps) {
   // --- STATE PERSISTENCE & DATA ---
   const [customerData, setCustomerData] = useState<any>(null);
@@ -153,7 +155,10 @@ export default function CustomerPortal({
 
   // Tabs: 'buy' | 'history' | 'invoices' | 'register_member'
   const [activeTab, setActiveTab] = useState<'buy' | 'history' | 'invoices' | 'register_member'>('buy');
-  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [localShowLoginModal, setLocalShowLoginModal] = useState(false);
+
+  const showLoginModal = propShowLoginModal ?? localShowLoginModal;
+  const setShowLoginModal = propSetShowLoginModal ?? setLocalShowLoginModal;
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [monthlyPackages, setMonthlyPackages] = useState<any[]>([]);
 
