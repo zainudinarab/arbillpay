@@ -1164,10 +1164,10 @@ const safeFormatDate = (val: any): string => {
           </div>
         </header>
 
-        {/* Checkout Main */}
-        <main className="flex-1 max-w-6xl w-full mx-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Left Column: Client Invoice Copy (7 Columns - Wider Tagihan) */}
-          <div className="md:col-span-7 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6 h-fit">
+        {/* Checkout Main (Full Edge-to-Edge Width) */}
+        <main className="flex-1 w-full p-4 md:p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
+          {/* Left Column: Client Invoice Copy (8 Columns - Full Width Tagihan Utama) */}
+          <div className="md:col-span-8 bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm space-y-6 h-fit">
             <div className="flex justify-between items-start border-b border-slate-100 pb-5">
               <div>
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block font-bold">TAGIHAN DARI</span>
@@ -1237,8 +1237,8 @@ const safeFormatDate = (val: any): string => {
             </div>
           </div>
 
-          {/* Right Column: Compact Payment Panel (5 Columns - White Template) */}
-          <div className="md:col-span-5 space-y-6">
+          {/* Right Column: Compact Payment Panel (4 Columns - Small Tidy Panel) */}
+          <div className="md:col-span-4 space-y-6">
             {checkoutInvoice.status === 'paid' ? (
               <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8 text-center space-y-4 shadow-sm flex flex-col items-center justify-center min-h-[350px]">
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center animate-pulse">
