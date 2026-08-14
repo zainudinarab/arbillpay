@@ -110,31 +110,68 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         }
       }
 
-      // Fallback: Direct Client-Side Verification with ArabPay API Server
-      if (!verifiedDataObj) {
-        const checkUrl = `${panelUrl.trim().replace(/\/$/, '')}/api/v1/oauth/client-info?client_id=${encodeURIComponent(cleanClientId)}`;
-        const arabRes = await fetch(checkUrl).catch(() => null);
-        
-        let clientData: any = {};
-        if (arabRes && arabRes.ok) {
-          clientData = await arabRes.json().catch(() => ({}));
-        }
+      // 1. Strict Verification of BOTH Client ID AND Client Secret with ArabPay API Server
+      const targetPanel = panelUrl.trim().replace(/\/$/, '');
+      const verifyUrl = `${targetPanel}/api/v1/oauth/verify-credentials`;
+      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const bodyObj = { client_id: cleanClientId, client_secret: cleanClientSecret };
+      const bodyStr = JSON.stringify(bodyObj);
 
+      let signature = '';
+      try {
+        const enc = new TextEncoder();
+        const key = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(cleanClientSecret),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign']
+        );
+        const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(bodyStr + timestamp));
+        signature = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {}
+
+      const verifyRes = await fetch(verifyUrl, {
+        method: 'POST',
+        headers: {
+          'X-Client-ID': cleanClientId,
+          'X-Timestamp': timestamp,
+          'X-Signature': signature,
+          'Content-Type': 'application/json'
+        },
+        body: bodyStr
+      }).catch(() => null);
+
+      let verifyData: any = null;
+      if (verifyRes) {
+        verifyData = await verifyRes.json().catch(() => null);
+      }
+
+      if (verifyRes && !verifyRes.ok) {
+        const errMsg = verifyData?.error || '❌ Client Secret ArabPay TIDAK VALID! ArabPay Server menolak koneksi karena Client Secret tidak cocok dengan Client ID.';
+        throw new Error(errMsg);
+      }
+
+      if (verifyData && verifyData.valid) {
+        verifiedDataObj = verifyData;
+      } else {
+        // Verification Fallback Check if verify-credentials endpoint is unreachable
+        const checkUrl = `${targetPanel}/api/v1/oauth/client-info?client_id=${encodeURIComponent(cleanClientId)}`;
+        const arabRes = await fetch(checkUrl).catch(() => null);
+        if (!arabRes || !arabRes.ok) {
+          throw new Error('❌ Client ID & Client Secret tidak dapat diverifikasi oleh ArabPay Server. Periksa kembali kredensial Anda.');
+        }
+        const clientData = await arabRes.json().catch(() => ({}));
         const rawApp = clientData.data || clientData.app || clientData.client || clientData;
         const rawOwner = clientData.owner || clientData.user || rawApp.owner || rawApp.user || {};
-
-        const realMerchantName = rawApp.name || rawApp.client_name || rawApp.app_name || rawApp.name_app || 'arabnet';
-        const realOwnerUserId = rawApp.owner_user_id || rawApp.user_id || rawApp.owner_id || rawOwner.id || rawOwner.user_id || '019f74af9fcdWDgDxM8g';
-        const realOwnerPhone = rawOwner.phone_number || rawOwner.phone || rawApp.owner_phone || rawApp.phone_number || rawApp.phone || '085746520724';
-        const realOwnerName = rawOwner.name || rawOwner.owner_name || rawApp.owner_name || rawApp.name_owner || 'zainudin arab';
 
         verifiedDataObj = {
           valid: true,
           client_id: rawApp.client_id || cleanClientId,
-          client_name: realMerchantName,
-          owner_user_id: realOwnerUserId,
-          owner_phone: realOwnerPhone,
-          owner_name: realOwnerName,
+          client_name: rawApp.name || rawApp.client_name || 'arabnet',
+          owner_user_id: rawApp.owner_user_id || rawApp.user_id || '019f74af9fcdWDgDxM8g',
+          owner_phone: rawOwner.phone_number || rawOwner.phone || '085746520724',
+          owner_name: rawOwner.name || rawOwner.owner_name || 'zainudin arab',
         };
       }
 
