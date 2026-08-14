@@ -527,8 +527,12 @@ export default function CustomerPortal({
       const finalUsername = isHotspot ? regForm.username : (regForm.username || `user-${regForm.phone_number.slice(-4)}`);
       const finalPassword = isHotspot ? regForm.password : (regForm.password || '123456');
 
+      const existingCusts = await getCustomersFromFirestore().catch(() => ({ customers: [] }));
+      const nextCustCode = generateNextCustomerCode(existingCusts?.customers || []);
+
       const custObj = {
-        id: `cust_${Date.now()}`,
+        id: nextCustCode,
+        customer_code: nextCustCode,
         user_id: currentUser?.id || null,
         name: regForm.name,
         phone_number: regForm.phone_number,
