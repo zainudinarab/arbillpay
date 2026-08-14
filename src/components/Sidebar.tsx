@@ -106,7 +106,6 @@ export default function Sidebar({
         { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'vouchers', label: 'Voucher Hotspot', icon: Ticket, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
-        { id: 'regions', label: 'Data Wilayah', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
       ]
     },
@@ -128,6 +127,16 @@ export default function Sidebar({
       items: [
         { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
         { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },
+      ]
+    },
+    {
+      id: 'settings_group',
+      label: 'Pengaturan & Wilayah',
+      icon: Settings,
+      roles: ['owner', 'teknisi', 'marketing', 'kasir'],
+      items: [
+        { id: 'settings', label: t.settings, icon: Settings, roles: ['owner'] },
+        { id: 'regions', label: 'Data Wilayah', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
       ]
     }
   ];
@@ -256,20 +265,6 @@ export default function Sidebar({
               </div>
             );
           })}
-        </div>
-
-        {/* General Settings */}
-        <div className="space-y-1 pt-2 border-t border-slate-100">
-          <button
-            onClick={() => setCurrentView('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-sans font-bold transition-all cursor-pointer ${currentView === 'settings'
-              ? themeStyles.activeBg
-              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-          >
-            <Settings size={17} className={currentView === 'settings' ? themeStyles.activeIcon : 'text-slate-400'} />
-            <span>{t.settings}</span>
-          </button>
         </div>
       </div>
 
