@@ -161,27 +161,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check setup installation status on startup from Cloud Firestore
+  // Check setup installation status on startup DIRECTLY & EXCLUSIVELY FROM CLOUD FIRESTORE
   useEffect(() => {
-    const checkSetupStatus = async () => {
+    const checkSetupStatusDirectFirebase = async () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
       const pathname = window.location.pathname.replace('/', '');
 
-      // 1. Query Live Cloud Firestore Database for Merchant Setup document
+      // Query Live Cloud Firestore Database exclusively for Merchant Setup document
       let liveCreds: any = null;
       try {
         liveCreds = await getMerchantCredentialsFromFirestore();
       } catch (e) {}
 
-      const localInstalled = localStorage.getItem('arbill_setup_completed');
-      const localClientId = localStorage.getItem('arabpay_client_id');
-      
-      const isAlreadyConfigured = Boolean(liveCreds && (liveCreds.client_id || liveCreds.client_secret)) || (localInstalled === 'true' && Boolean(localClientId));
+      // 100% EXCLUSIVE CLOUD FIRESTORE DETERMINATION (ZERO LOCALSTORAGE DETECT)
+      const isConfiguredInFirebase = Boolean(liveCreds && (liveCreds.client_id || liveCreds.client_secret || liveCreds.installed));
 
       if (hash.includes('setup') || pathname.includes('setup')) {
-        if (isAlreadyConfigured) {
-          // SETUP ALREADY COMPLETED: PERMANENTLY LOCKED!
-          console.warn('🔒 Setup wizard is permanently locked because installation is already complete in Cloud Firestore.');
+        if (isConfiguredInFirebase) {
+          console.warn('🔒 Setup wizard is permanently locked because installation document is present in Cloud Firestore.');
           window.location.hash = '#/overview';
           setShowSetupWizard(false);
           return;
@@ -190,15 +187,14 @@ export default function App() {
         return;
       }
 
-      // If already configured in Cloud Firestore database, DO NOT show SetupWizard to any user!
-      if (!isAlreadyConfigured) {
+      if (!isConfiguredInFirebase) {
+        // Only show setup wizard if Firestore has no merchant credentials at all
         setShowSetupWizard(true);
-        return;
       } else {
         setShowSetupWizard(false);
       }
     };
-    checkSetupStatus();
+    checkSetupStatusDirectFirebase();
   }, []);
 
   // Check URL query string or pathname for admin login route or ArabPay OAuth callback
