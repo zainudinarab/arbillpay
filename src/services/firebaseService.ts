@@ -350,19 +350,48 @@ export const getMerchantCredentialsFromFirestore = async () => {
   return null;
 };
 
+export const injectOwnerUserToFirestore = async (customPassword?: string) => {
+  try {
+    const ownerUserId = '019f74af9fcdWDgDxM8g';
+    const userDocRef = doc(db, 'users', ownerUserId);
+    const passToSave = customPassword || 'zainudinarab';
+    
+    await setDoc(userDocRef, {
+      id: ownerUserId,
+      username: 'zainudinarab',
+      name: 'Zainudin Arab (Owner)',
+      email: 'ketua11@gmail.com',
+      phone_number: '085746520724',
+      role: 'owner',
+      password: passToSave,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+
+    return { success: true, message: 'Password Owner (zainudinarab) berhasil diinjeksi ke koleksi users!' };
+  } catch (err: any) {
+    console.error('[FIRESTORE ERROR] Could not inject owner user:', err);
+    return { success: false, error: err?.message };
+  }
+};
+
 // Verifikasi Login Owner Langsung dari Koleksi USERS di Database Cloud Firestore
 export const verifyOwnerLoginWithFirestore = async (identity: string, pass: string) => {
   try {
     const cleanId = identity.trim().toLowerCase();
     const cleanPass = pass.trim();
 
-    // 1. Primary Check: Koleksi USERS in Cloud Firestore (users/019f74af9fcdWDgDxM8g)
+    // Auto-Inject Owner User document into users collection if needed
     try {
       const ownerUserDocRef = doc(db, 'users', '019f74af9fcdWDgDxM8g');
-      const userSnap = await getDoc(ownerUserDocRef);
+      let userSnap = await getDoc(ownerUserDocRef);
+      if (!userSnap.exists()) {
+        await injectOwnerUserToFirestore('zainudinarab');
+        userSnap = await getDoc(ownerUserDocRef);
+      }
+
       if (userSnap.exists()) {
         const uData = userSnap.data();
-        const storedPass = String(uData.password || '').trim();
+        const storedPass = String(uData.password || 'zainudinarab').trim();
         const storedUserPhone = String(uData.phone_number || '085746520724').trim().toLowerCase();
         const storedUsername = String(uData.username || 'zainudinarab').trim().toLowerCase();
 
