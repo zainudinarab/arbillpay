@@ -706,8 +706,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   const openEditModal = (cust: CustomerItem) => {
     setEditingCustomer(cust);
-    const safeId = String(cust.id || Date.now());
-    setCustomerCode(cust.customer_code || `CUST-${safeId.substring(0, 5).toUpperCase()}`);
+    const cleanNum = String(cust.id || Date.now()).replace(/^cust_/i, '').replace(/^cust-/i, '').replace(/^cust/i, '');
+    const defaultCode = `CUST-${cleanNum.toUpperCase()}`;
+    const codeToShow = (cust.customer_code && !cust.customer_code.includes('CUST-CUST')) ? cust.customer_code.toUpperCase() : defaultCode;
+    setCustomerCode(codeToShow);
     setName(cust.name || '');
     setPhoneNumber(cust.phone_number || '');
     setAddress(cust.address || '');

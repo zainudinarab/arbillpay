@@ -102,14 +102,15 @@ export const getFtthMapFromFirestore = async () => {
 // --- 2. CUSTOMERS MANAGEMENT ---
 export const saveCustomerToFirestore = async (customer: any) => {
   try {
-    let rawCustId = String(customer.id || customer.customer_code || `CUST-${Date.now()}`).trim();
-    if (rawCustId.toLowerCase().startsWith('cust_')) {
-      rawCustId = `CUST-${rawCustId.slice(5)}`;
-    } else if (!rawCustId.toUpperCase().startsWith('CUST-') && !rawCustId.toUpperCase().startsWith('CUST')) {
-      rawCustId = `CUST-${rawCustId}`;
-    }
-
-    const formattedCustId = rawCustId.toUpperCase();
+    const rawVal = String(customer.id || customer.customer_code || Date.now()).trim();
+    const cleanNum = rawVal
+      .replace(/^cust_/i, '')
+      .replace(/^cust-/i, '')
+      .replace(/^cust/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+      
+    const formattedCustId = `CUST-${cleanNum || Date.now()}`;
     const custRef = doc(db, 'customers', formattedCustId);
 
     const { customer_code, ...cleanCustPayload } = customer;
@@ -117,6 +118,7 @@ export const saveCustomerToFirestore = async (customer: any) => {
     await setDoc(custRef, sanitizeForFirestore({
       ...cleanCustPayload,
       id: formattedCustId,
+      customer_code: formattedCustId,
       updated_at: new Date().toISOString()
     }), { merge: true });
 
