@@ -36,7 +36,30 @@ export function formatDate(dateString: string, lang: 'id' | 'en' = 'id'): string
 }
 
 /**
- * Builds formatted Invoice ID: INV-YYYYMM-01-CUST-178670126729 (ALL CAPITAL)
+ * Generates short incremental Customer Code: CUST-1001, CUST-1002, CUST-1003...
+ */
+export function generateNextCustomerCode(existingCustomers: any[] = []): string {
+  if (!existingCustomers || existingCustomers.length === 0) {
+    return 'CUST-1001';
+  }
+
+  let maxNum = 1000;
+  for (const c of existingCustomers) {
+    const rawStr = String(c?.id || c?.customer_code || '');
+    const matches = rawStr.match(/\d+/g);
+    if (matches) {
+      const num = parseInt(matches.join(''), 10);
+      if (num >= 1001 && num < 99999) {
+        if (num > maxNum) maxNum = num;
+      }
+    }
+  }
+
+  return `CUST-${maxNum + 1}`;
+}
+
+/**
+ * Builds formatted Invoice ID: INV-YYYYMM-01-CUST-1001 (ALL CAPITAL)
  */
 export function buildFormattedInvoiceId(
   monthCode: string,

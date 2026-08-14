@@ -40,7 +40,7 @@ import {
   saveInvoiceToFirestore 
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
-import { generateSequentialInvoices } from '../utils';
+import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
 
 const formatDateSafe = (dateVal: any): string => {
   if (!dateVal) return '-';
@@ -605,11 +605,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   };
 
   const resetForm = () => {
-    const randomCode = `CUST-${Date.now()}`;
+    const nextCode = generateNextCustomerCode(customers);
     const today = new Date().toISOString().split('T')[0];
     const initialPkgId = packages.length > 0 ? packages[0].id : '';
 
-    setCustomerCode(randomCode);
+    setCustomerCode(nextCode);
     setName('');
     setPhoneNumber('');
     setEmail('');
