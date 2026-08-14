@@ -63,7 +63,7 @@ import NotificationSettingsPage from './components/NotificationSettingsPage';
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 
 // Import Icons for customer checkout
-import { QrCode, ArrowLeft, ShieldCheck, CheckCircle } from 'lucide-react';
+import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight } from 'lucide-react';
 import { formatCurrency, formatDate } from './utils';
 
 import LoginModal from './components/LoginModal';
