@@ -40,6 +40,7 @@ import {
   saveInvoiceToFirestore 
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
+import { generateSequentialInvoices } from '../utils';
 
 const formatDateSafe = (dateVal: any): string => {
   if (!dateVal) return '-';
@@ -247,29 +248,17 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       } catch (fbErr) {}
     }
 
-    // Auto-generate current invoice if customer has no invoice yet
+    // Auto-generate sequential monthly invoices starting from installation_date up to current month
     if (matchedInvoices.length === 0) {
       const pkg = packages.find(p => p.id === cust.package_id);
       const pkgPrice = pkg ? Number(pkg.price) : 150000;
       const pkgName = pkg ? pkg.name : 'Paket Internet PPPoE';
 
-      const generatedInvoice = {
-        id: `INV-${Date.now().toString().slice(-6)}`,
-        customer_id: cust.id,
-        customer_code: cust.customer_code || `CUST-${cust.id.slice(-4)}`,
-        customer_name: cust.name,
-        customer_phone: cust.phone_number || '',
-        pppoe_username: cust.pppoe_username || '',
-        package_name: pkgName,
-        amount: pkgPrice,
-        status: cust.status === 'active' || cust.status === 'aktif' ? 'unpaid' : 'pending',
-        month: new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        created_at: new Date().toISOString()
-      };
-
-      await saveInvoiceToFirestore(generatedInvoice).catch(() => null);
-      matchedInvoices = [generatedInvoice];
+      const generatedList = generateSequentialInvoices(cust, pkgPrice, pkgName);
+      for (const inv of generatedList) {
+        await saveInvoiceToFirestore(inv).catch(() => null);
+      }
+      matchedInvoices = generatedList;
     }
 
     setCustomerInvoices(matchedInvoices);

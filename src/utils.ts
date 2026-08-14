@@ -36,6 +36,66 @@ export function formatDate(dateString: string, lang: 'id' | 'en' = 'id'): string
 }
 
 /**
+ * Generates sequential monthly invoices starting from installation_date up to current month
+ */
+export function generateSequentialInvoices(cust: any, packagePrice: number, packageName: string): any[] {
+  if (!cust) return [];
+
+  const rawInstDate = cust.installation_date || cust.created_at || new Date().toISOString();
+  let instDate = new Date(rawInstDate);
+  if (isNaN(instDate.getTime())) {
+    instDate = new Date();
+  }
+
+  const currentDate = new Date();
+  const instYear = instDate.getFullYear();
+  const instMonth = instDate.getMonth();
+  const instDay = instDate.getDate();
+
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+
+  const invoices: any[] = [];
+
+  let y = instYear;
+  let m = instMonth;
+
+  while (y < currentYear || (y === currentYear && m <= currentMonth)) {
+    const periodDate = new Date(y, m, 1);
+    const monthName = periodDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    const monthCode = `${y}${(m + 1).toString().padStart(2, '0')}`;
+    
+    const dueDay = Math.min(instDay, 28);
+    const dueIso = `${y}-${(m + 1).toString().padStart(2, '0')}-${dueDay.toString().padStart(2, '0')}`;
+    const safeCustCode = cust.customer_code || `CUST-${String(cust.id || '').slice(-4).toUpperCase()}`;
+
+    invoices.push({
+      id: `INV-${monthCode}-${safeCustCode}`,
+      customer_id: cust.id,
+      customer_code: safeCustCode,
+      customer_name: cust.name,
+      customer_phone: cust.phone_number || '',
+      pppoe_username: cust.pppoe_username || '',
+      package_name: packageName,
+      amount: packagePrice,
+      status: 'unpaid',
+      month: monthName,
+      period: `${y}-${(m + 1).toString().padStart(2, '0')}`,
+      due_date: dueIso,
+      created_at: new Date(y, m, instDay, 8, 0, 0).toISOString()
+    });
+
+    m++;
+    if (m > 11) {
+      m = 0;
+      y++;
+    }
+  }
+
+  return invoices;
+}
+
+/**
  * Translations Dictionary
  */
 export const translations = {
