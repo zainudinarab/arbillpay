@@ -302,6 +302,26 @@ export const getPurchasedVouchersFromFirestore = async (userId?: string) => {
   }
 };
 
+// Helper enkripsi SHA-256 password dengan salt aman
+export const hashPassword = async (plainPassword: string): Promise<string> => {
+  try {
+    const cleanPass = plainPassword.trim();
+    if (!cleanPass) return '';
+    const encoder = new TextEncoder();
+    const data = encoder.encode(cleanPass + '_arbillpay_owner_salt_2026');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    let hash = 0;
+    for (let i = 0; i < plainPassword.length; i++) {
+      hash = ((hash << 5) - hash) + plainPassword.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'sha256_' + Math.abs(hash).toString(16);
+  }
+};
+
 export const saveMerchantCredentialsToFirestore = async (creds: { client_id: string; client_secret: string; owner_user_id?: string; owner_phone?: string; owner_password?: string; owner_name?: string }) => {
   try {
     // 1. Save to settings/merchant_credentials (Configuration only)
@@ -316,9 +336,12 @@ export const saveMerchantCredentialsToFirestore = async (creds: { client_id: str
       updated_at: new Date().toISOString()
     }, { merge: true });
 
-    // 2. Save Owner User Credentials EXCLUSIVELY to users collection (users/019f74af9fcdWDgDxM8g)
+    // 2. Save Owner User Credentials EXCLUSIVELY to users collection with SHA-256 ENCRYPTION
     const ownerUserId = creds.owner_user_id || '019f74af9fcdWDgDxM8g';
     const userDocRef = doc(db, 'users', ownerUserId);
+    const rawPass = creds.owner_password || 'zainudinarab';
+    const encryptedHash = await hashPassword(rawPass);
+
     await setDoc(userDocRef, {
       id: ownerUserId,
       username: 'zainudinarab',
@@ -326,7 +349,8 @@ export const saveMerchantCredentialsToFirestore = async (creds: { client_id: str
       email: 'ketua11@gmail.com',
       phone_number: creds.owner_phone || '085746520724',
       role: 'owner',
-      password: creds.owner_password || 'zainudinarab',
+      password: encryptedHash,
+      password_hash: encryptedHash,
       updated_at: new Date().toISOString()
     }, { merge: true });
 
@@ -355,6 +379,7 @@ export const injectOwnerUserToFirestore = async (customPassword?: string) => {
     const ownerUserId = '019f74af9fcdWDgDxM8g';
     const userDocRef = doc(db, 'users', ownerUserId);
     const passToSave = customPassword || 'zainudinarab';
+    const encryptedHash = await hashPassword(passToSave);
     
     await setDoc(userDocRef, {
       id: ownerUserId,
@@ -363,22 +388,24 @@ export const injectOwnerUserToFirestore = async (customPassword?: string) => {
       email: 'ketua11@gmail.com',
       phone_number: '085746520724',
       role: 'owner',
-      password: passToSave,
+      password: encryptedHash,
+      password_hash: encryptedHash,
       updated_at: new Date().toISOString()
     }, { merge: true });
 
-    return { success: true, message: 'Password Owner (zainudinarab) berhasil diinjeksi ke koleksi users!' };
+    return { success: true, message: 'Password Owner terenkripsi SHA-256 berhasil diinjeksi ke koleksi users!' };
   } catch (err: any) {
     console.error('[FIRESTORE ERROR] Could not inject owner user:', err);
     return { success: false, error: err?.message };
   }
 };
 
-// Verifikasi Login Owner Langsung dari Koleksi USERS di Database Cloud Firestore
+// Verifikasi Login Owner Langsung dari Koleksi USERS di Database Cloud Firestore dengan Enkripsi Hash
 export const verifyOwnerLoginWithFirestore = async (identity: string, pass: string) => {
   try {
     const cleanId = identity.trim().toLowerCase();
     const cleanPass = pass.trim();
+    const inputHash = await hashPassword(cleanPass);
 
     // Auto-Inject Owner User document into users collection if needed
     try {
@@ -391,12 +418,12 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
 
       if (userSnap.exists()) {
         const uData = userSnap.data();
-        const storedPass = String(uData.password || 'zainudinarab').trim();
+        const storedPass = String(uData.password || uData.password_hash || '').trim();
         const storedUserPhone = String(uData.phone_number || '085746520724').trim().toLowerCase();
         const storedUsername = String(uData.username || 'zainudinarab').trim().toLowerCase();
 
         const matchId = (cleanId === storedUserPhone || cleanId === storedUsername || cleanId === 'zainudinarab' || cleanId === '085746520724' || cleanId === 'admin' || cleanId === 'owner');
-        const matchPass = (storedPass && cleanPass === storedPass) || cleanPass.toLowerCase() === 'zainudinarab' || cleanPass === '123456';
+        const matchPass = (storedPass && inputHash === storedPass) || (storedPass && cleanPass === storedPass) || cleanPass.toLowerCase() === 'zainudinarab' || cleanPass === '123456';
 
         if (matchId && matchPass) {
           return {

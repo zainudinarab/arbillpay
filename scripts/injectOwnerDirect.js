@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
+import crypto from 'crypto';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDTKOdu9vth6hywTM8GqXOSBg8EtXnfH90",
@@ -13,10 +14,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-async function inject() {
-  console.log('🚀 Injecting Owner document directly to Cloud Firestore (arbillpay)...');
+function hashPasswordNode(plainPassword) {
+  const cleanPass = plainPassword.trim();
+  return crypto.createHash('sha256').update(cleanPass + '_arbillpay_owner_salt_2026').digest('hex');
+}
+
+async function injectEncrypted() {
+  const rawPass = 'zainudinarab';
+  const encryptedHash = hashPasswordNode(rawPass);
+  console.log(`🔐 Encrypting password '${rawPass}' -> SHA-256 Hash: ${encryptedHash}`);
+  console.log('🚀 Injecting ENCRYPTED Owner password document into Cloud Firestore users collection...');
+
   try {
-    // 1. Inject to users collection: users/019f74af9fcdWDgDxM8g
     await setDoc(doc(db, 'users', '019f74af9fcdWDgDxM8g'), {
       id: '019f74af9fcdWDgDxM8g',
       username: 'zainudinarab',
@@ -24,22 +33,12 @@ async function inject() {
       email: 'ketua11@gmail.com',
       phone_number: '085746520724',
       role: 'owner',
-      password: 'zainudinarab',
+      password: encryptedHash,
+      password_hash: encryptedHash,
       updated_at: new Date().toISOString()
     }, { merge: true });
 
-    // 2. Also inject to settings/merchant_credentials
-    await setDoc(doc(db, 'settings', 'merchant_credentials'), {
-      client_id: 'AP24228873',
-      owner_user_id: '019f74af9fcdWDgDxM8g',
-      owner_phone: '085746520724',
-      owner_username: 'zainudinarab',
-      owner_password: 'zainudinarab',
-      installed: true,
-      updated_at: new Date().toISOString()
-    }, { merge: true });
-
-    console.log('✅ SUCCESS! Owner document (users/019f74af9fcdWDgDxM8g) and settings/merchant_credentials successfully injected into Cloud Firestore!');
+    console.log('✅ ENCRYPTED SUCCESS! Owner document (users/019f74af9fcdWDgDxM8g) updated with SHA-256 hash in Cloud Firestore!');
     process.exit(0);
   } catch (err) {
     console.error('❌ ERROR Injecting to Cloud Firestore:', err);
@@ -47,4 +46,4 @@ async function inject() {
   }
 }
 
-inject();
+injectEncrypted();
