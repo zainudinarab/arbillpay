@@ -529,6 +529,16 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
                           👷 {cust.teknisi}
                         </span>
                       )}
+
+                      {/* Direct Link to FTTH Map */}
+                      <button
+                        onClick={() => window.location.hash = '#/ftth-map'}
+                        className="px-2 py-0.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold border border-purple-200 transition-all flex items-center gap-1 cursor-pointer"
+                        title="Buka Peta Jaringan FTTH & Master Perangkat"
+                      >
+                        <Compass size={12} className="text-purple-600 shrink-0" />
+                        <span>Peta FTTH</span>
+                      </button>
                     </div>
 
                     <button
