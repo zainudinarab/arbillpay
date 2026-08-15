@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -24,7 +26,8 @@ import {
   Save,
   X,
   ExternalLink,
-  Compass
+  Compass,
+  Globe
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -50,6 +53,134 @@ const isPendingOrInProgress = (status: any) => {
   return s === 'pending' || s === 'survey' || s === 'installing' || s === 'testing' || s === 'non-active' || s === 'inactive' || s === 'menunggu persetujuan' || s === 'pending_approval' || (s !== 'active' && s !== 'aktif' && s !== 'terminated' && s !== 'isolir' && s !== 'isolated' && s !== 'rejected');
 };
 
+const MapPickerComponent: React.FC<{
+  lat: string;
+  lng: string;
+  onSelect: (lat: string, lng: string) => void;
+}> = ({ lat, lng, onSelect }) => {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const [searchAddr, setSearchAddr] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  const startLat = Number(lat) || -7.54321;
+  const startLng = Number(lng) || 112.12345;
+
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    if (!mapInstanceRef.current) {
+      const map = L.map(mapContainerRef.current, {
+        center: [startLat, startLng],
+        zoom: (lat && lng) ? 17 : 14,
+        zoomControl: true
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+      const redPinSvg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="38" height="38">
+          <path fill="#ef4444" stroke="#ffffff" stroke-width="2" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        </svg>
+      `;
+
+      const pinIcon = L.divIcon({
+        className: 'custom-map-picker-pin',
+        html: redPinSvg,
+        iconSize: [38, 38],
+        iconAnchor: [19, 38]
+      });
+
+      const marker = L.marker([startLat, startLng], {
+        draggable: true,
+        icon: pinIcon
+      }).addTo(map);
+
+      markerRef.current = marker;
+
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        onSelect(pos.lat.toFixed(6), pos.lng.toFixed(6));
+      });
+
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        const { lat: clickLat, lng: clickLng } = e.latlng;
+        marker.setLatLng([clickLat, clickLng]);
+        onSelect(clickLat.toFixed(6), clickLng.toFixed(6));
+      });
+
+      mapInstanceRef.current = map;
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchAddr.trim() || !mapInstanceRef.current) return;
+    setIsSearching(true);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddr + ', Indonesia')}`);
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const first = data[0];
+        const newLat = parseFloat(first.lat);
+        const newLng = parseFloat(first.lon);
+        mapInstanceRef.current.setView([newLat, newLng], 17);
+        if (markerRef.current) {
+          markerRef.current.setLatLng([newLat, newLng]);
+        }
+        onSelect(newLat.toFixed(6), newLng.toFixed(6));
+      } else {
+        alert('Lokasi tidak ditemukan. Coba masukkan nama desa, jalan, atau kota.');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2 mt-2">
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Cari lokasi/alamat (contoh: Krajan, Jogoroto, Jombang)..."
+          value={searchAddr}
+          onChange={(e) => setSearchAddr(e.target.value)}
+          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 font-sans"
+        />
+        <button
+          type="submit"
+          disabled={isSearching}
+          className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+        >
+          {isSearching ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
+          <span>{isSearching ? 'Cari...' : 'Cari'}</span>
+        </button>
+      </form>
+
+      <div className="relative rounded-2xl overflow-hidden border border-slate-300 shadow-md">
+        <div ref={mapContainerRef} className="w-full h-64 z-10" />
+        <div className="absolute bottom-2 left-2 right-2 bg-slate-900/90 text-white px-3 py-1.5 rounded-xl text-[11px] font-sans font-bold z-20 backdrop-blur-sm flex items-center justify-between">
+          <span>📍 Klik lokasi di peta / geser Pin Merah ke rumah pelanggan</span>
+          <span className="font-mono text-emerald-400">{lat && lng ? `${lat}, ${lng}` : 'Belum Dipilih'}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function PendingSubmissionsPage({ profile, t, onLogout }: PendingSubmissionsPageProps) {
   const [pendingList, setPendingList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +203,7 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
   const [powerLaser, setPowerLaser] = useState('-19.00');
   const [teknisi, setTeknisi] = useState('');
   const [gettingGps, setGettingGps] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   const fetchPendingSubmissions = async () => {
     setLoading(true);
@@ -681,21 +813,51 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
 
               {/* Card 2: GPS Location Picker */}
               <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-2xl space-y-3">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
                     <MapPin size={14} className="text-emerald-600" />
                     <span>2. TITIK KOORDINAT GPS PELANGGAN</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleGetGPS}
-                    disabled={gettingGps}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
-                  >
-                    {gettingGps ? <RefreshCw size={12} className="animate-spin" /> : <Crosshair size={12} />}
-                    <span>{gettingGps ? 'Mengambil GPS...' : '📍 Ambil GPS HP Saat Ini'}</span>
-                  </button>
+                  
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleGetGPS}
+                      disabled={gettingGps}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                      title="Gunakan fitur GPS bawaan HP/Browser"
+                    >
+                      {gettingGps ? <RefreshCw size={12} className="animate-spin" /> : <Crosshair size={12} />}
+                      <span>{gettingGps ? 'Mengambil GPS...' : '📍 GPS HP Realtime'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowMapPicker(!showMapPicker)}
+                      className={`px-2.5 py-1 font-extrabold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-sm ${
+                        showMapPicker 
+                          ? 'bg-slate-900 text-white border border-slate-800' 
+                          : 'bg-white text-slate-800 border border-slate-300 hover:bg-slate-50'
+                      }`}
+                      title="Buka/tutup visual peta interaktif untuk mengklik lokasi rumah pelanggan"
+                    >
+                      <Globe size={12} className={showMapPicker ? 'text-emerald-400' : 'text-blue-600'} />
+                      <span>{showMapPicker ? 'Tutup Peta' : '🗺️ Pilih di Peta Visual'}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* VISUAL MAP PICKER CONTAINER */}
+                {showMapPicker && (
+                  <MapPickerComponent
+                    lat={latitude}
+                    lng={longitude}
+                    onSelect={(newLat, newLng) => {
+                      setLatitude(newLat);
+                      setLongitude(newLng);
+                    }}
+                  />
+                )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
