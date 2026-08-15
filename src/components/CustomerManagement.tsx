@@ -277,8 +277,24 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
             const invPpp = String(inv.pppoe_username || '').trim().toLowerCase();
             const invPhone = String(inv.customer_phone || (inv.client && inv.client.phone) || '').trim().replace(/[^0-9]/g, '');
 
-            // 1. Direct ID match
-            if (cId && invCustId === cId) return true;
+            // ⛔ SANITY CHECK KETAT: Jika invoice memiliki kode pelanggan CUST-XXXXX yang BERBEDA dari cCode, TOLAK SEKETIKA!
+            if (cCode && cCode.length >= 4) {
+              if (invCustCode && invCustCode.includes('CUST-') && invCustCode !== cCode) {
+                return false;
+              }
+              if (invNum && invNum.includes('-CUST-') && !invNum.includes(cCode)) {
+                return false;
+              }
+            }
+
+            // 1. Direct ID match (hanya jika ID persis sama)
+            if (cId && invCustId === cId) {
+              // Jika ID sama tetapi kode invoice beda pelanggan, tetap tolak
+              if (cCode && invNum.includes('-CUST-') && !invNum.includes(cCode)) {
+                return false;
+              }
+              return true;
+            }
 
             // 2. Customer Code match
             if (cCode && invCustCode && invCustCode === cCode) return true;
