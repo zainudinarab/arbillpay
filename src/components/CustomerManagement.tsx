@@ -43,7 +43,8 @@ import {
   saveDeviceCatalogToFirestore,
   DEFAULT_DEVICE_CATALOG,
   getFtthMapFromFirestore,
-  saveFtthMapToFirestore
+  saveFtthMapToFirestore,
+  syncCustomerFtthDeviceNode
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
@@ -878,7 +879,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
-        device_type: deviceType,
+        device_type: hasHardwareConfigured ? deviceType : 'NONE',
         device_brand: deviceBrand,
         device_model: deviceModel,
         device_lan_ports: deviceLanPorts,
@@ -896,8 +897,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
       const data = await parseJsonResponse(res);
 
-      // Save to Cloud Firestore as primary/fallback cloud DB
+      // Save to Cloud Firestore as primary/fallback cloud DB & Sync FTTH Node
       await saveCustomerToFirestore(newCustomerPayload).catch(() => null);
+      await syncCustomerFtthDeviceNode(newCustomerPayload).catch(() => null);
 
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
@@ -1020,7 +1022,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
-        device_type: deviceType,
+        device_type: hasHardwareConfigured ? deviceType : 'NONE',
         device_brand: deviceBrand,
         device_model: deviceModel,
         device_lan_ports: deviceLanPorts,
@@ -1038,8 +1040,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         body: JSON.stringify(updatedCustObj)
       }).catch(() => null);
 
-      // Always save to Cloud Firestore as primary database
+      // Always save to Cloud Firestore as primary database & Sync FTTH Node
       await saveCustomerToFirestore(updatedCustObj).catch(() => null);
+      await syncCustomerFtthDeviceNode(updatedCustObj).catch(() => null);
 
       // Update local state
       setCustomers(prev => prev.map(c => c.id === editingCustomer.id ? updatedCustObj : c));
@@ -1384,7 +1387,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                         <th className="py-3 px-4">Pelanggan</th>
                         <th className="py-3 px-4">Paket</th>
                         <th className="py-3 px-4">Username / IP</th>
-                        <th className="py-3 px-4">Fisik Perangkat & Redaman FO & ODP LINK INFO</th>
+                        <th className="py-3 px-4">Fisik Perangkat & Redaman FO</th>
+                        <th className="py-3 px-4">Titik GPS & Node FTTH</th>
                         <th className="py-3 px-4 text-center">Mikrotik Sync</th>
                         <th className="py-3 px-4 text-right">Aksi</th>
                       </tr>
@@ -1477,6 +1481,55 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                 {cust.power_laser || '-19.50'} dBm
                               </span>
                             </div>
+                          </td>
+
+                          {/* TITIK GPS & NODE FTTH COLUMN */}
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            {cust.latitude && cust.longitude ? (
+                              <div className="space-y-1">
+                                <a
+                                  href={cust.maps_url || `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-mono font-bold text-sky-800 bg-sky-50 border border-sky-200 hover:bg-sky-100 px-2 py-0.5 rounded-md transition-all inline-flex items-center gap-1 shadow-2xs"
+                                  title="Klik untuk membuka lokasi GPS rumah pelanggan di Google Maps"
+                                >
+                                  <span>📍 {Number(cust.latitude).toFixed(5)}, {Number(cust.longitude).toFixed(5)}</span>
+                                </a>
+                                <div>
+                                  {(() => {
+                                    const linkedNode = ftthNodes.find((n: any) =>
+                                      String(n.customerId || '') === String(cust.id || cust.customer_code) ||
+                                      (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === String(cust.pppoe_username).toLowerCase().trim()) ||
+                                      (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(cust.sn_onu).toLowerCase().trim())
+                                    );
+                                    if (linkedNode) {
+                                      return (
+                                        <span className="text-emerald-800 font-extrabold bg-emerald-100 px-1.5 py-0.5 rounded text-[9px] inline-flex items-center gap-1" title={`Node: ${linkedNode.name || linkedNode.id}`}>
+                                          <span>⚡ Node: #{linkedNode.id}</span>
+                                        </span>
+                                      );
+                                    }
+                                    return (
+                                      <span className="text-amber-800 font-bold bg-amber-100 px-1.5 py-0.5 rounded text-[9px]">
+                                        ⚠️ Node Off-Map
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setMapCustomer(cust);
+                                  setShowMapPickerModal(true);
+                                }}
+                                className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
+                                title="Klik untuk menentukan titik lokasi GPS rumah pelanggan pada Peta Interactive"
+                              >
+                                <span>⚠️ + Set Titik GPS</span>
+                              </button>
+                            )}
                           </td>
 
                           {/* MIKROTIK SYNC & DISCONNECT BUTTON COLUMN */}
@@ -2083,7 +2136,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     }
 
                     return (
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1.5">
+                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
                             <span>⚠️ BELUM DITAUTKAN KE NODE PETA FTTH</span>
@@ -2091,8 +2144,45 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                           <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">Status: Off-Map</span>
                         </div>
                         <p className="text-[11px] text-amber-800 font-medium">
-                          Pelanggan ini belum memiliki titik Marker Node Perangkat pada Peta FTTH Map.
+                          Pelanggan ini belum memiliki titik Marker Node Perangkat ({deviceBrand} {deviceModel}) pada Peta Topologi FTTH.
                         </p>
+                        <div className="pt-1 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                setActionLoadingId(editingCustomer.id);
+                                const payload = {
+                                  ...editingCustomer,
+                                  latitude: latitude.trim() || editingCustomer.latitude || null,
+                                  longitude: longitude.trim() || editingCustomer.longitude || null,
+                                  device_type: hasHardwareConfigured ? deviceType : 'NONE',
+                                  device_brand: deviceBrand,
+                                  device_model: deviceModel,
+                                  device_lan_ports: deviceLanPorts,
+                                  sn_onu: snOnu.trim() || null,
+                                  odp_port: odpPort.trim() || null
+                                };
+                                const syncRes = await syncCustomerFtthDeviceNode(payload);
+                                if (syncRes.success) {
+                                  const fbMap = await getFtthMapFromFirestore();
+                                  if (fbMap.success) {
+                                    setFtthNodes(fbMap.nodes || []);
+                                    setFtthLines(fbMap.lines || []);
+                                  }
+                                  setToastMsg({ type: 'success', text: `✅ Node Perangkat (${deviceBrand} ${deviceModel}) BERHASIL DIBUAT di Peta FTTH!` });
+                                }
+                              } catch (err: any) {
+                                setToastMsg({ type: 'error', text: 'Gagal membuat node: ' + err?.message });
+                              } finally {
+                                setActionLoadingId(null);
+                              }
+                            }}
+                            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-[11px] cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                          >
+                            <span>⚡ Buat Node Perangkat di Peta Sekarang</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })()}
