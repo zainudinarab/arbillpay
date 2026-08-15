@@ -18,7 +18,13 @@ import {
   Settings,
   ArrowRight,
   Calendar,
-  Check
+  Check,
+  Server,
+  Crosshair,
+  Save,
+  X,
+  ExternalLink,
+  Compass
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -51,6 +57,22 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Router Server & Technical Survey Modal States
+  const [routers, setRouters] = useState<any[]>([]);
+  const [showSurveyModal, setShowSurveyModal] = useState(false);
+  const [surveyCustomer, setSurveyCustomer] = useState<any | null>(null);
+
+  const [selectedRouterId, setSelectedRouterId] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [pppoeUsername, setPppoeUsername] = useState('');
+  const [pppoePassword, setPppoePassword] = useState('');
+  const [odpPort, setOdpPort] = useState('');
+  const [snOnu, setSnOnu] = useState('');
+  const [powerLaser, setPowerLaser] = useState('-19.00');
+  const [teknisi, setTeknisi] = useState('');
+  const [gettingGps, setGettingGps] = useState(false);
+
   const fetchPendingSubmissions = async () => {
     setLoading(true);
     try {
@@ -68,7 +90,105 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
 
   useEffect(() => {
     fetchPendingSubmissions();
+    const fetchRouters = async () => {
+      try {
+        const apiUrl = getApiUrl();
+        if (apiUrl) {
+          const res = await fetch(`${apiUrl}/api/routers`).catch(() => null);
+          if (res && res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.routers)) {
+              setRouters(data.routers);
+            }
+          }
+        }
+      } catch (e) {}
+    };
+    fetchRouters();
   }, []);
+
+  const openSurveyModal = (cust: any) => {
+    setSurveyCustomer(cust);
+    setSelectedRouterId(cust.router_id || (routers.length > 0 ? routers[0].id : ''));
+    setLatitude(cust.latitude || '');
+    setLongitude(cust.longitude || '');
+    setPppoeUsername(cust.pppoe_username || (cust.name ? cust.name.toLowerCase().replace(/\s+/g, '') : 'user123'));
+    setPppoePassword(cust.pppoe_password || '123456');
+    setOdpPort(cust.odp_port || '');
+    setSnOnu(cust.sn_onu || '');
+    setPowerLaser(cust.power_laser || '-19.00');
+    setTeknisi(cust.teknisi || '');
+    setShowSurveyModal(true);
+  };
+
+  const handleGetGPS = () => {
+    if (!navigator.geolocation) {
+      alert('Browser Anda tidak mendukung fitur Geolocation GPS.');
+      return;
+    }
+    setGettingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLatitude(pos.coords.latitude.toFixed(6));
+        setLongitude(pos.coords.longitude.toFixed(6));
+        setGettingGps(false);
+      },
+      (err) => {
+        alert('Gagal mengambil titik GPS: ' + err.message);
+        setGettingGps(false);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
+  const handleSaveSurvey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!surveyCustomer) return;
+
+    setActionLoadingId(surveyCustomer.id);
+    try {
+      const selectedRouterObj = routers.find(r => r.id === selectedRouterId);
+      const mapsUrl = (latitude && longitude) 
+        ? `https://www.google.com/maps?q=${latitude},${longitude}` 
+        : surveyCustomer.maps_url;
+
+      const updatedCust = {
+        ...surveyCustomer,
+        router_id: selectedRouterId || null,
+        router_name: selectedRouterObj ? (selectedRouterObj.name || selectedRouterObj.ip_address) : surveyCustomer.router_name,
+        latitude: latitude.trim() || null,
+        longitude: longitude.trim() || null,
+        maps_url: mapsUrl || null,
+        pppoe_username: pppoeUsername.trim(),
+        pppoe_password: pppoePassword.trim(),
+        odp_port: odpPort.trim() || null,
+        sn_onu: snOnu.trim() || null,
+        power_laser: powerLaser.trim() || null,
+        teknisi: teknisi.trim() || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/customers/${surveyCustomer.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedCust)
+        }).catch(() => null);
+      }
+
+      await saveCustomerToFirestore(updatedCust);
+
+      setPendingList(prev => prev.map(c => c.id === surveyCustomer.id ? updatedCust : c));
+      setToastMsg({ type: 'success', text: `Data survei teknis & server MikroTik untuk "${updatedCust.name}" berhasil disimpan!` });
+      setShowSurveyModal(false);
+      setSurveyCustomer(null);
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err?.message || 'Gagal menyimpan data survei.' });
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
 
   const handleAdvanceStage = async (cust: any, nextStageKey: string) => {
     setActionLoadingId(cust.id);
@@ -325,6 +445,61 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
                     </div>
                   </div>
 
+                  {/* TECHNICAL & SERVER CONFIG SUMMARY BAR */}
+                  <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between gap-3 flex-wrap text-xs">
+                    <div className="flex items-center gap-2.5 flex-wrap font-sans text-slate-600">
+                      {/* GPS Location Badge */}
+                      {cust.latitude && cust.longitude ? (
+                        <a
+                          href={cust.maps_url || `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded-xl bg-sky-50 text-sky-700 font-mono font-bold border border-sky-200 hover:bg-sky-100 transition-all inline-flex items-center gap-1.5"
+                          title="Klik untuk melihat titik GPS di Google Maps"
+                        >
+                          <MapPin size={13} className="text-sky-600 shrink-0" />
+                          <span>📍 {Number(cust.latitude).toFixed(5)}, {Number(cust.longitude).toFixed(5)}</span>
+                        </a>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-xl bg-amber-50 text-amber-700 font-bold border border-amber-200 flex items-center gap-1">
+                          <MapPin size={13} className="text-amber-500 shrink-0" />
+                          <span>GPS Pelanggan: Belum Diset</span>
+                        </span>
+                      )}
+
+                      {/* MikroTik Server Router Badge */}
+                      <span className="px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 font-bold border border-blue-200 flex items-center gap-1.5">
+                        <Server size={13} className="text-blue-600 shrink-0" />
+                        <span>Server Router: <strong>{cust.router_name || (routers.find(r => r.id === cust.router_id)?.name) || 'Belum Dipilih'}</strong></span>
+                      </span>
+
+                      {/* Technical Details: ODP, SN, Laser, Teknisi */}
+                      {cust.odp_port && (
+                        <span className="px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 font-mono text-[11px] font-bold border border-purple-200">
+                          ODP: {cust.odp_port}
+                        </span>
+                      )}
+                      {cust.sn_onu && (
+                        <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                          SN: {cust.sn_onu}
+                        </span>
+                      )}
+                      {cust.teknisi && (
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-200">
+                          👷 {cust.teknisi}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => openSurveyModal(cust)}
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-700 hover:to-slate-800 text-white font-extrabold text-xs rounded-xl border border-slate-700 shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Wrench size={13} className="text-amber-400" />
+                      <span>{cust.latitude || cust.router_id ? 'Edit Data Survei & Server' : '⚡ Input Data Survei & Server'}</span>
+                    </button>
+                  </div>
+
                   {/* STEPPER PROGRESS BAR (5 Tahapan) */}
                   <div className="py-2">
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">
@@ -403,6 +578,217 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
           </div>
         )}
       </main>
+
+      {/* ==================== MODAL FORM SURVEI TEKNIS & SERVER MIKROTIK ==================== */}
+      {showSurveyModal && surveyCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white border border-slate-200 w-full max-w-xl rounded-3xl overflow-hidden shadow-2xl space-y-0 animate-slide-up">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
+                  <Wrench className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-800">Survei Teknis & Konfigurasi Server MikroTik</h3>
+                  <p className="text-xs text-slate-500">Pelanggan: <strong className="text-slate-800">{surveyCustomer.name}</strong> ({surveyCustomer.customer_code || surveyCustomer.id})</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowSurveyModal(false); setSurveyCustomer(null); }}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body Form */}
+            <form onSubmit={handleSaveSurvey} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              
+              {/* Card 1: Server Router Selection */}
+              <div className="p-4 bg-blue-50/40 border border-blue-100 rounded-2xl space-y-2">
+                <label className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Server size={14} className="text-blue-600" />
+                  <span>1. PILIH SERVER ROUTER MIKROTIK *</span>
+                </label>
+                <select
+                  value={selectedRouterId}
+                  onChange={(e) => setSelectedRouterId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-blue-200 rounded-xl text-xs font-sans font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">-- Pilih Server MikroTik --</option>
+                  {routers.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.name || r.ip_address} ({r.ip_address}) {r.is_online ? '🟢 Online' : '⚪ Offline'}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-500 italic">
+                  Akun PPPoE / Hotspot pelanggan ini akan disinkronkan ke server router MikroTik yang dipilih.
+                </p>
+              </div>
+
+              {/* Card 2: GPS Location Picker */}
+              <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-2xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin size={14} className="text-emerald-600" />
+                    <span>2. TITIK KOORDINAT GPS PELANGGAN</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGetGPS}
+                    disabled={gettingGps}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-sm"
+                  >
+                    {gettingGps ? <RefreshCw size={12} className="animate-spin" /> : <Crosshair size={12} />}
+                    <span>{gettingGps ? 'Mengambil GPS...' : '📍 Ambil GPS HP Saat Ini'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Latitude (Garis Lintang)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. -7.543210"
+                      value={latitude}
+                      onChange={(e) => setLatitude(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Longitude (Garis Bujur)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 112.123450"
+                      value={longitude}
+                      onChange={(e) => setLongitude(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {latitude && longitude && (
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 hover:underline bg-white px-3 py-1.5 rounded-lg border border-sky-200 shadow-xs"
+                  >
+                    <span>🗺️ Uji Buka di Google Maps</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+
+              {/* Card 3: Technical FTTH Details */}
+              <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  3. DETAIL PERANGKAT FTTH & AKUN
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">PPP Username</label>
+                    <input
+                      type="text"
+                      required
+                      value={pppoeUsername}
+                      onChange={(e) => setPppoeUsername(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">PPP Password</label>
+                    <input
+                      type="text"
+                      required
+                      value={pppoePassword}
+                      onChange={(e) => setPppoePassword(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">ODP Port / Kotak ODP</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ODP-KRAJAN-01 (Port 2)"
+                      value={odpPort}
+                      onChange={(e) => setOdpPort(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">SN ONU / Modem</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. ZTEGC123456"
+                      value={snOnu}
+                      onChange={(e) => setSnOnu(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Power Laser (dBm)</label>
+                    <input
+                      type="text"
+                      placeholder="-19.00"
+                      value={powerLaser}
+                      onChange={(e) => setPowerLaser(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Teknisi Lapangan</label>
+                    <input
+                      type="text"
+                      placeholder="Nama teknisi / tim FO"
+                      value={teknisi}
+                      onChange={(e) => setTeknisi(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowSurveyModal(false); setSurveyCustomer(null); }}
+                  className="px-4 py-2.5 text-slate-500 hover:bg-slate-100 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoadingId === surveyCustomer.id}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                >
+                  {actionLoadingId === surveyCustomer.id ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <>
+                      <Save size={14} />
+                      <span>Simpan Data Survei & Server</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
