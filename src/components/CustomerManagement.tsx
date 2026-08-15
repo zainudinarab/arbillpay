@@ -612,6 +612,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [connectionType, setConnectionType] = useState<'pppoe'>('pppoe');
   const [expiredAt, setExpiredAt] = useState<string>('');
   const [graceUntil, setGraceUntil] = useState<string>('');
+  const [latitude, setLatitude] = useState<string>('');
+  const [longitude, setLongitude] = useState<string>('');
   const [deviceType, setDeviceType] = useState<'ONU' | 'ROUTER_WIFI'>('ONU');
   const [deviceBrand, setDeviceBrand] = useState('ZTE');
   const [deviceModel, setDeviceModel] = useState('F609');
@@ -800,6 +802,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setPostalCode('');
     setInstallationDate(today);
     setStatus('active');
+    setLatitude('');
+    setLongitude('');
 
     setPppoeUsername('');
     setPppoePassword('');
@@ -855,6 +859,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         installation_date: installationDate,
         expired_at: expiredAt || null,
         grace_until: graceUntil || null,
+        latitude: latitude.trim() || null,
+        longitude: longitude.trim() || null,
         odp_port: odpPort.trim() || null,
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
@@ -914,6 +920,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
     const safeInstDate = typeof cust.installation_date === 'string' ? cust.installation_date : new Date().toISOString();
     setInstallationDate(safeInstDate.includes('T') ? safeInstDate.split('T')[0] : safeInstDate);
+    setLatitude((cust as any).latitude ? String((cust as any).latitude) : '');
+    setLongitude((cust as any).longitude ? String((cust as any).longitude) : '');
 
     setStatus((cust.status as any) || 'active');
 
@@ -990,6 +998,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         installation_date: installationDate,
         expired_at: expiredAt || null,
         grace_until: graceUntil || null,
+        latitude: latitude.trim() || null,
+        longitude: longitude.trim() || null,
         odp_port: odpPort.trim() || null,
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
@@ -1735,6 +1745,78 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                         setPostalCode(addr.kode_pos);
                       }}
                     />
+                  </div>
+
+                  {/* Titik Lokasi GPS Rumah Pelanggan (Latitude & Longitude) */}
+                  <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center text-xs font-black text-blue-950">
+                      <span className="flex items-center gap-1">📍 Titik Lokasi GPS Rumah Pelanggan:</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if ('geolocation' in navigator) {
+                              navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                  setLatitude(pos.coords.latitude.toFixed(6));
+                                  setLongitude(pos.coords.longitude.toFixed(6));
+                                  alert(`✅ Lokasi GPS HP berhasil diambil:\n\nLat: ${pos.coords.latitude.toFixed(6)}\nLng: ${pos.coords.longitude.toFixed(6)}`);
+                                },
+                                (err) => {
+                                  alert('⚠️ Gagal mengambil GPS HP: ' + err.message);
+                                },
+                                { enableHighAccuracy: true }
+                              );
+                            } else {
+                              alert('⚠️ Browser tidak mendukung Geolocation GPS.');
+                            }
+                          }}
+                          className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2 py-1 rounded-lg cursor-pointer transition shadow-xs"
+                          title="Ambil koordinat GPS dari HP saat ini"
+                        >
+                          📱 GPS HP
+                        </button>
+                        {editingCustomer && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMapCustomer(editingCustomer);
+                              setShowMapPickerModal(true);
+                            }}
+                            className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-2 py-1 rounded-lg cursor-pointer transition shadow-xs"
+                            title="Pilih titik lokasi rumah pelanggan secara visual di Peta Interactive"
+                          >
+                            🗺️ Pilih di Peta
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Latitude (Lintang)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. -7.543210"
+                          value={latitude}
+                          onChange={(e) => setLatitude(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Longitude (Bujur)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 112.123450"
+                          value={longitude}
+                          onChange={(e) => setLongitude(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-blue-800 font-medium">
+                      ⚡ <b>Auto-Sync Peta FTTH:</b> Ketika disimpan, titik koordinat ini akan otomatis membuat marker Node Perangkat ({deviceType}) pada Peta Topologi FTTH!
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
