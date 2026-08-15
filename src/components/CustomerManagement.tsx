@@ -265,12 +265,35 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       try {
         const fbRes = await getInvoicesFromFirestore();
         if (fbRes.success && Array.isArray(fbRes.invoices)) {
-          matchedInvoices = fbRes.invoices.filter((inv: any) => 
-            inv.customer_id === cust.id || 
-            inv.customer_code === cust.customer_code ||
-            (cust.phone_number && inv.customer_phone === cust.phone_number) ||
-            (cust.pppoe_username && inv.pppoe_username === cust.pppoe_username)
-          );
+          const cId = String(cust.id || '').trim();
+          const cCode = String(cust.customer_code || '').trim().toUpperCase();
+          const cPpp = String(cust.pppoe_username || '').trim().toLowerCase();
+          const cPhone = String(cust.phone_number || '').trim().replace(/[^0-9]/g, '');
+
+          matchedInvoices = fbRes.invoices.filter((inv: any) => {
+            const invCustId = String(inv.customer_id || inv.client_id || '').trim();
+            const invCustCode = String(inv.customer_code || '').trim().toUpperCase();
+            const invNum = String(inv.invoice_number || inv.id || '').trim().toUpperCase();
+            const invPpp = String(inv.pppoe_username || '').trim().toLowerCase();
+            const invPhone = String(inv.customer_phone || (inv.client && inv.client.phone) || '').trim().replace(/[^0-9]/g, '');
+
+            // 1. Direct ID match
+            if (cId && invCustId === cId) return true;
+
+            // 2. Customer Code match
+            if (cCode && invCustCode && invCustCode === cCode) return true;
+
+            // 3. Invoice Number contains Customer Code (e.g. INV-202608-01-CUST-DSPQK contains CUST-DSPQK)
+            if (cCode && cCode.length > 3 && invNum.includes(cCode)) return true;
+
+            // 4. PPPoE Username match (only if non-empty)
+            if (cPpp && cPpp.length > 2 && invPpp && invPpp === cPpp) return true;
+
+            // 5. Phone match (only if phone is valid & long enough >= 7 digits)
+            if (cPhone && cPhone.length >= 7 && invPhone && invPhone === cPhone) return true;
+
+            return false;
+          });
         }
       } catch (fbErr) {}
     }
