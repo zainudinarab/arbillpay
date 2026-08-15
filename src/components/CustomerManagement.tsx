@@ -620,6 +620,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [deviceBrand, setDeviceBrand] = useState('ZTE');
   const [deviceModel, setDeviceModel] = useState('F609');
   const [deviceLanPorts, setDeviceLanPorts] = useState(4);
+  const [hasHardwareConfigured, setHasHardwareConfigured] = useState<boolean>(true);
+  const [isEditingHardware, setIsEditingHardware] = useState<boolean>(false);
+  const [showHardwarePickerModal, setShowHardwarePickerModal] = useState<boolean>(false);
+  const [pickerFilterType, setPickerFilterType] = useState<'ALL' | 'ONU' | 'ROUTER_WIFI'>('ALL');
+  const [pickerFilterBrand, setPickerFilterBrand] = useState<string>('ALL');
 
   // Device Specs Master Catalog State
   const [deviceCatalog, setDeviceCatalog] = useState<any[]>(DEFAULT_DEVICE_CATALOG);
@@ -962,7 +967,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setPowerLaser(cust.power_laser || '-19.00');
     setTeknisi(cust.teknisi || '');
     const detectedType = (cust as any).device_type || (cust.connection_type === 'hotspot' ? 'NONE' : 'ONU');
-    setDeviceType(detectedType);
+    const isNone = detectedType === 'NONE';
+    setHasHardwareConfigured(!isNone);
+    setIsEditingHardware(false);
+    setDeviceType(isNone ? 'ONU' : detectedType);
     setDeviceBrand((cust as any).device_brand || (detectedType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE'));
     setDeviceModel((cust as any).device_model || (detectedType === 'ROUTER_WIFI' ? 'N301' : 'F609'));
     setDeviceLanPorts(Number((cust as any).device_lan_ports) || 4);
@@ -2089,125 +2097,177 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     );
                   })()}
 
-                  {/* Jenis Perangkat Sambungan Pelanggan & Cascading Device Catalog Specs */}
-                  <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <label className="block text-xs font-black text-blue-950">Jenis Perangkat Sambungan Pelanggan</label>
-                      <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2.5 py-1 rounded-lg">⚡ Auto-Sync Peta FTTH</span>
-                    </div>
-
-                    <select
-                      value={deviceType}
-                      onChange={(e) => {
-                        const newType = e.target.value as any;
-                        setDeviceType(newType);
-                        const firstBrand = deviceCatalog.find((item: any) => item.type === newType)?.brand || (newType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE');
-                        setDeviceBrand(firstBrand);
-                        const firstModel = deviceCatalog.find((item: any) => item.type === newType && item.brand === firstBrand);
-                        if (firstModel) {
-                          setDeviceModel(firstModel.model);
-                          setDeviceLanPorts(Number(firstModel.lan_ports) || 4);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="ONU">🏠 Modem ONU Optik (GPON/EPON FTTH Dedicated)</option>
-                      <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink/MikroTik)</option>
-                    </select>
-
-                    {/* Cascading Merek -> Model -> Auto Port LAN */}
-                    {(() => {
-                      const filteredBrands = Array.from(new Set(
-                        deviceCatalog.filter((item: any) => item.type === deviceType).map((item: any) => item.brand)
-                      ));
-                      if (!filteredBrands.includes(deviceBrand) && filteredBrands.length > 0) {
-                        filteredBrands.push(deviceBrand);
-                      }
-
-                      const filteredModels = deviceCatalog.filter((item: any) => item.type === deviceType && item.brand === deviceBrand);
-                      const matchedSpecItem = filteredModels.find((m: any) => m.model.toLowerCase().trim() === deviceModel.toLowerCase().trim());
-
-                      return (
-                        <div className="pt-2 border-t border-blue-200/80 space-y-2">
-                          <div className="flex justify-between items-center text-[11px] font-black text-blue-950">
-                            <span>🏷️ Spesifikasi Katalog ({deviceType === 'ONU' ? 'Modem ONU Optik' : 'Router Wireless'})</span>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full">
-                              ⚡ Auto-Fill Port: {matchedSpecItem ? `${matchedSpecItem.lan_ports} Port LAN` : `${deviceLanPorts} Port`}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek Perangkat</label>
-                              <select
-                                value={deviceBrand}
-                                onChange={(e) => {
-                                  const newBrand = e.target.value;
-                                  setDeviceBrand(newBrand);
-                                  const firstM = deviceCatalog.find((item: any) => item.type === deviceType && item.brand === newBrand);
-                                  if (firstM) {
-                                    setDeviceModel(firstM.model);
-                                    setDeviceLanPorts(Number(firstM.lan_ports) || 4);
-                                  }
-                                }}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
-                              >
-                                {filteredBrands.map((b: string) => (
-                                  <option key={b} value={b}>{b}</option>
-                                ))}
-                                <option value="Lainnya">Lainnya</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model</label>
-                              <select
-                                value={deviceModel}
-                                onChange={(e) => {
-                                  const newModel = e.target.value;
-                                  setDeviceModel(newModel);
-                                  const foundItem = filteredModels.find((m: any) => m.model === newModel);
-                                  if (foundItem) {
-                                    setDeviceLanPorts(Number(foundItem.lan_ports) || 4);
-                                  }
-                                }}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
-                              >
-                                {filteredModels.map((m: any) => (
-                                  <option key={m.id || m.model} value={m.model}>
-                                    {m.model} ({m.lan_ports} Port LAN)
-                                  </option>
-                                ))}
-                                <option value="Custom / Seri Lain">Custom / Seri Lain</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Kapasitas Port LAN</label>
-                              <select
-                                value={deviceLanPorts}
-                                onChange={(e) => setDeviceLanPorts(Number(e.target.value))}
-                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
-                              >
-                                <option value={1}>1 Port LAN</option>
-                                <option value={2}>2 Port LAN</option>
-                                <option value={3}>3 Port LAN</option>
-                                <option value={4}>4 Port LAN</option>
-                                <option value={8}>8 Port LAN</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {matchedSpecItem && (
-                            <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-900 font-medium flex items-center justify-between">
-                              <span>ℹ️ <b>Spesifikasi Peta:</b> {matchedSpecItem.brand} {matchedSpecItem.model} • {matchedSpecItem.wifi_spec || `${matchedSpecItem.lan_ports} Port Ethernet`}</span>
-                              {matchedSpecItem.notes && <span className="text-[9px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-bold">{matchedSpecItem.notes}</span>}
-                            </div>
-                          )}
+                  {/* Jenis Perangkat Sambungan Pelanggan (Summary Card vs Form Edit Mode vs Empty State) */}
+                  {hasHardwareConfigured && !isEditingHardware ? (
+                    <div className="p-3.5 bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border border-blue-200 rounded-2xl space-y-2 text-xs shadow-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-blue-950 flex items-center gap-1.5">
+                          <span>{deviceType === 'ONU' ? '🏠 Modem ONU Optik' : '📶 Router Wireless Wi-Fi'}</span>
+                          <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2.5 py-0.5 rounded-full">{deviceBrand} {deviceModel}</span>
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingHardware(true)}
+                            className="text-[10px] bg-white hover:bg-slate-100 text-slate-700 font-extrabold px-2 py-1 rounded-lg border border-slate-300 transition shadow-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            ✏️ Edit Spesifikasi
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowHardwarePickerModal(true)}
+                            className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2 py-1 rounded-lg transition shadow-xs flex items-center gap-1 cursor-pointer"
+                          >
+                            🔌 Ganti Merek
+                          </button>
                         </div>
-                      );
-                    })()}
-                  </div>
+                      </div>
+
+                      <div className="p-2.5 bg-white/90 border border-blue-100 rounded-xl grid grid-cols-2 gap-2 text-[11px] font-medium text-slate-800">
+                        <div>
+                          <span className="text-slate-500 font-bold block text-[10px]">Spesifikasi Port:</span>
+                          <span className="font-bold text-slate-900">
+                            {deviceType === 'ONU' ? `1 Port SC/UPC FO + ${deviceLanPorts} Port LAN RJ45` : `1 Port WAN + ${deviceLanPorts} Port LAN RJ45`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 font-bold block text-[10px]">Serial Number (SN ONU):</span>
+                          <span className="font-mono font-bold text-indigo-900">{snOnu || 'Belum diisi'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : !hasHardwareConfigured ? (
+                    <div className="p-4 bg-slate-100/90 border border-dashed border-slate-300 rounded-2xl text-center space-y-2">
+                      <div className="text-2xl">🔌</div>
+                      <div className="text-xs font-black text-slate-800">Belum Memiliki Perangkat Perlanggan</div>
+                      <p className="text-[10px] text-slate-500 font-medium">Pelanggan ini belum dipasangkan Modem ONU Optik atau Router Wi-Fi.</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowHardwarePickerModal(true)}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-extrabold text-xs transition shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <span>+ 🔌 Tambah Perangkat (Pilih Merek & Model)</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2.5">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-xs font-black text-blue-950">Form Pilih Perangkat Pelanggan</label>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingHardware(false)}
+                          className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-2 py-0.5 rounded-lg cursor-pointer"
+                        >
+                          ← Selesai Edit
+                        </button>
+                      </div>
+
+                      <select
+                        value={deviceType}
+                        onChange={(e) => {
+                          const newType = e.target.value as any;
+                          setDeviceType(newType);
+                          const firstBrand = deviceCatalog.find((item: any) => item.type === newType)?.brand || (newType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE');
+                          setDeviceBrand(firstBrand);
+                          const firstModel = deviceCatalog.find((item: any) => item.type === newType && item.brand === firstBrand);
+                          if (firstModel) {
+                            setDeviceModel(firstModel.model);
+                            setDeviceLanPorts(Number(firstModel.lan_ports) || 4);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="ONU">🏠 Modem ONU Optik (GPON/EPON FTTH Dedicated)</option>
+                        <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink/MikroTik)</option>
+                      </select>
+
+                      {/* Cascading Merek -> Model -> Auto Port LAN */}
+                      {(() => {
+                        const filteredBrands = Array.from(new Set(
+                          deviceCatalog.filter((item: any) => item.type === deviceType).map((item: any) => item.brand)
+                        ));
+                        if (!filteredBrands.includes(deviceBrand) && filteredBrands.length > 0) {
+                          filteredBrands.push(deviceBrand);
+                        }
+
+                        const filteredModels = deviceCatalog.filter((item: any) => item.type === deviceType && item.brand === deviceBrand);
+                        const matchedSpecItem = filteredModels.find((m: any) => m.model.toLowerCase().trim() === deviceModel.toLowerCase().trim());
+
+                        return (
+                          <div className="pt-2 border-t border-blue-200/80 space-y-2">
+                            <div className="flex justify-between items-center text-[11px] font-black text-blue-950">
+                              <span>🏷️ Spesifikasi Katalog ({deviceType === 'ONU' ? 'Modem ONU Optik' : 'Router Wireless'})</span>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full">
+                                ⚡ Auto-Fill Port: {matchedSpecItem ? `${matchedSpecItem.lan_ports} Port LAN` : `${deviceLanPorts} Port`}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek Perangkat</label>
+                                <select
+                                  value={deviceBrand}
+                                  onChange={(e) => {
+                                    const newBrand = e.target.value;
+                                    setDeviceBrand(newBrand);
+                                    const firstM = deviceCatalog.find((item: any) => item.type === deviceType && item.brand === newBrand);
+                                    if (firstM) {
+                                      setDeviceModel(firstM.model);
+                                      setDeviceLanPorts(Number(firstM.lan_ports) || 4);
+                                    }
+                                  }}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                                >
+                                  {filteredBrands.map((b: string) => (
+                                    <option key={b} value={b}>{b}</option>
+                                  ))}
+                                  <option value="Lainnya">Lainnya</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model</label>
+                                <select
+                                  value={deviceModel}
+                                  onChange={(e) => {
+                                    const newModel = e.target.value;
+                                    setDeviceModel(newModel);
+                                    const foundItem = filteredModels.find((m: any) => m.model === newModel);
+                                    if (foundItem) {
+                                      setDeviceLanPorts(Number(foundItem.lan_ports) || 4);
+                                    }
+                                  }}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                                >
+                                  {filteredModels.map((m: any) => (
+                                    <option key={m.id || m.model} value={m.model}>
+                                      {m.model} ({m.lan_ports} Port LAN)
+                                    </option>
+                                  ))}
+                                  <option value="Custom / Seri Lain">Custom / Seri Lain</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-700 mb-1">Kapasitas Port LAN</label>
+                                <select
+                                  value={deviceLanPorts}
+                                  onChange={(e) => setDeviceLanPorts(Number(e.target.value))}
+                                  className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                                >
+                                  <option value={1}>1 Port LAN</option>
+                                  <option value={2}>2 Port LAN</option>
+                                  <option value={3}>3 Port LAN</option>
+                                  <option value={4}>4 Port LAN</option>
+                                  <option value={8}>8 Port LAN</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   {/* FTTH ODP & ONU Details */}
                   <div className="grid grid-cols-2 gap-3">
@@ -2844,6 +2904,101 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer transition"
               >
                 Tutup Katalog Spesifikasi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Quick Hardware Model Picker */}
+      {showHardwarePickerModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200 font-sans">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-black flex items-center gap-2">
+                  <span>🔌 Pilih Perangkat Merek & Seri Model</span>
+                </h3>
+                <p className="text-[11px] text-slate-300">Pilih model hardware yang dipasangkan pada rumah pelanggan</p>
+              </div>
+              <button
+                onClick={() => setShowHardwarePickerModal(false)}
+                className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 font-bold">
+                <span>Filter Tipe:</span>
+                <button
+                  onClick={() => setPickerFilterType('ALL')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] cursor-pointer font-bold transition ${pickerFilterType === 'ALL' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}
+                >
+                  Semua
+                </button>
+                <button
+                  onClick={() => setPickerFilterType('ONU')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] cursor-pointer font-bold transition ${pickerFilterType === 'ONU' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}
+                >
+                  Modem ONU
+                </button>
+                <button
+                  onClick={() => setPickerFilterType('ROUTER_WIFI')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] cursor-pointer font-bold transition ${pickerFilterType === 'ROUTER_WIFI' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}
+                >
+                  Router Wi-Fi
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 overflow-y-auto max-h-[60vh] space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {deviceCatalog
+                  .filter((item: any) => pickerFilterType === 'ALL' || item.type === pickerFilterType)
+                  .map((item: any) => (
+                    <div
+                      key={item.id || item.model}
+                      onClick={() => {
+                        setDeviceType(item.type);
+                        setDeviceBrand(item.brand);
+                        setDeviceModel(item.model);
+                        setDeviceLanPorts(Number(item.lan_ports) || 4);
+                        setHasHardwareConfigured(true);
+                        setIsEditingHardware(false);
+                        setShowHardwarePickerModal(false);
+                        setToastMsg({ type: 'success', text: `✅ Perangkat dipilih: ${item.brand} ${item.model} (${item.lan_ports} Port LAN)` });
+                      }}
+                      className="p-3 bg-white border border-slate-200 rounded-2xl hover:border-blue-500 hover:shadow-md transition cursor-pointer space-y-1.5 group"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${item.type === 'ONU' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                          {item.type === 'ONU' ? '🏠 MODEM ONU' : '📶 ROUTER WI-FI'}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+                          {item.lan_ports} Port LAN
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">{item.brand}</div>
+                        <div className="text-sm font-black text-slate-900 group-hover:text-blue-600 transition">{item.model}</div>
+                      </div>
+                      <div className="text-[10px] text-slate-600 bg-slate-50 p-1.5 rounded-xl font-medium">
+                        {item.wifi_spec || `${item.lan_ports} Port Ethernet`}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-100 border-t border-slate-200 flex justify-between items-center text-xs">
+              <span className="text-[11px] text-slate-500 font-bold">Pilih model untuk dipasangkan ke pelanggan</span>
+              <button
+                onClick={() => setShowHardwarePickerModal(false)}
+                className="px-4 py-1.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 cursor-pointer"
+              >
+                Tutup
               </button>
             </div>
           </div>
