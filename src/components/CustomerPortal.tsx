@@ -750,7 +750,7 @@ export default function CustomerPortal({
       const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
       const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const targetUserId = userIdOverride || currentUser?.phone || currentUser?.user_id || currentUser?.username || '';
+      const targetUserId = userIdOverride || currentUser?.phone || currentUser?.phone_number || currentUser?.user_id || currentUser?.id || currentUser?.username || '';
 
       let signature = '';
       try {

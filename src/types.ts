@@ -67,6 +67,9 @@ export interface UserAccount {
   role: UserRole;
   avatarUrl?: string;
   phone_number?: string;
+  phone?: string;
+  user_id?: string;
+  token?: string;
   arabpay_user_id?: string;
   arabpay_balance?: number;
 }
