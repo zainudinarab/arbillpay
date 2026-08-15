@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
-import { getCustomersFromFirestore, saveCustomerToFirestore } from '../services/firebaseService';
+import { getCustomersFromFirestore, saveCustomerToFirestore, getFtthMapFromFirestore, saveFtthMapToFirestore } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 
 interface PendingSubmissionsPageProps {
@@ -179,8 +179,48 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
 
       await saveCustomerToFirestore(updatedCust);
 
+      // Auto-Sync ONU Device to FTTH Map & Master Tabel Perangkat FTTH!
+      if (latitude && longitude) {
+        try {
+          const ftthRes = await getFtthMapFromFirestore();
+          let currentNodes: any[] = (ftthRes.success && Array.isArray(ftthRes.nodes)) ? ftthRes.nodes : [];
+          let currentLines: any[] = (ftthRes.success && Array.isArray(ftthRes.lines)) ? ftthRes.lines : [];
+
+          const existingNodeIdx = currentNodes.findIndex(n => 
+            String(n.customerId) === String(surveyCustomer.id) ||
+            (n.name && pppoeUsername && n.name.toLowerCase().trim() === pppoeUsername.toLowerCase().trim())
+          );
+
+          const onuNodeData = {
+            id: existingNodeIdx >= 0 ? currentNodes[existingNodeIdx].id : `node-onu-${Date.now()}`,
+            name: pppoeUsername || surveyCustomer.name,
+            type: 'ONU',
+            status: 'online',
+            lat: Number(latitude),
+            lng: Number(longitude),
+            customerId: surveyCustomer.id,
+            customerName: surveyCustomer.name,
+            customerPhone: surveyCustomer.phone_number,
+            sn_onu: snOnu.trim() || null,
+            power_laser: powerLaser.trim() || null,
+            odp_port: odpPort.trim() || null,
+            updated_at: new Date().toISOString()
+          };
+
+          if (existingNodeIdx >= 0) {
+            currentNodes[existingNodeIdx] = { ...currentNodes[existingNodeIdx], ...onuNodeData };
+          } else {
+            currentNodes.push(onuNodeData);
+          }
+
+          await saveFtthMapToFirestore(currentNodes, currentLines);
+        } catch (ftthErr) {
+          console.warn('[FTTH AUTO-SYNC] Non-critical warning:', ftthErr);
+        }
+      }
+
       setPendingList(prev => prev.map(c => c.id === surveyCustomer.id ? updatedCust : c));
-      setToastMsg({ type: 'success', text: `Data survei teknis & server MikroTik untuk "${updatedCust.name}" berhasil disimpan!` });
+      setToastMsg({ type: 'success', text: `Data survei teknis & FTTH untuk "${updatedCust.name}" berhasil disimpan & disinkronkan ke Perangkat FTTH!` });
       setShowSurveyModal(false);
       setSurveyCustomer(null);
     } catch (err: any) {
