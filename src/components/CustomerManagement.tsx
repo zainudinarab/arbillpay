@@ -528,7 +528,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         if (resActive && resActive.ok) {
           const dataActive = await parseJsonResponse(resActive).catch(() => null);
           if (dataActive && dataActive.success && Array.isArray(dataActive.activeUsers)) {
-            setPppActiveUsers(dataActive.activeUsers);
+            const activeList = dataActive.activeUsers.map((u: any) => 
+              typeof u === 'string' ? u.toLowerCase().trim() : String(u.name || u.username || '').toLowerCase().trim()
+            );
+            setOnlineUsernames(activeList);
           }
         }
         if (resMap && resMap.ok) {
