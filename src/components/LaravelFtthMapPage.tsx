@@ -2698,12 +2698,12 @@ const DEFAULT_SPLITTER_CATALOG = [
                 </div>
               ) : null}
 
-              {/* Tautkan Perangkat dengan Data Pelanggan Khusus PPPoE (Hanya untuk ONU & Router Wireless) */}
-              {(editType === 'ONU' || editType === 'ROUTER_WIFI') && (
+              {/* Tautkan Perangkat dengan Data Pelanggan (ONU, Router Wireless, HTB, Switch, Access Point) */}
+              {(editType === 'ONU' || editType === 'ROUTER_WIFI' || editType === 'HTB' || editType === 'SWITCH' || editType === 'ACCESS_POINT') && (
                 <div className="pt-2.5 border-t border-slate-200">
                   <label className="block text-xs font-extrabold text-slate-800 mb-1 flex items-center justify-between">
-                    <span>👤 Tautkan ke Pelanggan PPPoE:</span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">Khusus Layanan PPPoE</span>
+                    <span>👤 Tautkan ke Pelanggan:</span>
+                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">Flexibel Perangkat Pelanggan</span>
                   </label>
                   <select
                     value={editCustomerId}
