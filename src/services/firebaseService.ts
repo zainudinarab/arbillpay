@@ -99,6 +99,91 @@ export const getFtthMapFromFirestore = async () => {
   }
 };
 
+export const syncCustomerFtthDeviceNode = async (customer: any, isTerminatedOrDeleted: boolean = false) => {
+  try {
+    const mapData = await getFtthMapFromFirestore();
+    if (!mapData.success) return { success: false };
+
+    let nodes = mapData.nodes || [];
+    let lines = mapData.lines || [];
+
+    const custId = String(customer.id || customer.customer_code || '').trim();
+    const isTerminated = isTerminatedOrDeleted || customer.status === 'terminated';
+
+    // Find any existing node associated with this customer
+    const existingNodeIndex = nodes.findIndex((n: any) => 
+      String(n.customerId || '') === custId || 
+      (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(custId)) ||
+      (customer.pppoe_username && n.name && n.name.toLowerCase().trim() === String(customer.pppoe_username).toLowerCase().trim())
+    );
+
+    // 🔴 SCENARIO 1: Customer is Terminated / Deleted (Berhenti Langganan / Cabut)
+    if (isTerminated) {
+      if (existingNodeIndex >= 0) {
+        const nodeToRemove = nodes[existingNodeIndex];
+        const nodeIdToRemove = nodeToRemove.id;
+
+        // 1. Remove Node from Map
+        nodes.splice(existingNodeIndex, 1);
+
+        // 2. Remove all optical / LAN cable lines connected to this node (ODP Port is now FREE!)
+        lines = lines.filter((l: any) => l.fromId !== nodeIdToRemove && l.toId !== nodeIdToRemove);
+
+        // 3. Save updated FTTH map to Cloud Firestore
+        await saveFtthMapToFirestore(nodes, lines);
+        console.log(`[FTTH AUTO-SYNC] Customer ${customer.name || custId} TERMINATED/DELETED. Removed Node & Lines. ODP Port is now FREE!`);
+      }
+      return { success: true, removed: true };
+    }
+
+    // 🟢 SCENARIO 2: Customer is Active / Isolated / Pending (Pemasangan / Edit Status)
+    const deviceType = customer.device_type || (customer.connection_type === 'hotspot' ? 'NONE' : 'ONU');
+
+    if (deviceType === 'NONE') {
+      // Hotspot or No dedicated device -> remove node if previously created
+      if (existingNodeIndex >= 0) {
+        const nodeIdToRemove = nodes[existingNodeIndex].id;
+        nodes.splice(existingNodeIndex, 1);
+        lines = lines.filter((l: any) => l.fromId !== nodeIdToRemove && l.toId !== nodeIdToRemove);
+        await saveFtthMapToFirestore(nodes, lines);
+      }
+      return { success: true };
+    }
+
+    // Lat/Lng fallback
+    const lat = Number(customer.latitude || customer.lat) || -7.5432;
+    const lng = Number(customer.longitude || customer.lng) || 112.1234;
+
+    const updatedNodeData = {
+      id: existingNodeIndex >= 0 ? nodes[existingNodeIndex].id : `node-dev-${Date.now()}`,
+      name: customer.pppoe_username || customer.name,
+      type: deviceType, // ONU, ROUTER_WIFI, HTB, SWITCH
+      status: customer.status === 'active' ? 'online' : customer.status === 'isolated' ? 'isolated' : 'offline',
+      lat,
+      lng,
+      customerId: custId,
+      customerName: customer.name,
+      customerPhone: customer.phone_number || '',
+      sn_onu: customer.sn_onu || null,
+      power_laser: customer.power_laser || null,
+      odp_port: customer.odp_port || null,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existingNodeIndex >= 0) {
+      nodes[existingNodeIndex] = { ...nodes[existingNodeIndex], ...updatedNodeData };
+    } else {
+      nodes.push(updatedNodeData);
+    }
+
+    await saveFtthMapToFirestore(nodes, lines);
+    return { success: true, nodeId: updatedNodeData.id };
+  } catch (err) {
+    console.warn('[FTTH AUTO-SYNC WARN] Could not sync customer FTTH device node:', err);
+    return { success: false };
+  }
+};
+
 // --- 2. CUSTOMERS MANAGEMENT ---
 export const saveCustomerToFirestore = async (customer: any) => {
   try {
@@ -113,18 +198,36 @@ export const saveCustomerToFirestore = async (customer: any) => {
     const formattedCustId = `CUST-${cleanNum || Date.now()}`;
     const custRef = doc(db, 'customers', formattedCustId);
 
-    const { customer_code, ...cleanCustPayload } = customer;
-
-    await setDoc(custRef, sanitizeForFirestore({
+    const fullCustPayload = sanitizeForFirestore({
       ...cleanCustPayload,
       id: formattedCustId,
       customer_code: formattedCustId,
       updated_at: new Date().toISOString()
-    }), { merge: true });
+    });
+
+    await setDoc(custRef, fullCustPayload, { merge: true });
+
+    // ⚡ Auto-Sync Perangkat & Peta FTTH (Otomatis Hapus Node & Kabel jika Status = Terminated/Cabut!)
+    await syncCustomerFtthDeviceNode(fullCustPayload).catch(e => console.warn('[FTTH AUTO-SYNC WARN]', e));
 
     return { success: true, id: formattedCustId };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save customer:', err);
+    throw err;
+  }
+};
+
+export const deleteCustomerFromFirestore = async (custId: string, customerData?: any) => {
+  try {
+    const custRef = doc(db, 'customers', String(custId));
+    await deleteDoc(custRef);
+
+    // ⚡ Auto-Sync FTTH: Hapus Node & Kabel Optik di Peta, Port ODP kembali BEBAS!
+    await syncCustomerFtthDeviceNode(customerData || { id: custId }, true).catch(() => null);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to delete customer:', err);
     throw err;
   }
 };

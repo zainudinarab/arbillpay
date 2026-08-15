@@ -35,6 +35,7 @@ import { BusinessProfile } from '../types';
 import { 
   getCustomersFromFirestore, 
   saveCustomerToFirestore, 
+  deleteCustomerFromFirestore,
   getPackagesFromFirestore, 
   getInvoicesFromFirestore, 
   saveInvoiceToFirestore 
@@ -608,6 +609,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [connectionType, setConnectionType] = useState<'pppoe'>('pppoe');
   const [expiredAt, setExpiredAt] = useState<string>('');
   const [graceUntil, setGraceUntil] = useState<string>('');
+  const [deviceType, setDeviceType] = useState<'ONU' | 'ROUTER_WIFI' | 'HTB' | 'SWITCH' | 'NONE'>('ONU');
 
   const [odpPort, setOdpPort] = useState('');
   const [snOnu, setSnOnu] = useState('');
@@ -837,6 +839,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
+        device_type: deviceType,
         package_id: packageId,
         router_id: selectedRouterId || null,
         router_profile_id: matchedProfile ? matchedProfile.id : null,
@@ -919,6 +922,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setSnOnu(cust.sn_onu || '');
     setPowerLaser(cust.power_laser || '-19.00');
     setTeknisi(cust.teknisi || '');
+    setDeviceType((cust as any).device_type || (cust.connection_type === 'hotspot' ? 'NONE' : 'ONU'));
 
     if (cust.router_id) setSelectedRouterId(cust.router_id);
     if (cust.package_id) setPackageId(cust.package_id);
@@ -963,6 +967,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         sn_onu: snOnu.trim() || null,
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
+        device_type: deviceType,
         package_id: packageId,
         package_name: pkg ? pkg.name : editingCustomer.package_name,
         router_id: selectedRouterId || null,
@@ -991,6 +996,24 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       setToastMsg({ type: 'error', text: err?.message || 'Gagal memperbarui data pelanggan.' });
     } finally {
       setSubmitLoading(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (cust: CustomerItem) => {
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus pelanggan "${cust.name}"? PERATURAN: Node perangkat di Peta FTTH & kabel optik akan otomatis dicabut, dan Port ODP akan kembali bebas!`)) return;
+    setActionLoadingId(cust.id);
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/customers/${cust.id}`, { method: 'DELETE' }).catch(() => null);
+      }
+      await deleteCustomerFromFirestore(cust.id, cust);
+      setCustomers(prev => prev.filter(c => c.id !== cust.id));
+      setToastMsg({ type: 'success', text: `🗑️ Pelanggan "${cust.name}" berhasil dihapus, jalur kabel dicabut & Port ODP kembali BEBAS!` });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal menghapus pelanggan: ' + err?.message });
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -1855,6 +1878,25 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Jenis Perangkat Sambungan Pelanggan (ONU, Router Wireless, HTB, Switch, Hotspot/None) */}
+                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-xs font-black text-blue-950">Jenis Perangkat Sambungan Pelanggan</label>
+                      <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2 py-0.5 rounded-full">Auto-Sync Peta FTTH</span>
+                    </div>
+                    <select
+                      value={deviceType}
+                      onChange={(e) => setDeviceType(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="ONU">🏠 Modem ONU Optik (GPON/EPON FTTH Dedicated)</option>
+                      <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink)</option>
+                      <option value="HTB">⚡ HTB Media Converter Optik</option>
+                      <option value="SWITCH">🔌 Switch Hub LAN Direct</option>
+                      <option value="NONE">❌ Hotspot / Tanpa Perangkat Dedicated</option>
+                    </select>
                   </div>
 
                   {/* FTTH ODP & ONU Details */}
