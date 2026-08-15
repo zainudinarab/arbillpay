@@ -62,6 +62,7 @@ import NotificationSettingsPage from './components/NotificationSettingsPage';
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 import DeviceHardwarePage from './components/DeviceHardwarePage';
 import FtthDevicesPage from './components/FtthDevicesPage';
+import FtthSplitterPage from './components/FtthSplitterPage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
@@ -1062,12 +1063,7 @@ const safeFormatDate = (val: any): string => {
         );
       case 'ftth-splitter':
         return (
-          <LaravelFtthMapPage
-            profile={profile}
-            t={t}
-            onLogout={handleLogout}
-            initialOpenModal="splitter"
-          />
+          <FtthSplitterPage />
         );
       case 'ftth-devices':
         return (
