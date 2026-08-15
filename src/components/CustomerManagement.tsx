@@ -535,7 +535,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           const dataMap = await parseJsonResponse(resMap).catch(() => null);
           if (dataMap && dataMap.success && dataMap.mapData) {
             setFtthNodes(dataMap.mapData.nodes || []);
-            setFtthEdges(dataMap.mapData.edges || []);
+            setFtthLines(dataMap.mapData.edges || dataMap.mapData.lines || []);
           }
         }
       }
