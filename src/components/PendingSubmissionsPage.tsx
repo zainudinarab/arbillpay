@@ -299,7 +299,7 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
                               <span>{cust.phone_number}</span>
                             </a>
                           )}
-                          <span>• Alamat: <strong className="text-slate-700">{cust.address || 'Belum diisi'}</strong></span>
+                          <span>• Alamat: <strong className="text-slate-700">{[cust.dusun, cust.desa, cust.kecamatan, cust.kabupaten, cust.provinsi, cust.kode_pos ? `Kode Pos ${cust.kode_pos}` : ''].filter(Boolean).join(', ') || cust.address || 'Belum diisi'}</strong></span>
                         </div>
                       </div>
                     </div>

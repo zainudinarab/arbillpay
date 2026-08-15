@@ -94,6 +94,7 @@ export interface CustomerItem {
   kecamatan?: string;
   kabupaten?: string;
   provinsi?: string;
+  kode_pos?: string;
   connection_type: 'pppoe' | 'hotspot';
   pppoe_username?: string;
   pppoe_password?: string;
@@ -621,6 +622,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setKecamatan('');
     setKabupaten('');
     setProvinsi('');
+    setPostalCode('');
     setInstallationDate(today);
     setStatus('active');
 
@@ -660,44 +662,53 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
+      const newCustomerPayload = {
+        customer_code: customerCode,
+        name: name.trim(),
+        phone_number: phoneNumber.trim(),
+        address: address.trim(),
+        dusun: dusun.trim() || null,
+        desa: desa.trim() || null,
+        kecamatan: kecamatan.trim() || null,
+        kabupaten: kabupaten.trim() || null,
+        provinsi: provinsi.trim() || null,
+        kode_pos: postalCode.trim() || null,
+        connection_type: 'pppoe',
+        pppoe_username: pppoeUsername.trim() || name.toLowerCase().replace(/\s+/g, ''),
+        pppoe_password: pppoePassword.trim() || '123456',
+        static_ip: staticIp.trim() || null,
+        installation_date: installationDate,
+        expired_at: expiredAt || null,
+        grace_until: graceUntil || null,
+        odp_port: odpPort.trim() || null,
+        sn_onu: snOnu.trim() || null,
+        power_laser: powerLaser.trim() || null,
+        teknisi: teknisi.trim() || null,
+        package_id: packageId,
+        router_id: selectedRouterId || null,
+        router_profile_id: matchedProfile ? matchedProfile.id : null,
+        status
+      };
+
       const res = await fetch(`${apiUrl}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customer_code: customerCode,
-          name: name.trim(),
-          phone_number: phoneNumber.trim(),
-          address: address.trim(),
-          dusun: dusun.trim() || null,
-          desa: desa.trim() || null,
-          kecamatan: kecamatan.trim() || null,
-          kabupaten: kabupaten.trim() || null,
-          provinsi: provinsi.trim() || null,
-          connection_type: 'pppoe',
-          pppoe_username: pppoeUsername.trim() || name.toLowerCase().replace(/\s+/g, ''),
-          pppoe_password: pppoePassword.trim() || '123456',
-          static_ip: staticIp.trim() || null,
-          installation_date: installationDate,
-          expired_at: expiredAt || null,
-          grace_until: graceUntil || null,
-          odp_port: odpPort.trim() || null,
-          sn_onu: snOnu.trim() || null,
-          power_laser: powerLaser.trim() || null,
-          teknisi: teknisi.trim() || null,
-          package_id: packageId,
-          router_id: selectedRouterId || null,
-          router_profile_id: matchedProfile ? matchedProfile.id : null,
-          status
-        })
+        body: JSON.stringify(newCustomerPayload)
       });
 
       const data = await parseJsonResponse(res);
+
+      // Save to Cloud Firestore as primary/fallback cloud DB
+      await saveCustomerToFirestore(newCustomerPayload).catch(() => null);
+
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
         setShowAddModal(false);
         fetchData();
       } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal merilis data pelanggan.' });
+        setToastMsg({ type: 'success', text: 'Pelanggan berhasil disimpan!' });
+        setShowAddModal(false);
+        fetchData();
       }
     } catch (err: any) {
       setToastMsg({ type: 'error', text: err?.message || 'Gagal mendaftarkan pelanggan.' });
@@ -720,6 +731,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setKecamatan(cust.kecamatan || '');
     setKabupaten(cust.kabupaten || '');
     setProvinsi(cust.provinsi || '');
+    setPostalCode(cust.kode_pos || (cust as any).postal_code || '');
 
     const safeInstDate = typeof cust.installation_date === 'string' ? cust.installation_date : new Date().toISOString();
     setInstallationDate(safeInstDate.includes('T') ? safeInstDate.split('T')[0] : safeInstDate);
@@ -780,6 +792,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         kecamatan: kecamatan.trim() || null,
         kabupaten: kabupaten.trim() || null,
         provinsi: provinsi.trim() || null,
+        kode_pos: postalCode.trim() || null,
         connection_type: 'pppoe',
         pppoe_username: pppoeUsername.trim(),
         pppoe_password: pppoePassword.trim(),

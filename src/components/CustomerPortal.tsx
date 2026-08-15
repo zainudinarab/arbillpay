@@ -543,6 +543,7 @@ export default function CustomerPortal({
         kecamatan: regForm.kecamatan || null,
         kabupaten: regForm.kabupaten || null,
         provinsi: regForm.provinsi || null,
+        kode_pos: regForm.kode_pos || null,
         package_id: registerPkg.id,
         package_name: registerPkg.name || 'Member Package',
         speed_limit: registerPkg.speed_limit || registerPkg.rate_limit || '10 Mbps',
