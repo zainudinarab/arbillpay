@@ -38,7 +38,10 @@ import {
   deleteCustomerFromFirestore,
   getPackagesFromFirestore, 
   getInvoicesFromFirestore, 
-  saveInvoiceToFirestore 
+  saveInvoiceToFirestore,
+  getDeviceCatalogFromFirestore,
+  saveDeviceCatalogToFirestore,
+  DEFAULT_DEVICE_CATALOG
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
@@ -614,6 +617,15 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [deviceModel, setDeviceModel] = useState('F609');
   const [deviceLanPorts, setDeviceLanPorts] = useState(4);
 
+  // Device Specs Master Catalog State
+  const [deviceCatalog, setDeviceCatalog] = useState<any[]>(DEFAULT_DEVICE_CATALOG);
+  const [showCatalogModal, setShowCatalogModal] = useState(false);
+  const [newCatType, setNewCatType] = useState<'ONU' | 'ROUTER_WIFI'>('ONU');
+  const [newCatBrand, setNewCatBrand] = useState('ZTE');
+  const [newCatModel, setNewCatModel] = useState('');
+  const [newCatPorts, setNewCatPorts] = useState(4);
+  const [newCatWifiSpec, setNewCatWifiSpec] = useState('');
+
   const [odpPort, setOdpPort] = useState('');
   const [snOnu, setSnOnu] = useState('');
   const [powerLaser, setPowerLaser] = useState('-19.00');
@@ -718,6 +730,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           loadedPackages.push(fp);
         }
       });
+    }
+
+    const fbCat = await getDeviceCatalogFromFirestore();
+    if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
+      setDeviceCatalog(fbCat.catalog);
     }
 
     setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
@@ -1893,87 +1910,130 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     </div>
                   </div>
 
-                  {/* Jenis Perangkat Sambungan Pelanggan (ONU, Router Wireless, HTB, Switch, Hotspot/None) */}
-                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-1.5">
+                  {/* Jenis Perangkat Sambungan Pelanggan & Cascading Device Catalog Specs */}
+                  <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2.5">
                     <div className="flex justify-between items-center">
                       <label className="block text-xs font-black text-blue-950">Jenis Perangkat Sambungan Pelanggan</label>
-                      <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2 py-0.5 rounded-full">Auto-Sync Peta FTTH</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowCatalogModal(true)}
+                        className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2.5 py-1 rounded-lg cursor-pointer transition flex items-center gap-1 shadow-xs"
+                      >
+                        ⚙️ Kelola Spesifikasi Master
+                      </button>
                     </div>
+
                     <select
                       value={deviceType}
-                      onChange={(e) => setDeviceType(e.target.value as any)}
+                      onChange={(e) => {
+                        const newType = e.target.value as any;
+                        setDeviceType(newType);
+                        const firstBrand = deviceCatalog.find((item: any) => item.type === newType)?.brand || (newType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE');
+                        setDeviceBrand(firstBrand);
+                        const firstModel = deviceCatalog.find((item: any) => item.type === newType && item.brand === firstBrand);
+                        if (firstModel) {
+                          setDeviceModel(firstModel.model);
+                          setDeviceLanPorts(Number(firstModel.lan_ports) || 4);
+                        }
+                      }}
                       className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="ONU">🏠 Modem ONU Optik (GPON/EPON FTTH Dedicated)</option>
                       <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink/MikroTik)</option>
                     </select>
 
-                    {/* Spesifikasi Detail Perangkat (Merek, Seri Model, Kapasitas Port LAN) */}
-                    <div className="pt-2 border-t border-blue-200/80 space-y-2">
-                      <div className="flex justify-between items-center text-[11px] font-black text-blue-950">
-                        <span>🏷️ Spesifikasi Detail ({deviceType === 'ONU' ? 'Modem ONU Optik' : 'Router Wireless'})</span>
-                        <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2 py-0.5 rounded-full">Seri & Port LAN</span>
-                      </div>
+                    {/* Cascading Merek -> Model -> Auto Port LAN */}
+                    {(() => {
+                      const filteredBrands = Array.from(new Set(
+                        deviceCatalog.filter((item: any) => item.type === deviceType).map((item: any) => item.brand)
+                      ));
+                      if (!filteredBrands.includes(deviceBrand) && filteredBrands.length > 0) {
+                        filteredBrands.push(deviceBrand);
+                      }
 
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek Perangkat</label>
-                          <select
-                            value={deviceBrand}
-                            onChange={(e) => setDeviceBrand(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
-                          >
-                            {deviceType === 'ONU' ? (
-                              <>
-                                <option value="ZTE">ZTE</option>
-                                <option value="Huawei">Huawei</option>
-                                <option value="FiberHome">FiberHome</option>
-                                <option value="V-Sol">V-Sol</option>
-                                <option value="HS-Optical">HS-Optical</option>
-                                <option value="HI-ISO">HI-ISO</option>
-                                <option value="Netis">Netis</option>
+                      const filteredModels = deviceCatalog.filter((item: any) => item.type === deviceType && item.brand === deviceBrand);
+                      const matchedSpecItem = filteredModels.find((m: any) => m.model.toLowerCase().trim() === deviceModel.toLowerCase().trim());
+
+                      return (
+                        <div className="pt-2 border-t border-blue-200/80 space-y-2">
+                          <div className="flex justify-between items-center text-[11px] font-black text-blue-950">
+                            <span>🏷️ Spesifikasi Katalog ({deviceType === 'ONU' ? 'Modem ONU Optik' : 'Router Wireless'})</span>
+                            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-full">
+                              ⚡ Auto-Fill Port: {matchedSpecItem ? `${matchedSpecItem.lan_ports} Port LAN` : `${deviceLanPorts} Port`}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek Perangkat</label>
+                              <select
+                                value={deviceBrand}
+                                onChange={(e) => {
+                                  const newBrand = e.target.value;
+                                  setDeviceBrand(newBrand);
+                                  const firstM = deviceCatalog.find((item: any) => item.type === deviceType && item.brand === newBrand);
+                                  if (firstM) {
+                                    setDeviceModel(firstM.model);
+                                    setDeviceLanPorts(Number(firstM.lan_ports) || 4);
+                                  }
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                              >
+                                {filteredBrands.map((b: string) => (
+                                  <option key={b} value={b}>{b}</option>
+                                ))}
                                 <option value="Lainnya">Lainnya</option>
-                              </>
-                            ) : (
-                              <>
-                                <option value="Tenda">Tenda</option>
-                                <option value="TP-Link">TP-Link</option>
-                                <option value="Totolink">Totolink</option>
-                                <option value="MikroTik">MikroTik</option>
-                                <option value="Mercusys">Mercusys</option>
-                                <option value="Ubiquiti">Ubiquiti</option>
-                                <option value="Lainnya">Lainnya</option>
-                              </>
-                            )}
-                          </select>
-                        </div>
+                              </select>
+                            </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model</label>
-                          <input
-                            type="text"
-                            placeholder={deviceType === 'ONU' ? 'F609 / HG8245H' : 'N301 / WR840N'}
-                            value={deviceModel}
-                            onChange={(e) => setDeviceModel(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
-                          />
-                        </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model</label>
+                              <select
+                                value={deviceModel}
+                                onChange={(e) => {
+                                  const newModel = e.target.value;
+                                  setDeviceModel(newModel);
+                                  const foundItem = filteredModels.find((m: any) => m.model === newModel);
+                                  if (foundItem) {
+                                    setDeviceLanPorts(Number(foundItem.lan_ports) || 4);
+                                  }
+                                }}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                              >
+                                {filteredModels.map((m: any) => (
+                                  <option key={m.id || m.model} value={m.model}>
+                                    {m.model} ({m.lan_ports} Port LAN)
+                                  </option>
+                                ))}
+                                <option value="Custom / Seri Lain">Custom / Seri Lain</option>
+                              </select>
+                            </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Port LAN</label>
-                          <select
-                            value={deviceLanPorts}
-                            onChange={(e) => setDeviceLanPorts(Number(e.target.value))}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
-                          >
-                            <option value={1}>1 Port LAN</option>
-                            <option value={2}>2 Port LAN</option>
-                            <option value={4}>4 Port LAN</option>
-                            <option value={8}>8 Port LAN</option>
-                          </select>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-700 mb-1">Kapasitas Port LAN</label>
+                              <select
+                                value={deviceLanPorts}
+                                onChange={(e) => setDeviceLanPorts(Number(e.target.value))}
+                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                              >
+                                <option value={1}>1 Port LAN</option>
+                                <option value={2}>2 Port LAN</option>
+                                <option value={3}>3 Port LAN</option>
+                                <option value={4}>4 Port LAN</option>
+                                <option value={8}>8 Port LAN</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {matchedSpecItem && (
+                            <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-900 font-medium flex items-center justify-between">
+                              <span>ℹ️ <b>Spesifikasi Peta:</b> {matchedSpecItem.brand} {matchedSpecItem.model} • {matchedSpecItem.wifi_spec || `${matchedSpecItem.lan_ports} Port Ethernet`}</span>
+                              {matchedSpecItem.notes && <span className="text-[9px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-bold">{matchedSpecItem.notes}</span>}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
 
                   {/* FTTH ODP & ONU Details */}
@@ -2433,6 +2493,188 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           onClose={() => { setShowMapPickerModal(false); setMapCustomer(null); }}
           onSaved={() => { fetchData(); }}
         />
+      )}
+
+      {/* Modal Master Spesifikasi Katalog Perangkat (Add/Edit Custom Device Hardware) */}
+      {showCatalogModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100">
+            {/* Header */}
+            <div className="p-5 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black flex items-center gap-2">
+                  <span>⚙️ Master Katalog Spesifikasi Perangkat</span>
+                </h3>
+                <p className="text-xs text-blue-100/90 font-medium">
+                  Daftar spesifikasi Merek, Seri Model, dan Kapasitas Port LAN Modem ONU & Router Wireless
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCatalogModal(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5">
+              {/* Form Tambah Model Baru */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!newCatModel.trim()) return;
+                  const newItem = {
+                    id: `cat-custom-${Date.now()}`,
+                    type: newCatType,
+                    brand: newCatBrand.trim(),
+                    model: newCatModel.trim(),
+                    lan_ports: Number(newCatPorts),
+                    wifi_spec: newCatWifiSpec.trim() || `${newCatPorts} Port LAN Ethernet`,
+                    notes: 'Custom Hardware'
+                  };
+                  const updatedCat = [...deviceCatalog, newItem];
+                  setDeviceCatalog(updatedCat);
+                  await saveDeviceCatalogToFirestore(updatedCat).catch(() => null);
+                  setNewCatModel('');
+                  setNewCatWifiSpec('');
+                  setToastMsg({ type: 'success', text: `✨ Model "${newItem.brand} ${newItem.model}" berhasil ditambahkan ke Katalog Master!` });
+                }}
+                className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3"
+              >
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>➕ Tambah Tipe / Model Perangkat Baru</span>
+                  <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">Disimpan ke Cloud</span>
+                </h4>
+
+                <div className="grid grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-1">Tipe</label>
+                    <select
+                      value={newCatType}
+                      onChange={(e) => setNewCatType(e.target.value as any)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                    >
+                      <option value="ONU">Modem ONU</option>
+                      <option value="ROUTER_WIFI">Router Wi-Fi</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="ZTE / Tenda / Huawei"
+                      value={newCatBrand}
+                      onChange={(e) => setNewCatBrand(e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="F609 / N301"
+                      value={newCatModel}
+                      onChange={(e) => setNewCatModel(e.target.value)}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-1">Port LAN</label>
+                    <select
+                      value={newCatPorts}
+                      onChange={(e) => setNewCatPorts(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                    >
+                      <option value={1}>1 Port</option>
+                      <option value={2}>2 Port</option>
+                      <option value={3}>3 Port</option>
+                      <option value={4}>4 Port</option>
+                      <option value={8}>8 Port</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Fitur Khusus / Wi-Fi (opsional, contoh: Dual Band AC1200 / 300Mbps)"
+                    value={newCatWifiSpec}
+                    onChange={(e) => setNewCatWifiSpec(e.target.value)}
+                    className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-800"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer transition shadow-xs"
+                  >
+                    + Tambah Model
+                  </button>
+                </div>
+              </form>
+
+              {/* Tabel Daftar Spesifikasi Master */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Daftar Model Terdaftar ({deviceCatalog.length} Perangkat)</h4>
+                <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-700 font-extrabold sticky top-0 border-b border-slate-200">
+                      <tr>
+                        <th className="p-2.5">Tipe</th>
+                        <th className="p-2.5">Merek</th>
+                        <th className="p-2.5">Model</th>
+                        <th className="p-2.5">Port LAN</th>
+                        <th className="p-2.5">Spesifikasi Wi-Fi</th>
+                        <th className="p-2.5 text-right">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                      {deviceCatalog.map((item, idx) => (
+                        <tr key={item.id || idx} className="hover:bg-slate-50">
+                          <td className="p-2.5 font-bold">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${item.type === 'ONU' ? 'bg-indigo-100 text-indigo-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                              {item.type}
+                            </span>
+                          </td>
+                          <td className="p-2.5 font-bold">{item.brand}</td>
+                          <td className="p-2.5 font-bold text-blue-900">{item.model}</td>
+                          <td className="p-2.5 font-mono font-bold">{item.lan_ports} Port</td>
+                          <td className="p-2.5 text-[11px] text-slate-600">{item.wifi_spec || '-'}</td>
+                          <td className="p-2.5 text-right">
+                            <button
+                              onClick={async () => {
+                                if (window.confirm(`Hapus model "${item.brand} ${item.model}" dari katalog?`)) {
+                                  const updated = deviceCatalog.filter((_, i) => i !== idx);
+                                  setDeviceCatalog(updated);
+                                  await saveDeviceCatalogToFirestore(updated).catch(() => null);
+                                }
+                              }}
+                              className="text-red-600 hover:text-red-800 text-[10px] font-bold cursor-pointer"
+                            >
+                              Hapus
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => setShowCatalogModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold cursor-pointer transition"
+              >
+                Tutup Katalog Spesifikasi
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

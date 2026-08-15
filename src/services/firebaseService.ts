@@ -188,7 +188,72 @@ export const syncCustomerFtthDeviceNode = async (customer: any, isTerminatedOrDe
   }
 };
 
-// --- 2. CUSTOMERS MANAGEMENT ---
+// --- 1B. DEVICE CATALOG MASTER SPECIFICATIONS ---
+export const DEFAULT_DEVICE_CATALOG = [
+  // ONU Modems
+  { id: 'cat-zte-f609', type: 'ONU', brand: 'ZTE', model: 'F609', lan_ports: 4, wifi_spec: '2.4GHz Wi-Fi (4 LAN GE/FE)', notes: 'Modem Standar GPON Optik' },
+  { id: 'cat-zte-f660', type: 'ONU', brand: 'ZTE', model: 'F660', lan_ports: 4, wifi_spec: '2.4GHz Wi-Fi (4 LAN + POTS)', notes: 'Modem GPON Voice & Wi-Fi' },
+  { id: 'cat-zte-f601', type: 'ONU', brand: 'ZTE', model: 'F601', lan_ports: 1, wifi_spec: 'Bridge Only (1 Gigabit LAN)', notes: 'Modem GPON Bridge Only 1 Port' },
+  { id: 'cat-zte-f670l', type: 'ONU', brand: 'ZTE', model: 'F670L', lan_ports: 4, wifi_spec: 'Dual Band 2.4G/5G AC1200', notes: 'Modem GPON High Speed Dualband' },
+
+  { id: 'cat-hw-hg8245h', type: 'ONU', brand: 'Huawei', model: 'HG8245H', lan_ports: 4, wifi_spec: '2.4GHz Wi-Fi (4 LAN + 2 POTS)', notes: 'Modem GPON Optik Standar' },
+  { id: 'cat-hw-eg8141a5', type: 'ONU', brand: 'Huawei', model: 'EG8141A5', lan_ports: 1, wifi_spec: '2.4GHz Wi-Fi (1 GE + 3 FE)', notes: 'Modem GPON Ringkas 1 GE' },
+  { id: 'cat-hw-hg8010h', type: 'ONU', brand: 'Huawei', model: 'HG8010H', lan_ports: 1, wifi_spec: 'Bridge Only (1 Gigabit LAN)', notes: 'Modem GPON Bridge Only 1 Port' },
+
+  { id: 'cat-fh-hg6245d', type: 'ONU', brand: 'FiberHome', model: 'HG6245D', lan_ports: 4, wifi_spec: 'Dual Band 2.4G/5G AC1200', notes: 'Modem GPON FiberHome Dual Band' },
+  { id: 'cat-fh-an5506-04', type: 'ONU', brand: 'FiberHome', model: 'AN5506-04', lan_ports: 4, wifi_spec: '2.4GHz Wi-Fi (4 LAN FE)', notes: 'Modem GPON FiberHome 4 Port' },
+  { id: 'cat-fh-an5506-01', type: 'ONU', brand: 'FiberHome', model: 'AN5506-01', lan_ports: 1, wifi_spec: 'Bridge Only (1 GE Port)', notes: 'Modem GPON Bridge Only' },
+
+  { id: 'cat-vsol-v2801sg', type: 'ONU', brand: 'V-Sol', model: 'V2801SG', lan_ports: 1, wifi_spec: 'Bridge Only (1 GE EPON/GPON)', notes: 'Modem XPON Stick/Mini' },
+  { id: 'cat-vsol-v2804dac', type: 'ONU', brand: 'V-Sol', model: 'V2804DAC', lan_ports: 4, wifi_spec: 'Dual Band 2.4G/5G (4 GE)', notes: 'Modem XPON High Power' },
+  { id: 'cat-hs-optical-1g', type: 'ONU', brand: 'HS-Optical', model: 'HS100G', lan_ports: 1, wifi_spec: 'Bridge Only (1 GE Port)', notes: 'Modem ONU Mini Stick' },
+  { id: 'cat-hi-iso-1g', type: 'ONU', brand: 'HI-ISO', model: 'HI-GPON100', lan_ports: 1, wifi_spec: 'Bridge Only (1 GE Port)', notes: 'Modem GPON Single Port' },
+
+  // Wireless Routers
+  { id: 'cat-tenda-n301', type: 'ROUTER_WIFI', brand: 'Tenda', model: 'N301', lan_ports: 3, wifi_spec: '300Mbps 2.4GHz (1 WAN 3 LAN)', notes: 'Router Wireless Standar 2 Antenna' },
+  { id: 'cat-tenda-f3', type: 'ROUTER_WIFI', brand: 'Tenda', model: 'F3', lan_ports: 3, wifi_spec: '300Mbps 2.4GHz (1 WAN 3 LAN)', notes: 'Router Wireless High Power 3 Antenna' },
+  { id: 'cat-tenda-ac6', type: 'ROUTER_WIFI', brand: 'Tenda', model: 'AC6', lan_ports: 3, wifi_spec: 'Dual Band 1200Mbps AC (4 Antenna)', notes: 'Router Wireless Dualband' },
+
+  { id: 'cat-tplink-wr840n', type: 'ROUTER_WIFI', brand: 'TP-Link', model: 'TL-WR840N', lan_ports: 4, wifi_spec: '300Mbps 2.4GHz (1 WAN 4 LAN)', notes: 'Router Wireless Multi-Mode' },
+  { id: 'cat-tplink-wr841n', type: 'ROUTER_WIFI', brand: 'TP-Link', model: 'TL-WR841N', lan_ports: 4, wifi_spec: '300Mbps 2.4GHz (1 WAN 4 LAN)', notes: 'Router Wireless 2 Antenna' },
+  { id: 'cat-tplink-archerc20', type: 'ROUTER_WIFI', brand: 'TP-Link', model: 'Archer C20', lan_ports: 4, wifi_spec: 'Dual Band AC750 (4 LAN FE)', notes: 'Router Dualband TP-Link' },
+
+  { id: 'cat-totolink-n300rt', type: 'ROUTER_WIFI', brand: 'Totolink', model: 'N300RT', lan_ports: 4, wifi_spec: '300Mbps 2.4GHz (1 WAN 4 LAN)', notes: 'Router Totolink 2 Antenna' },
+  { id: 'cat-totolink-n200re', type: 'ROUTER_WIFI', brand: 'Totolink', model: 'N200RE', lan_ports: 2, wifi_spec: '300Mbps 2.4GHz (1 WAN 2 LAN)', notes: 'Router Mini Totolink' },
+
+  { id: 'cat-mt-hapmini', type: 'ROUTER_WIFI', brand: 'MikroTik', model: 'hAP mini (RB931)', lan_ports: 3, wifi_spec: '2.4GHz (3 FE LAN/WAN)', notes: 'Router Wireless MikroTik Mini' },
+  { id: 'cat-mt-haplite', type: 'ROUTER_WIFI', brand: 'MikroTik', model: 'hAP lite (RB941)', lan_ports: 4, wifi_spec: '2.4GHz (4 FE LAN/WAN)', notes: 'Router Wireless MikroTik Standar' }
+];
+
+export const saveDeviceCatalogToFirestore = async (catalogList: any[]) => {
+  try {
+    const catalogRef = doc(db, 'ftth_topology', 'device_catalog');
+    const sanitizedList = (catalogList || []).map(item => sanitizeForFirestore(item));
+    await setDoc(catalogRef, {
+      items: sanitizedList,
+      updated_at: new Date().toISOString()
+    }, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to save device catalog:', err);
+    throw err;
+  }
+};
+
+export const getDeviceCatalogFromFirestore = async () => {
+  try {
+    const catalogRef = doc(db, 'ftth_topology', 'device_catalog');
+    const docSnap = await getDoc(catalogRef);
+    if (docSnap.exists() && docSnap.data().items && Array.isArray(docSnap.data().items) && docSnap.data().items.length > 0) {
+      return { success: true, catalog: docSnap.data().items };
+    }
+    // Return default catalog if none saved yet
+    return { success: true, catalog: DEFAULT_DEVICE_CATALOG };
+  } catch (err: any) {
+    console.warn('[FIREBASE FIRESTORE WARN] Using default device catalog:', err?.message || err);
+    return { success: true, catalog: DEFAULT_DEVICE_CATALOG };
+  }
+};
 export const saveCustomerToFirestore = async (customer: any) => {
   try {
     const rawVal = String(customer.id || customer.customer_code || Date.now()).trim();
