@@ -358,7 +358,7 @@ export default function DeviceHardwarePage() {
                     {item.type === 'ONU' ? '🏠 MODEM ONU' : item.type === 'ROUTER_WIFI' ? '📶 ROUTER WI-FI' : item.type}
                   </span>
                   <span className="text-[11px] font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
-                    {item.lan_ports} Port LAN
+                    {item.type === 'ONU' ? `1 FO + ${item.lan_ports} RJ45` : `${item.lan_ports} Port LAN`}
                   </span>
                 </div>
 
@@ -370,14 +370,24 @@ export default function DeviceHardwarePage() {
                   </h3>
                 </div>
 
-                {/* Specs Detail Box */}
-                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 space-y-1 text-xs">
+                {/* Specs Detail Box (Optik vs RJ45) */}
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-900 text-[11px]">
+                    <Zap size={12} className="text-indigo-600" />
+                    <span>
+                      {item.type === 'ONU' 
+                        ? '1 Port Optik SC/UPC (Ke ODP)' 
+                        : item.type === 'HTB' 
+                        ? 'Port Optik Fiber A (1310nm) / B (1550nm)' 
+                        : 'Port WAN Ethernet RJ45'}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5 font-bold text-slate-700 text-[11px]">
                     <Wifi size={12} className="text-blue-500" />
-                    <span className="truncate">{item.wifi_spec || `${item.lan_ports} Port Ethernet`}</span>
+                    <span className="truncate">{item.wifi_spec || `${item.lan_ports} Port LAN RJ45 Ethernet`}</span>
                   </div>
                   {item.notes && (
-                    <p className="text-[10px] text-slate-500 font-medium line-clamp-2">
+                    <p className="text-[10px] text-slate-500 font-medium line-clamp-2 pt-0.5">
                       💡 {item.notes}
                     </p>
                   )}

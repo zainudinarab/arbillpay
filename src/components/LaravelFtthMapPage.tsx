@@ -2638,17 +2638,38 @@ const DEFAULT_SPLITTER_CATALOG = [
                   </p>
                 </div>
               ) : editType === 'ONU' ? (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port LAN ONU Pelanggan:</label>
-                  <select
-                    value={editPortsLan}
-                    onChange={(e) => setEditPortsLan(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={1}>ONU 1 Port LAN (Fast/Gigabit Ethernet)</option>
-                    <option value={2}>ONU 2 Port LAN (Dual Port RJ45)</option>
-                    <option value={4}>ONU 4 Port LAN (Quad Port RJ45)</option>
-                  </select>
+                <div className="space-y-2 bg-indigo-50/70 p-3.5 rounded-2xl border border-indigo-200">
+                  <div className="text-xs font-extrabold text-indigo-950 flex items-center justify-between">
+                    <span>🏠 Port Modem ONU Pelanggan</span>
+                    <span className="text-[10px] bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded-full font-bold">1 Fiber Optik + RJ45 LAN</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Port Fiber Optik (PON)</label>
+                      <input
+                        type="text"
+                        disabled
+                        value="1 Port SC/UPC (Ke ODP)"
+                        className="w-full px-2.5 py-1.5 bg-slate-200 border border-slate-300 rounded-xl text-xs font-bold text-slate-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">Port LAN (RJ45 Ethernet)</label>
+                      <select
+                        value={editPortsLan}
+                        onChange={(e) => setEditPortsLan(parseInt(e.target.value))}
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                      >
+                        <option value={1}>1 Port LAN RJ45</option>
+                        <option value={2}>2 Port LAN RJ45</option>
+                        <option value={4}>4 Port LAN RJ45</option>
+                        <option value={8}>8 Port LAN RJ45</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium italic">
+                    Total: 1 Port Fiber Optik SC/UPC (Dropcore ODP) + {editPortsLan} LAN RJ45 = {1 + editPortsLan} Port Fisik.
+                  </p>
                 </div>
               ) : editType === 'OLT' ? (
                 <div className="space-y-3 p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl">
