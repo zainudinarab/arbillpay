@@ -11,7 +11,7 @@ export function formatCurrency(amount: number, currency: 'IDR' | 'USD' = 'IDR'):
       maximumFractionDigits: 0
     }).format(amount);
   }
-  
+
   // Format to IDR
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -27,7 +27,7 @@ export function formatDate(dateString: string, lang: 'id' | 'en' = 'id'): string
   if (!dateString) return '';
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return dateString;
-  
+
   return date.toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-US', {
     year: 'numeric',
     month: 'short',
@@ -36,13 +36,13 @@ export function formatDate(dateString: string, lang: 'id' | 'en' = 'id'): string
 }
 
 /**
- * Generates short 4-character uppercase Customer Code: CUST-8F2K, CUST-9A4B...
+ * Generates short 5-character uppercase Customer Code: CUST-8F2K9, CUST-9A4B1...
  * 100% Concurrent-Safe for simultaneous registrations!
  */
 export function generateNextCustomerCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   let result = '';
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return `CUST-${result}`;
@@ -127,7 +127,7 @@ export function generateSequentialInvoices(cust: any, packagePrice: number, pack
     const periodDate = new Date(y, m, 1);
     const monthName = periodDate.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
     const monthCode = `${y}${(m + 1).toString().padStart(2, '0')}`;
-    
+
     const dueDay = Math.min(instDay, 28);
     const dueIso = `${y}-${(m + 1).toString().padStart(2, '0')}-${dueDay.toString().padStart(2, '0')}`;
 
