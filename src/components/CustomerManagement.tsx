@@ -575,7 +575,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   }, []);
 
   // Auto-calculate Expired & Grace dates based on Tanggal Pasang/Aktif and Paket Internet
-  const autoCalculateDates = (instDateStr: string, pkgIdToUse: string) => {
+  const autoCalculateDates = (instDateStr: string, pkgIdToUse?: string) => {
     const selectedPkg = packages.find(p => p.id === pkgIdToUse);
     const baseDate = instDateStr ? new Date(instDateStr) : new Date();
 
@@ -584,10 +584,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     let valDays = selectedPkg?.validity_days || 30;
     const valUnit = (selectedPkg as any)?.validity_unit || 'month';
     const valVal = (selectedPkg as any)?.validity_value || 1;
-    const graceDays = (selectedPkg as any)?.grace_period_days || 5;
+    const graceDays = (selectedPkg as any)?.grace_period_days || 15;
 
     const expDate = new Date(baseDate);
-    if (valUnit === 'month') {
+    if (selectedPkg && valUnit === 'month') {
       expDate.setMonth(expDate.getMonth() + valVal);
     } else {
       expDate.setDate(expDate.getDate() + valDays);
@@ -642,8 +642,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (routers.length > 0) setSelectedRouterId(routers[0].id);
     if (initialPkgId) {
       setPackageId(initialPkgId);
-      autoCalculateDates(today, initialPkgId);
     }
+    autoCalculateDates(today, initialPkgId);
   };
 
   const handleOpenAddModal = () => {
@@ -746,10 +746,16 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setStaticIp(cust.static_ip || '');
 
     const safeExp = typeof cust.expired_at === 'string' ? cust.expired_at : '';
-    setExpiredAt(safeExp.includes('T') ? safeExp.split('T')[0] : safeExp);
+    const expDateStr = safeExp.includes('T') ? safeExp.split('T')[0] : safeExp;
+    setExpiredAt(expDateStr);
 
     const safeGrace = typeof cust.grace_until === 'string' ? cust.grace_until : '';
-    setGraceUntil(safeGrace.includes('T') ? safeGrace.split('T')[0] : safeGrace);
+    const graceDateStr = safeGrace.includes('T') ? safeGrace.split('T')[0] : safeGrace;
+    setGraceUntil(graceDateStr);
+
+    if (!expDateStr || !graceDateStr) {
+      autoCalculateDates(safeInstDate.includes('T') ? safeInstDate.split('T')[0] : safeInstDate, cust.package_id);
+    }
 
     let autoOdp = cust.odp_port || '';
     try {
@@ -1666,25 +1672,38 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                   </div>
 
                   {/* Expiration dates matching Screenshot 2 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-rose-600 mb-1">Masa Aktif Hingga (Expired)</label>
-                      <input
-                        type="date"
-                        value={expiredAt}
-                        onChange={(e) => setExpiredAt(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-mono font-bold text-rose-900"
-                      />
+                  <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center text-[11px] font-bold text-blue-900">
+                      <span>⚡ Auto-Calculated dari Tanggal Pasang + Masa Aktif Paket</span>
+                      <button
+                        type="button"
+                        onClick={() => autoCalculateDates(installationDate, packageId)}
+                        className="text-blue-600 hover:text-blue-800 underline font-bold cursor-pointer"
+                      >
+                        🔄 Hitung Ulang
+                      </button>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-amber-600 mb-1">Batas Toleransi (Grace Until)</label>
-                      <input
-                        type="date"
-                        value={graceUntil}
-                        onChange={(e) => setGraceUntil(e.target.value)}
-                        className="w-full px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-rose-600 mb-1">Masa Aktif Hingga (Expired)</label>
+                        <input
+                          type="date"
+                          value={expiredAt}
+                          onChange={(e) => setExpiredAt(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-mono font-bold text-rose-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-amber-600 mb-1">Batas Toleransi (Grace Until)</label>
+                        <input
+                          type="date"
+                          value={graceUntil}
+                          onChange={(e) => setGraceUntil(e.target.value)}
+                          className="w-full px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900"
+                        />
+                      </div>
                     </div>
                   </div>
 

@@ -371,8 +371,11 @@ export default function PendingSubmissionsPage({ profile, t, onLogout }: Pending
         status: nextStageKey,
         installation_stage: nextStageKey,
         ...(isNowActive ? {
+          status: 'active',
           installation_date: new Date().toISOString().split('T')[0],
-          approved_at: new Date().toISOString()
+          approved_at: new Date().toISOString(),
+          expired_at: cust.expired_at || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+          grace_until: cust.grace_until || new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0]
         } : {})
       };
 
