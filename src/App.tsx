@@ -61,6 +61,7 @@ import DataWilayahPage from './components/DataWilayahPage';
 import NotificationSettingsPage from './components/NotificationSettingsPage';
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 import DeviceHardwarePage from './components/DeviceHardwarePage';
+import FtthDevicesPage from './components/FtthDevicesPage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
@@ -1070,12 +1071,7 @@ const safeFormatDate = (val: any): string => {
         );
       case 'ftth-devices':
         return (
-          <LaravelFtthMapPage
-            profile={profile}
-            t={t}
-            onLogout={handleLogout}
-            initialOpenModal="devices"
-          />
+          <FtthDevicesPage />
         );
       case 'vouchers':
         return (
