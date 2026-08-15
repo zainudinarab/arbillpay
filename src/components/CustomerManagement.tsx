@@ -250,19 +250,6 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       } catch (fbErr) {}
     }
 
-    // Auto-generate sequential monthly invoices starting from installation_date up to current month
-    if (matchedInvoices.length === 0) {
-      const pkg = packages.find(p => p.id === cust.package_id);
-      const pkgPrice = pkg ? Number(pkg.price) : 150000;
-      const pkgName = pkg ? pkg.name : 'Paket Internet PPPoE';
-
-      const generatedList = generateSequentialInvoices(cust, pkgPrice, pkgName);
-      for (const inv of generatedList) {
-        await saveInvoiceToFirestore(inv).catch(() => null);
-      }
-      matchedInvoices = generatedList;
-    }
-
     setCustomerInvoices(matchedInvoices);
   };
 
