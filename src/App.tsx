@@ -59,8 +59,8 @@ import IpPoolManagement from './components/IpPoolManagement';
 import GenieAcsManagement from './components/GenieAcsManagement';
 import DataWilayahPage from './components/DataWilayahPage';
 import NotificationSettingsPage from './components/NotificationSettingsPage';
-// MapViewPage removed — use LaravelFtthMapPage at #/map-ftth instead
 import LaravelFtthMapPage from './components/LaravelFtthMapPage';
+import DeviceHardwarePage from './components/DeviceHardwarePage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
@@ -1046,6 +1046,10 @@ const safeFormatDate = (val: any): string => {
             t={t}
             onLogout={handleLogout}
           />
+        );
+      case 'hardware':
+        return (
+          <DeviceHardwarePage />
         );
       case 'map-ftth':
         return (
