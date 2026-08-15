@@ -609,7 +609,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [connectionType, setConnectionType] = useState<'pppoe'>('pppoe');
   const [expiredAt, setExpiredAt] = useState<string>('');
   const [graceUntil, setGraceUntil] = useState<string>('');
-  const [deviceType, setDeviceType] = useState<'ONU' | 'ROUTER_WIFI' | 'HTB' | 'SWITCH' | 'NONE'>('ONU');
+  const [deviceType, setDeviceType] = useState<'ONU' | 'ROUTER_WIFI'>('ONU');
+  const [deviceBrand, setDeviceBrand] = useState('ZTE');
+  const [deviceModel, setDeviceModel] = useState('F609');
+  const [deviceLanPorts, setDeviceLanPorts] = useState(4);
 
   const [odpPort, setOdpPort] = useState('');
   const [snOnu, setSnOnu] = useState('');
@@ -840,6 +843,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
         device_type: deviceType,
+        device_brand: deviceBrand,
+        device_model: deviceModel,
+        device_lan_ports: deviceLanPorts,
         package_id: packageId,
         router_id: selectedRouterId || null,
         router_profile_id: matchedProfile ? matchedProfile.id : null,
@@ -922,7 +928,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setSnOnu(cust.sn_onu || '');
     setPowerLaser(cust.power_laser || '-19.00');
     setTeknisi(cust.teknisi || '');
-    setDeviceType((cust as any).device_type || (cust.connection_type === 'hotspot' ? 'NONE' : 'ONU'));
+    const detectedType = (cust as any).device_type || (cust.connection_type === 'hotspot' ? 'NONE' : 'ONU');
+    setDeviceType(detectedType);
+    setDeviceBrand((cust as any).device_brand || (detectedType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE'));
+    setDeviceModel((cust as any).device_model || (detectedType === 'ROUTER_WIFI' ? 'N301' : 'F609'));
+    setDeviceLanPorts(Number((cust as any).device_lan_ports) || 4);
 
     if (cust.router_id) setSelectedRouterId(cust.router_id);
     if (cust.package_id) setPackageId(cust.package_id);
@@ -968,6 +978,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         power_laser: powerLaser.trim() || null,
         teknisi: teknisi.trim() || null,
         device_type: deviceType,
+        device_brand: deviceBrand,
+        device_model: deviceModel,
+        device_lan_ports: deviceLanPorts,
         package_id: packageId,
         package_name: pkg ? pkg.name : editingCustomer.package_name,
         router_id: selectedRouterId || null,
@@ -1892,11 +1905,75 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                       className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer shadow-xs focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="ONU">🏠 Modem ONU Optik (GPON/EPON FTTH Dedicated)</option>
-                      <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink)</option>
-                      <option value="HTB">⚡ HTB Media Converter Optik</option>
-                      <option value="SWITCH">🔌 Switch Hub LAN Direct</option>
-                      <option value="NONE">❌ Hotspot / Tanpa Perangkat Dedicated</option>
+                      <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink/MikroTik)</option>
                     </select>
+
+                    {/* Spesifikasi Detail Perangkat (Merek, Seri Model, Kapasitas Port LAN) */}
+                    <div className="pt-2 border-t border-blue-200/80 space-y-2">
+                      <div className="flex justify-between items-center text-[11px] font-black text-blue-950">
+                        <span>🏷️ Spesifikasi Detail ({deviceType === 'ONU' ? 'Modem ONU Optik' : 'Router Wireless'})</span>
+                        <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2 py-0.5 rounded-full">Seri & Port LAN</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Merek Perangkat</label>
+                          <select
+                            value={deviceBrand}
+                            onChange={(e) => setDeviceBrand(e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                          >
+                            {deviceType === 'ONU' ? (
+                              <>
+                                <option value="ZTE">ZTE</option>
+                                <option value="Huawei">Huawei</option>
+                                <option value="FiberHome">FiberHome</option>
+                                <option value="V-Sol">V-Sol</option>
+                                <option value="HS-Optical">HS-Optical</option>
+                                <option value="HI-ISO">HI-ISO</option>
+                                <option value="Netis">Netis</option>
+                                <option value="Lainnya">Lainnya</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="Tenda">Tenda</option>
+                                <option value="TP-Link">TP-Link</option>
+                                <option value="Totolink">Totolink</option>
+                                <option value="MikroTik">MikroTik</option>
+                                <option value="Mercusys">Mercusys</option>
+                                <option value="Ubiquiti">Ubiquiti</option>
+                                <option value="Lainnya">Lainnya</option>
+                              </>
+                            )}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Seri / Model</label>
+                          <input
+                            type="text"
+                            placeholder={deviceType === 'ONU' ? 'F609 / HG8245H' : 'N301 / WR840N'}
+                            value={deviceModel}
+                            onChange={(e) => setDeviceModel(e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-700 mb-1">Port LAN</label>
+                          <select
+                            value={deviceLanPorts}
+                            onChange={(e) => setDeviceLanPorts(Number(e.target.value))}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 cursor-pointer"
+                          >
+                            <option value={1}>1 Port LAN</option>
+                            <option value={2}>2 Port LAN</option>
+                            <option value={4}>4 Port LAN</option>
+                            <option value={8}>8 Port LAN</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* FTTH ODP & ONU Details */}
