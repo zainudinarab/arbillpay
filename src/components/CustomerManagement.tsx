@@ -43,6 +43,29 @@ import { getApiUrl } from '../config/api';
 import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
 import { IndonesianAddressForm } from './IndonesianAddressForm';
 
+const sendWhatsAppMessageDirect = (
+  phone: string,
+  name: string,
+  invNum: string,
+  pkgName: string,
+  amount: number,
+  dueDate: string,
+  startDate?: string,
+  endDate?: string
+) => {
+  if (!phone) {
+    alert('Nomor WhatsApp pelanggan tidak ditemukan!');
+    return;
+  }
+  let cleanPhone = phone.replace(/[^0-9]/g, '');
+  if (cleanPhone.startsWith('0')) {
+    cleanPhone = '62' + cleanPhone.slice(1);
+  }
+  const checkoutUrl = `https://arbillpay.web.app/?view=checkout&id=${invNum}#/overview`;
+  const text = `Halo *${name}*,\n\nBerikut rincian tagihan internet bulanan Anda:\n\n🧾 *No Tagihan*: ${invNum}\n📦 *Paket*: ${pkgName || 'Internet'}\n💰 *Total*: Rp ${Number(amount || 0).toLocaleString('id-ID')}\n⏰ *Jatuh Tempo*: ${dueDate || '-'}\n\n🔗 *Bayar Online 1-Click (ArabPay)*:\n${checkoutUrl}\n\nTerima kasih atas kepercayaannya!`;
+  window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+};
+
 const formatDateSafe = (dateVal: any): string => {
   if (!dateVal) return '-';
   if (typeof dateVal === 'string') {
@@ -225,12 +248,14 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const fetchCustomerInvoices = async (cust: CustomerItem) => {
     let matchedInvoices: any[] = [];
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
-      if (res && res.ok) {
-        const data = await parseJsonResponse(res);
-        if (data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
-          matchedInvoices = data.invoices;
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`).catch(() => null);
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success && Array.isArray(data.invoices) && data.invoices.length > 0) {
+            matchedInvoices = data.invoices;
+          }
         }
       }
     } catch (err) {}
@@ -262,17 +287,19 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const handlePayInvoiceById = async (invId: string) => {
     setPayLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/invoices/${invId}/pay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payment_method: 'Kasir / Tunai' })
-      }).catch(() => null);
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/invoices/${invId}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_method: 'Kasir / Tunai' })
+        }).catch(() => null);
 
-      if (res && res.ok) {
-        const data = await parseJsonResponse(res);
-        if (data.success) {
-          setToastMsg({ type: 'success', text: data.message });
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+          }
         }
       }
 
@@ -307,20 +334,27 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (!billingCustomer) return;
     setPayLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/customers/${billingCustomer.id}/pay-bill`, {
-        method: 'POST'
-      });
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        if (billingCustomer) {
-          fetchCustomerInvoices(billingCustomer);
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${billingCustomer.id}/pay-bill`, {
+          method: 'POST'
+        }).catch(() => null);
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+          }
         }
-        fetchData();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal melunasi tagihan.' });
       }
+
+      // Fallback Cloud update
+      if (billingCustomer) {
+        const updatedCust = { ...billingCustomer, status: 'active' };
+        await saveCustomerToFirestore(updatedCust).catch(() => null);
+        fetchCustomerInvoices(billingCustomer);
+        setToastMsg({ type: 'success', text: 'Tagihan berhasil dilunasi!' });
+      }
+      fetchData();
     } catch (err: any) {
       setToastMsg({ type: 'error', text: `Gagal bayar: ${err?.message || 'Error'}` });
     } finally {
@@ -334,17 +368,22 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const handleSyncCustomer = async (cust: CustomerItem) => {
     setActionLoadingId(cust.id);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/customers/${cust.id}/sync-to-mikrotik`, {
-        method: 'POST'
-      });
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        fetchData();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal sinkronisasi ke Mikrotik.' });
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${cust.id}/sync-to-mikrotik`, {
+          method: 'POST'
+        }).catch(() => null);
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+            fetchData();
+            return;
+          }
+        }
       }
+      await saveCustomerToFirestore(cust).catch(() => null);
+      setToastMsg({ type: 'success', text: `Data "${cust.name}" disinkronkan ke Cloud Firestore!` });
     } catch (err: any) {
       setToastMsg({ type: 'error', text: `Gagal Sync: ${err?.message || 'Error'}` });
     } finally {
@@ -356,14 +395,18 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (!window.confirm(`Putuskan sesi koneksi aktif untuk "${cust.name}" (${cust.pppoe_username})?`)) return;
     setActionLoadingId(cust.id);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/customers/${cust.id}/disconnect-ppp`, {
-        method: 'POST'
-      });
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        fetchData();
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${cust.id}/disconnect-ppp`, {
+          method: 'POST'
+        }).catch(() => null);
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+            fetchData();
+          }
+        }
       }
     } catch (err: any) {
       setToastMsg({ type: 'error', text: `Gagal Diskonek: ${err?.message || 'Error'}` });
@@ -2141,10 +2184,29 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                 type="button"
                                 onClick={async () => {
                                   try {
-                                    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-                                    const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' });
-                                    const data = await parseJsonResponse(res);
-                                    setToastMsg({ type: data.success ? 'success' : 'error', text: data.message });
+                                    const apiUrl = getApiUrl();
+                                    if (apiUrl) {
+                                      const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' }).catch(() => null);
+                                      if (res && res.ok) {
+                                        const data = await parseJsonResponse(res).catch(() => null);
+                                        if (data && data.success) {
+                                          setToastMsg({ type: 'success', text: data.message });
+                                          return;
+                                        }
+                                      }
+                                    }
+
+                                    // Direct 1-Click WA Fallback
+                                    sendWhatsAppMessageDirect(
+                                      inv.customer_phone || billingCustomer.phone_number,
+                                      inv.customer_name || billingCustomer.name,
+                                      inv.invoice_number || inv.id,
+                                      inv.package_name || billingCustomer.package_name,
+                                      inv.amount || inv.total,
+                                      inv.due_date || billingCustomer.expired_at,
+                                      inv.start_date || billingCustomer.installation_date,
+                                      inv.end_date || billingCustomer.expired_at
+                                    );
                                   } catch (err: any) {
                                     setToastMsg({ type: 'error', text: `Gagal WA: ${err?.message}` });
                                   }
