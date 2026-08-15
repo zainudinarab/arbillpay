@@ -1910,6 +1910,95 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     </div>
                   </div>
 
+                  {/* Banner Indikator Tautan Perangkat ke Node Peta FTTH */}
+                  {(() => {
+                    if (!editingCustomer) return null;
+
+                    const custId = String(editingCustomer.id || editingCustomer.customer_code || '').trim();
+                    const linkedNode = ftthNodes.find((n: any) =>
+                      String(n.customerId || '') === custId ||
+                      (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(custId)) ||
+                      (editingCustomer.pppoe_username && n.name && n.name.toLowerCase().trim() === String(editingCustomer.pppoe_username).toLowerCase().trim()) ||
+                      (editingCustomer.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(editingCustomer.sn_onu).toLowerCase().trim())
+                    );
+
+                    if (linkedNode) {
+                      return (
+                        <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl space-y-2 text-xs shadow-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-emerald-950 flex items-center gap-1.5 text-xs">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              <span>✅ TERHUBUNG KE NODE PETA FTTH</span>
+                            </span>
+                            <span className="text-[10px] font-extrabold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                              ID Node: {linkedNode.id}
+                            </span>
+                          </div>
+
+                          <div className="p-2 bg-white/90 border border-emerald-200 rounded-xl space-y-1 font-medium text-emerald-900 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span><b>Node Perangkat:</b> {linkedNode.name || `${linkedNode.type} #${linkedNode.id}`} ({linkedNode.type})</span>
+                              {linkedNode.sn_onu && <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">SN: {linkedNode.sn_onu}</span>}
+                            </div>
+                            {linkedNode.odp_port && (
+                              <div className="text-emerald-800 text-[10px]">
+                                📍 <b>Jalur ODP:</b> {linkedNode.odp_port}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="pt-1 flex items-center gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (window.confirm(`Apakah Anda yakin ingin MENCABUT & MENGHAPUS node perangkat "${linkedNode.name || linkedNode.id}" di Peta FTTH?\n\nPERATURAN: Node & jalur kabel optik akan dihapus, dan Port ODP akan kembali BEBAS untuk calon pelanggan baru!`)) {
+                                  try {
+                                    setActionLoadingId(editingCustomer.id);
+                                    // Remove node & cables from FTTH Topology
+                                    const mapData = await getFtthMapFromFirestore();
+                                    if (mapData.success) {
+                                      const newNodes = (mapData.nodes || []).filter((n: any) => n.id !== linkedNode.id);
+                                      const newLines = (mapData.lines || []).filter((l: any) => l.fromId !== linkedNode.id && l.toId !== linkedNode.id);
+                                      await saveFtthMapToFirestore(newNodes, newLines);
+                                    }
+                                    // Clear customer ODP & SN fields
+                                    setOdpPort('');
+                                    setSnOnu('');
+                                    const updatedCust = { ...editingCustomer, odp_port: null, sn_onu: null };
+                                    await saveCustomerToFirestore(updatedCust);
+                                    setFtthNodes(prev => prev.filter(n => n.id !== linkedNode.id));
+                                    setToastMsg({ type: 'success', text: `✂️ Node Perangkat di Peta FTTH & Kabel Optik berhasil DICABUT! Port ODP kini BEBAS.` });
+                                  } catch (err: any) {
+                                    setToastMsg({ type: 'error', text: 'Gagal mencabut node: ' + err?.message });
+                                  } finally {
+                                    setActionLoadingId(null);
+                                  }
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-[11px] cursor-pointer transition shadow-xs flex items-center gap-1"
+                            >
+                              <span>🗑️ Cabut & Hapus Node di Peta</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                            <span>⚠️ BELUM DITAUTKAN KE NODE PETA FTTH</span>
+                          </span>
+                          <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">Status: Off-Map</span>
+                        </div>
+                        <p className="text-[11px] text-amber-800 font-medium">
+                          Pelanggan ini belum memiliki titik Marker Node Perangkat pada Peta FTTH Map.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   {/* Jenis Perangkat Sambungan Pelanggan & Cascading Device Catalog Specs */}
                   <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2.5">
                     <div className="flex justify-between items-center">
