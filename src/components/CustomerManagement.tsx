@@ -41,7 +41,9 @@ import {
   saveInvoiceToFirestore,
   getDeviceCatalogFromFirestore,
   saveDeviceCatalogToFirestore,
-  DEFAULT_DEVICE_CATALOG
+  DEFAULT_DEVICE_CATALOG,
+  getFtthMapFromFirestore,
+  saveFtthMapToFirestore
 } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 import { generateSequentialInvoices, generateNextCustomerCode } from '../utils';
@@ -737,6 +739,12 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     const fbCat = await getDeviceCatalogFromFirestore();
     if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
       setDeviceCatalog(fbCat.catalog);
+    }
+
+    const fbMap = await getFtthMapFromFirestore();
+    if (fbMap.success) {
+      setFtthNodes(fbMap.nodes || []);
+      setFtthLines(fbMap.lines || []);
     }
 
     setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
@@ -2085,13 +2093,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                   <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl space-y-2.5">
                     <div className="flex justify-between items-center">
                       <label className="block text-xs font-black text-blue-950">Jenis Perangkat Sambungan Pelanggan</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowCatalogModal(true)}
-                        className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-extrabold px-2.5 py-1 rounded-lg cursor-pointer transition flex items-center gap-1 shadow-xs"
-                      >
-                        ⚙️ Kelola Spesifikasi Master
-                      </button>
+                      <span className="text-[10px] bg-blue-200 text-blue-900 font-extrabold px-2.5 py-1 rounded-lg">⚡ Auto-Sync Peta FTTH</span>
                     </div>
 
                     <select
