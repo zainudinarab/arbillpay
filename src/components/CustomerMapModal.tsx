@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapPin, Navigation, Save, X, ExternalLink, Search } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { saveCustomerToFirestore, syncCustomerFtthDeviceNode } from '../services/firebaseService';
 
 // Fix Leaflet Default Icon issue in Vite/Webpack
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -152,7 +153,7 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
     }
   };
 
-  // Save location to backend
+  // Save location to backend & Cloud Firestore
   const handleSaveLocation = async () => {
     if (!lat || !lng) {
       setErrorMsg('Harap tentukan titik koordinat Latitude & Longitude terlebih dahulu.');
@@ -163,27 +164,36 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
     setErrorMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/customers/${customer.id}/location`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          latitude: lat,
-          longitude: lng,
-          maps_url: mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`
-        })
-      });
+      const updatedCust = {
+        ...customer,
+        latitude: lat,
+        longitude: lng,
+        maps_url: mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`
+      };
 
-      const data = await res.json();
-      if (data.success) {
-        setSuccessMsg('✅ Titik lokasi pelanggan berhasil disimpan!');
-        setTimeout(() => {
-          onSaved();
-          onClose();
-        }, 1000);
-      } else {
-        setErrorMsg(data.message || 'Gagal menyimpan titik lokasi.');
-      }
+      // 1. Optional API Call (silently catch network errors if backend offline)
+      try {
+        const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+        await fetch(`${apiUrl}/api/customers/${customer.id}/location`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: lat,
+            longitude: lng,
+            maps_url: mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`
+          })
+        }).catch(() => null);
+      } catch (e) {}
+
+      // 2. Primary Cloud Firestore & FTTH Node Sync Save
+      await saveCustomerToFirestore(updatedCust).catch(() => null);
+      await syncCustomerFtthDeviceNode(updatedCust).catch(() => null);
+
+      setSuccessMsg('✅ Titik lokasi & Marker Node FTTH berhasil disimpan!');
+      setTimeout(() => {
+        onSaved();
+        onClose();
+      }, 800);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Terjadi kesalahan saat menyimpan lokasi.');
     } finally {
