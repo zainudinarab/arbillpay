@@ -673,9 +673,32 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     let loadedCustomers: any[] = [];
     let loadedPackages: any[] = [];
 
-    try {
-      const apiUrl = getApiUrl();
-      if (apiUrl) {
+    // 1. Fire Cloud Firestore parallel queries FIRST (Lightning fast ~150ms)!
+    const [fbCust, fbPkg, fbCat, fbMap] = await Promise.all([
+      getCustomersFromFirestore().catch(() => ({ success: false, customers: [] })),
+      getPackagesFromFirestore().catch(() => ({ success: false, packages: [] })),
+      getDeviceCatalogFromFirestore().catch(() => ({ success: false, catalog: [] })),
+      getFtthMapFromFirestore().catch(() => ({ success: false, nodes: [], lines: [] }))
+    ]);
+
+    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
+      loadedCustomers = [...fbCust.customers];
+    }
+    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
+      loadedPackages = [...fbPkg.packages];
+    }
+    if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
+      setDeviceCatalog(fbCat.catalog);
+    }
+    if (fbMap.success) {
+      setFtthNodes(fbMap.nodes || []);
+      setFtthLines(fbMap.lines || []);
+    }
+
+    // 2. Optional: If running on local server (localhost), also query local Mikrotik/Express API in parallel
+    const apiUrl = getApiUrl();
+    if (apiUrl) {
+      try {
         const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
           fetch(`${apiUrl}/api/customers`).catch(() => null),
           fetch(`${apiUrl}/api/packages`).catch(() => null),
@@ -688,13 +711,19 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         if (resCust && resCust.ok) {
           const dataCust = await parseJsonResponse(resCust).catch(() => null);
           if (dataCust && dataCust.success && Array.isArray(dataCust.customers)) {
-            loadedCustomers = dataCust.customers;
+            const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
+            dataCust.customers.forEach((c: any) => {
+              if (!existingIds.has(String(c.id))) loadedCustomers.push(c);
+            });
           }
         }
         if (resPkg && resPkg.ok) {
           const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
           if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages)) {
-            loadedPackages = dataPkg.packages;
+            const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
+            dataPkg.packages.forEach((p: any) => {
+              if (!existingPkgIds.has(String(p.id))) loadedPackages.push(p);
+            });
           }
         }
         if (resRtr && resRtr.ok) {
@@ -729,39 +758,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
             setFtthLines(dataMap.mapData.edges || dataMap.mapData.lines || []);
           }
         }
-      }
-    } catch (err: any) { }
-
-    // Merge with Firebase Cloud Firestore for instant cloud persistence
-    const fbCust = await getCustomersFromFirestore();
-    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
-      const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
-      fbCust.customers.forEach((fc: any) => {
-        if (!existingIds.has(String(fc.id))) {
-          loadedCustomers.push(fc);
-        }
-      });
-    }
-
-    const fbPkg = await getPackagesFromFirestore();
-    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
-      const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
-      fbPkg.packages.forEach((fp: any) => {
-        if (!existingPkgIds.has(String(fp.id))) {
-          loadedPackages.push(fp);
-        }
-      });
-    }
-
-    const fbCat = await getDeviceCatalogFromFirestore();
-    if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
-      setDeviceCatalog(fbCat.catalog);
-    }
-
-    const fbMap = await getFtthMapFromFirestore();
-    if (fbMap.success) {
-      setFtthNodes(fbMap.nodes || []);
-      setFtthLines(fbMap.lines || []);
+      } catch (err: any) { }
     }
 
     setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
