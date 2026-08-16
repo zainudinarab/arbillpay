@@ -214,6 +214,7 @@ const DEFAULT_SPLITTER_CATALOG = [
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
   const [isLegendOpen, setIsLegendOpen] = useState<boolean>(true);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const nodeMarkersRef = useRef<Map<string, L.Marker>>(new Map());
 
   // Toast, Modal & Persistence States
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
@@ -348,6 +349,48 @@ const DEFAULT_SPLITTER_CATALOG = [
   useEffect(() => {
     reloadSplitterCatalog();
   }, []);
+
+  // Auto-Center & Open Popup for target nodeId passed in URL query param (e.g. /#/map-ftth?nodeId=node-dev-1786849038633)
+  useEffect(() => {
+    const getQueryNodeId = (): string | null => {
+      try {
+        let searchStr = window.location.search;
+        if (!searchStr && window.location.hash.includes('?')) {
+          searchStr = window.location.hash.substring(window.location.hash.indexOf('?'));
+        }
+        const params = new URLSearchParams(searchStr);
+        return params.get('nodeId');
+      } catch (e) {
+        return null;
+      }
+    };
+
+    const targetNodeId = getQueryNodeId();
+    if (targetNodeId && nodes.length > 0 && mapInstanceRef.current) {
+      const targetNode = nodes.find(n => 
+        n.id === targetNodeId || 
+        (n.customerId && String(n.customerId) === String(targetNodeId))
+      );
+
+      if (targetNode) {
+        // 1. Smoothly center & zoom Leaflet map to target node position
+        mapInstanceRef.current.setView([targetNode.lat, targetNode.lng], 18, { animate: true });
+
+        // 2. Open Popup dialog for target node marker
+        setTimeout(() => {
+          const marker = nodeMarkersRef.current.get(targetNode.id);
+          if (marker) {
+            marker.openPopup();
+          }
+        }, 400);
+
+        // 3. Highlight Trace Route Path & Toast Info
+        setTracedNodeId(targetNode.id);
+        const nodeLabel = targetNode.name || targetNode.code || targetNode.id;
+        setToastMsg({ text: `🎯 Menyorot Lokasi Node Perangkat: ${nodeLabel}`, type: 'info' });
+      }
+    }
+  }, [nodes]);
 
   // Helper: Check if Customer is Live ONLINE on Mikrotik
   const isCustomerOnline = (cust: any): boolean => {
@@ -1364,6 +1407,7 @@ const DEFAULT_SPLITTER_CATALOG = [
     if (!layerGroup) return;
 
     layerGroup.clearLayers();
+    nodeMarkersRef.current.clear();
 
     // Render Markers
     nodes.forEach((n) => {
@@ -1421,7 +1465,8 @@ const DEFAULT_SPLITTER_CATALOG = [
         iconAnchor: [17, 17]
       });
 
-      const m = L.marker([n.lat, n.lng], { icon: nodeIcon, draggable: true }).addTo(layerGroup);
+    const m = L.marker([n.lat, n.lng], { icon: nodeIcon, draggable: true }).addTo(layerGroup);
+    nodeMarkersRef.current.set(n.id, m);
       
       const nodeOptPower = calculateNodeOpticalPower(n.id);
       let powerHtml = '';
