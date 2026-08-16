@@ -309,15 +309,24 @@ const DEFAULT_SPLITTER_CATALOG = [
       })
       .finally(() => setLoadingMap(false));
 
-    fetch('http://localhost:3006/api/customers')
+    // Load Customers from Cloud Firestore as primary database
+    getCustomersFromFirestore()
+      .then(custFs => {
+        if (custFs.success && Array.isArray(custFs.customers)) {
+          setCustomersList(custFs.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+        }
+      })
+      .catch(() => null);
+
+    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+    fetch(`${apiUrl}/api/customers`)
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.customers)) {
-          // Strictly filter for PPPoE customers only
           setCustomersList(data.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
         }
       })
-      .catch(err => console.error('Failed to fetch PPPoE customers list:', err));
+      .catch(() => null);
 
     const fetchActiveUsers = () => {
       fetch('http://localhost:3006/api/routers/ppp-active-users')
@@ -371,7 +380,7 @@ const DEFAULT_SPLITTER_CATALOG = [
 
     const { nodeId, lat, lng } = getQueryParams();
 
-    if (mapInstanceRef.current) {
+    if (mapRef.current) {
       if (nodeId && nodes.length > 0) {
         const targetNode = nodes.find(n => 
           n.id === nodeId || 
@@ -380,7 +389,7 @@ const DEFAULT_SPLITTER_CATALOG = [
 
         if (targetNode) {
           // 1. Smoothly center & zoom Leaflet map to target node position
-          mapInstanceRef.current.setView([targetNode.lat, targetNode.lng], 18, { animate: true });
+          mapRef.current.setView([targetNode.lat, targetNode.lng], 18, { animate: true });
 
           // 2. Open Popup dialog for target node marker
           setTimeout(() => {
@@ -401,7 +410,7 @@ const DEFAULT_SPLITTER_CATALOG = [
       if (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
         const nLat = Number(lat);
         const nLng = Number(lng);
-        mapInstanceRef.current.setView([nLat, nLng], 18, { animate: true });
+        mapRef.current.setView([nLat, nLng], 18, { animate: true });
         setToastMsg({ text: `📍 Mengarahkan ke Koordinat GPS: ${nLat.toFixed(5)}, ${nLng.toFixed(5)}`, type: 'info' });
       }
     }
