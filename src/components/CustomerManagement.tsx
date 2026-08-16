@@ -2853,7 +2853,16 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         <CustomerMapModal
           customer={mapCustomer}
           onClose={() => { setShowMapPickerModal(false); setMapCustomer(null); }}
-          onSaved={() => { fetchData(); }}
+          onSaved={() => { 
+            fetchData();
+            if (selectedQuickDeviceCustomer && mapCustomer && selectedQuickDeviceCustomer.id === mapCustomer.id) {
+              setSelectedQuickDeviceCustomer((prev: any) => ({
+                ...prev,
+                latitude: mapCustomer.latitude || '-7.543210',
+                longitude: mapCustomer.longitude || '112.123456'
+              }));
+            }
+          }}
         />
       )}
 
@@ -3219,14 +3228,29 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 }
 
                 return (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1">
+                  <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-xs space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
-                        <span>⚠️ BELUM MEMILIKI NODE DI PETA FTTH</span>
+                        <span>⚠️ BELUM ADA TITIK LOKASI GPS RUMAH PELANGGAN</span>
                       </span>
-                      <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">Status: Off-Map</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">GPS Wajib</span>
                     </div>
-                    <p className="text-[10px] text-amber-800">Pilih spesifikasi hardware di bawah dan klik "Simpan & Pasang Node" untuk memasang marker di peta.</p>
+                    <p className="text-[11px] text-amber-800 font-medium">
+                      Node Perangkat FTTH ({quickDeviceBrand} {quickDeviceModel}) hanya dapat dipasang di Peta jika lokasi rumah pelanggan telah memiliki titik koordinat GPS presisi.
+                    </p>
+                    <div className="pt-1 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapCustomer(selectedQuickDeviceCustomer);
+                          setShowMapPickerModal(true);
+                        }}
+                        className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-extrabold text-[11px] cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                      >
+                        <MapPin size={12} />
+                        <span>📍 + Set Titik GPS Pelanggan Sekarang</span>
+                      </button>
+                    </div>
                   </div>
                 );
               })()}
@@ -3325,6 +3349,13 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 type="button"
                 onClick={async () => {
                   try {
+                    if (!selectedQuickDeviceCustomer.latitude || !selectedQuickDeviceCustomer.longitude) {
+                      setToastMsg({ type: 'error', text: '⚠️ Pelanggan belum memiliki titik lokasi GPS! Harap klik "+ Set Titik GPS Pelanggan Sekarang" terlebih dahulu.' });
+                      setMapCustomer(selectedQuickDeviceCustomer);
+                      setShowMapPickerModal(true);
+                      return;
+                    }
+
                     setActionLoadingId(selectedQuickDeviceCustomer.id);
                     const updatedCustObj = {
                       ...selectedQuickDeviceCustomer,
