@@ -267,8 +267,11 @@ export const saveCustomerToFirestore = async (customer: any) => {
     const formattedCustId = `CUST-${cleanNum || Date.now()}`;
     const custRef = doc(db, 'customers', formattedCustId);
 
+    // Strip balance/saldo so customer balance is 100% managed exclusively in ArabPay
+    const { balance, saldo, ...cleanCustomerData } = customer || {};
+
     const fullCustPayload = sanitizeForFirestore({
-      ...cleanCustPayload,
+      ...cleanCustomerData,
       id: formattedCustId,
       customer_code: formattedCustId,
       updated_at: new Date().toISOString()
