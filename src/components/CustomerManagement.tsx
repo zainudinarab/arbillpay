@@ -28,7 +28,8 @@ import {
   Calendar,
   Layers,
   FileText,
-  Plug
+  Plug,
+  Cpu
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
