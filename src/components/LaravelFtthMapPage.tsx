@@ -350,44 +350,59 @@ const DEFAULT_SPLITTER_CATALOG = [
     reloadSplitterCatalog();
   }, []);
 
-  // Auto-Center & Open Popup for target nodeId passed in URL query param (e.g. /#/map-ftth?nodeId=node-dev-1786849038633)
+  // Auto-Center & Open Popup for target nodeId or lat/lng passed in URL query param (e.g. /#/map-ftth?nodeId=xxx or ?lat=-7.55516&lng=112.27275)
   useEffect(() => {
-    const getQueryNodeId = (): string | null => {
+    const getQueryParams = () => {
       try {
         let searchStr = window.location.search;
         if (!searchStr && window.location.hash.includes('?')) {
           searchStr = window.location.hash.substring(window.location.hash.indexOf('?'));
         }
         const params = new URLSearchParams(searchStr);
-        return params.get('nodeId');
+        return {
+          nodeId: params.get('nodeId'),
+          lat: params.get('lat'),
+          lng: params.get('lng')
+        };
       } catch (e) {
-        return null;
+        return { nodeId: null, lat: null, lng: null };
       }
     };
 
-    const targetNodeId = getQueryNodeId();
-    if (targetNodeId && nodes.length > 0 && mapInstanceRef.current) {
-      const targetNode = nodes.find(n => 
-        n.id === targetNodeId || 
-        (n.customerId && String(n.customerId) === String(targetNodeId))
-      );
+    const { nodeId, lat, lng } = getQueryParams();
 
-      if (targetNode) {
-        // 1. Smoothly center & zoom Leaflet map to target node position
-        mapInstanceRef.current.setView([targetNode.lat, targetNode.lng], 18, { animate: true });
+    if (mapInstanceRef.current) {
+      if (nodeId && nodes.length > 0) {
+        const targetNode = nodes.find(n => 
+          n.id === nodeId || 
+          (n.customerId && String(n.customerId) === String(nodeId))
+        );
 
-        // 2. Open Popup dialog for target node marker
-        setTimeout(() => {
-          const marker = nodeMarkersRef.current.get(targetNode.id);
-          if (marker) {
-            marker.openPopup();
-          }
-        }, 400);
+        if (targetNode) {
+          // 1. Smoothly center & zoom Leaflet map to target node position
+          mapInstanceRef.current.setView([targetNode.lat, targetNode.lng], 18, { animate: true });
 
-        // 3. Highlight Trace Route Path & Toast Info
-        setTracedNodeId(targetNode.id);
-        const nodeLabel = targetNode.name || targetNode.code || targetNode.id;
-        setToastMsg({ text: `🎯 Menyorot Lokasi Node Perangkat: ${nodeLabel}`, type: 'info' });
+          // 2. Open Popup dialog for target node marker
+          setTimeout(() => {
+            const marker = nodeMarkersRef.current.get(targetNode.id);
+            if (marker) {
+              marker.openPopup();
+            }
+          }, 400);
+
+          // 3. Highlight Trace Route Path & Toast Info
+          setTracedNodeId(targetNode.id);
+          const nodeLabel = targetNode.name || targetNode.code || targetNode.id;
+          setToastMsg({ text: `🎯 Menyorot Lokasi Node Perangkat: ${nodeLabel}`, type: 'info' });
+          return;
+        }
+      }
+
+      if (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+        const nLat = Number(lat);
+        const nLng = Number(lng);
+        mapInstanceRef.current.setView([nLat, nLng], 18, { animate: true });
+        setToastMsg({ text: `📍 Mengarahkan ke Koordinat GPS: ${nLat.toFixed(5)}, ${nLng.toFixed(5)}`, type: 'info' });
       }
     }
   }, [nodes]);

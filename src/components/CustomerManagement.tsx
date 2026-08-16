@@ -1629,9 +1629,24 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                 )
                               ) && (
                                 <button 
-                                  onClick={() => { window.location.hash = '#/map-ftth'; }}
-                                  className="p-1.5 text-sky-600 hover:text-sky-700 rounded-lg hover:bg-sky-50 transition-all cursor-pointer"
-                                  title="Lihat Lokasi Pelanggan di Peta FTTH"
+                                  onClick={() => {
+                                    const custIdStr = String(cust.id || cust.customer_code || '').trim();
+                                    const linkedNode = ftthNodes.find(n => 
+                                      String(n.customerId || '') === custIdStr ||
+                                      (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(custIdStr)) ||
+                                      (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === String(cust.pppoe_username).toLowerCase().trim()) ||
+                                      (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(cust.sn_onu).toLowerCase().trim())
+                                    );
+                                    if (linkedNode) {
+                                      window.location.hash = `#/map-ftth?nodeId=${linkedNode.id}`;
+                                    } else if (cust.latitude && cust.longitude) {
+                                      window.location.hash = `#/map-ftth?lat=${cust.latitude}&lng=${cust.longitude}`;
+                                    } else {
+                                      window.location.hash = '#/map-ftth';
+                                    }
+                                  }}
+                                  className="p-1.5 text-sky-600 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition-all cursor-pointer"
+                                  title="Buka & Sorot Titik Lokasi Pelanggan di Peta Topologi FTTH"
                                 >
                                   <MapPin size={14} />
                                 </button>
