@@ -282,6 +282,17 @@ export default function App() {
       // Handle ArabPay OAuth SSO Callback
       if (hash.includes('oauth/callback') || code) {
         console.log('🔑 [OAUTH SSO LOG] Detected OAuth callback request. Code:', code || '(direct hash callback)');
+
+        // If code is missing (e.g. ArabPay redirected straight back without code), auto-redirect to ArabPay authorize endpoint to fetch code seamlessly!
+        if (!code) {
+          console.warn('⚠️ [OAUTH SSO LOG] Code is missing in OAuth callback. Redirecting to ArabPay /oauth/authorize to generate code...');
+          const liveCreds = await getMerchantCredentialsFromFirestore().catch(() => null);
+          const clientId = localStorage.getItem('arabpay_client_id') || liveCreds?.client_id || (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+          const redirectUri = window.location.origin + window.location.pathname + '#/oauth/callback';
+          window.location.href = `https://arabpay.my.id/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+          return;
+        }
+
         // Instantly clean up ?code=xxx query string from browser URL to prevent duplicate re-exchange
         window.history.replaceState({}, document.title, window.location.pathname + '#/overview');
 
