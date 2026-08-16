@@ -263,6 +263,7 @@ export default function App() {
   useEffect(() => {
     const handleHashAndRoute = async () => {
       const rawHash = window.location.hash.replace('#/', '').replace('#', '');
+      const hash = rawHash;
       const cleanRoute = rawHash.includes('?') ? rawHash.split('?')[0] : rawHash;
       const pathname = window.location.pathname.replace('/', '');
       const params = new URLSearchParams(window.location.search);
