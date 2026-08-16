@@ -627,6 +627,16 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [pickerFilterType, setPickerFilterType] = useState<'ALL' | 'ONU' | 'ROUTER_WIFI'>('ALL');
   const [pickerFilterBrand, setPickerFilterBrand] = useState<string>('ALL');
 
+  // Dedicated Quick Hardware Modal State
+  const [selectedQuickDeviceCustomer, setSelectedQuickDeviceCustomer] = useState<any>(null);
+  const [showQuickDeviceModal, setShowQuickDeviceModal] = useState<boolean>(false);
+  const [quickDeviceType, setQuickDeviceType] = useState<'ONU' | 'ROUTER_WIFI'>('ONU');
+  const [quickDeviceBrand, setQuickDeviceBrand] = useState<string>('ZTE');
+  const [quickDeviceModel, setQuickDeviceModel] = useState<string>('F609');
+  const [quickDeviceLanPorts, setQuickDeviceLanPorts] = useState<number>(4);
+  const [quickSnOnu, setQuickSnOnu] = useState<string>('');
+  const [quickOdpPort, setQuickOdpPort] = useState<string>('');
+
   // Device Specs Master Catalog State
   const [deviceCatalog, setDeviceCatalog] = useState<any[]>(DEFAULT_DEVICE_CATALOG);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
@@ -981,6 +991,18 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (cust.package_id) setPackageId(cust.package_id);
 
     setShowEditModal(true);
+  };
+
+  const handleOpenQuickDeviceModal = (cust: any) => {
+    setSelectedQuickDeviceCustomer(cust);
+    const detectedType = cust.device_type || (cust.connection_type === 'hotspot' ? 'NONE' : 'ONU');
+    setQuickDeviceType(detectedType === 'NONE' ? 'ONU' : detectedType);
+    setQuickDeviceBrand(cust.device_brand || (detectedType === 'ROUTER_WIFI' ? 'Tenda' : 'ZTE'));
+    setQuickDeviceModel(cust.device_model || (detectedType === 'ROUTER_WIFI' ? 'N301' : 'F609'));
+    setQuickDeviceLanPorts(Number(cust.device_lan_ports) || 4);
+    setQuickSnOnu(cust.sn_onu || '');
+    setQuickOdpPort(cust.odp_port || '');
+    setShowQuickDeviceModal(true);
   };
 
   const handleUpdateCustomer = async (e: React.FormEvent) => {
@@ -1579,7 +1601,23 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
                           {/* AKSI */}
                           <td className="py-3.5 px-4 text-right">
-                            <div className="inline-flex items-center gap-2">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleOpenQuickDeviceModal(cust)}
+                                className={`p-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 font-bold text-[10px] ${
+                                  ftthNodes.some(n => 
+                                    (n.customerId && String(n.customerId) === String(cust.id || cust.customer_code)) ||
+                                    (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(String(cust.id))) ||
+                                    (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
+                                    (n.sn_onu && cust.sn_onu && n.sn_onu.toLowerCase().trim() === cust.sn_onu.toLowerCase().trim())
+                                  ) 
+                                    ? 'text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200' 
+                                    : 'text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 animate-pulse'
+                                }`}
+                                title="Kelola & Pasang Node Perangkat Pelanggan (1-Klik)"
+                              >
+                                <Cpu size={14} />
+                              </button>
                               {Boolean(
                                 (cust as any).latitude || 
                                 cust.maps_url || 
@@ -3089,6 +3127,238 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 className="px-4 py-1.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 cursor-pointer"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Quick Kelola Node Perangkat Pelanggan (1-Klik dari Kolom Aksi) */}
+      {showQuickDeviceModal && selectedQuickDeviceCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn font-sans">
+          <div className="bg-white rounded-3xl max-w-xl w-full overflow-hidden flex flex-col shadow-2xl border border-slate-200">
+            {/* Modal Header */}
+            <div className="p-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-sm font-black flex items-center gap-2">
+                  <Cpu size={18} className="text-indigo-400" />
+                  <span>Pasang & Kelola Node Perangkat Pelanggan</span>
+                </h3>
+                <p className="text-[11px] text-slate-300 font-medium pt-0.5">
+                  👤 <b>{selectedQuickDeviceCustomer.name}</b> ({selectedQuickDeviceCustomer.customer_code || 'ID:' + selectedQuickDeviceCustomer.id})
+                </p>
+              </div>
+              <button
+                onClick={() => setShowQuickDeviceModal(false)}
+                className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Status Tautan Node FTTH Banner */}
+              {(() => {
+                const custId = String(selectedQuickDeviceCustomer.id || selectedQuickDeviceCustomer.customer_code || '').trim();
+                const linkedNode = ftthNodes.find((n: any) =>
+                  String(n.customerId || '') === custId ||
+                  (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(custId)) ||
+                  (selectedQuickDeviceCustomer.pppoe_username && n.name && n.name.toLowerCase().trim() === String(selectedQuickDeviceCustomer.pppoe_username).toLowerCase().trim()) ||
+                  (selectedQuickDeviceCustomer.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(selectedQuickDeviceCustomer.sn_onu).toLowerCase().trim())
+                );
+
+                if (linkedNode) {
+                  return (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-emerald-950 flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>✅ TERHUBUNG KE NODE PETA FTTH</span>
+                        </span>
+                        <span className="text-[10px] font-extrabold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+                          Node ID: #{linkedNode.id}
+                        </span>
+                      </div>
+                      <div className="p-2 bg-white/90 border border-emerald-200 rounded-xl space-y-0.5 text-[11px] text-emerald-900">
+                        <div><b>Perangkat:</b> {linkedNode.brand || 'ZTE'} {linkedNode.model || 'F609'} ({linkedNode.type})</div>
+                        {linkedNode.sn_onu && <div><b>SN ONU:</b> <span className="font-mono font-bold">{linkedNode.sn_onu}</span></div>}
+                        {linkedNode.odp_port && <div><b>Jalur ODP:</b> {linkedNode.odp_port}</div>}
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (window.confirm(`Apakah Anda yakin ingin MENCABUT & MENGHAPUS node perangkat "${linkedNode.name || linkedNode.id}" di Peta FTTH?\n\nKabel optik akan dicabut & Port ODP akan kembali BEBAS!`)) {
+                              try {
+                                const mapData = await getFtthMapFromFirestore();
+                                if (mapData.success) {
+                                  const newNodes = (mapData.nodes || []).filter((n: any) => n.id !== linkedNode.id);
+                                  const newLines = (mapData.lines || []).filter((l: any) => l.fromId !== linkedNode.id && l.toId !== linkedNode.id);
+                                  await saveFtthMapToFirestore(newNodes, newLines);
+                                }
+                                const updatedCust = { ...selectedQuickDeviceCustomer, odp_port: null, sn_onu: null, device_type: 'NONE' };
+                                await saveCustomerToFirestore(updatedCust);
+                                setFtthNodes(prev => prev.filter(n => n.id !== linkedNode.id));
+                                setCustomers(prev => prev.map(c => c.id === selectedQuickDeviceCustomer.id ? updatedCust : c));
+                                setToastMsg({ type: 'success', text: `✂️ Node Perangkat & Kabel Optik berhasil DICABUT! Port ODP BEBAS.` });
+                                setShowQuickDeviceModal(false);
+                              } catch (err: any) {
+                                setToastMsg({ type: 'error', text: 'Gagal mencabut node: ' + err?.message });
+                              }
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-[11px] cursor-pointer transition flex items-center gap-1 shadow-xs"
+                        >
+                          <span>🗑️ Cabut & Hapus Node di Peta</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                        <span>⚠️ BELUM MEMILIKI NODE DI PETA FTTH</span>
+                      </span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">Status: Off-Map</span>
+                    </div>
+                    <p className="text-[10px] text-amber-800">Pilih spesifikasi hardware di bawah dan klik "Simpan & Pasang Node" untuk memasang marker di peta.</p>
+                  </div>
+                );
+              })()}
+
+              {/* Form Input Kelola Fast Devices */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-xs">
+                <div>
+                  <label className="block text-xs font-black text-slate-800 mb-1">Tipe Sambungan Perangkat</label>
+                  <select
+                    value={quickDeviceType}
+                    onChange={(e) => {
+                      const newType = e.target.value as any;
+                      setQuickDeviceType(newType);
+                      const firstM = deviceCatalog.find((item: any) => item.type === newType);
+                      if (firstM) {
+                        setQuickDeviceBrand(firstM.brand);
+                        setQuickDeviceModel(firstM.model);
+                        setQuickDeviceLanPorts(Number(firstM.lan_ports) || 4);
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 cursor-pointer shadow-2xs"
+                  >
+                    <option value="ONU">🏠 Modem ONU Optik (GPON/EPON Dedicated)</option>
+                    <option value="ROUTER_WIFI">📶 Router Wireless / Wi-Fi AP (Tenda/TP-Link/Totolink)</option>
+                  </select>
+                </div>
+
+                {/* Grid Preset Fast Models */}
+                <div>
+                  <label className="block text-[11px] font-extrabold text-slate-700 mb-1.5">⚡ Pilih Model Spesifikasi Hardware:</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {deviceCatalog
+                      .filter((item: any) => item.type === quickDeviceType)
+                      .map((item: any) => {
+                        const isSelected = quickDeviceBrand === item.brand && quickDeviceModel === item.model;
+                        return (
+                          <div
+                            key={item.id || item.model}
+                            onClick={() => {
+                              setQuickDeviceBrand(item.brand);
+                              setQuickDeviceModel(item.model);
+                              setQuickDeviceLanPorts(Number(item.lan_ports) || 4);
+                            }}
+                            className={`p-2.5 rounded-xl border transition cursor-pointer text-left space-y-0.5 ${
+                              isSelected 
+                                ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-400 shadow-2xs' 
+                                : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="text-[10px] font-bold text-slate-400 uppercase">{item.brand}</div>
+                            <div className="text-xs font-black text-slate-900">{item.model}</div>
+                            <div className="text-[9.5px] font-bold text-indigo-700">{item.lan_ports} Port LAN</div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-200">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Serial Number (SN ONU)</label>
+                    <input
+                      type="text"
+                      placeholder="ZTEGCxxxxxxx"
+                      value={quickSnOnu}
+                      onChange={(e) => setQuickSnOnu(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-mono font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Jalur ODP Port (e.g. ODP-JGR-01)</label>
+                    <input
+                      type="text"
+                      placeholder="ODP-JGR-01 (Port 3)"
+                      value={quickOdpPort}
+                      onChange={(e) => setQuickOdpPort(e.target.value)}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 bg-slate-100 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowQuickDeviceModal(false)}
+                className="px-4 py-2 bg-white hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs cursor-pointer border border-slate-300"
+              >
+                Batal
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setActionLoadingId(selectedQuickDeviceCustomer.id);
+                    const updatedCustObj = {
+                      ...selectedQuickDeviceCustomer,
+                      device_type: quickDeviceType,
+                      device_brand: quickDeviceBrand,
+                      device_model: quickDeviceModel,
+                      device_lan_ports: quickDeviceLanPorts,
+                      sn_onu: quickSnOnu.trim() || null,
+                      odp_port: quickOdpPort.trim() || null
+                    };
+
+                    await saveCustomerToFirestore(updatedCustObj).catch(() => null);
+                    const syncRes = await syncCustomerFtthDeviceNode(updatedCustObj).catch(() => null);
+
+                    if (syncRes && syncRes.success) {
+                      const fbMap = await getFtthMapFromFirestore();
+                      if (fbMap.success) {
+                        setFtthNodes(fbMap.nodes || []);
+                        setFtthLines(fbMap.lines || []);
+                      }
+                    }
+
+                    setCustomers(prev => prev.map(c => c.id === selectedQuickDeviceCustomer.id ? updatedCustObj : c));
+                    setToastMsg({ type: 'success', text: `✅ Node Perangkat (${quickDeviceBrand} ${quickDeviceModel}) BERHASIL DIPASANG & SINKRON ke Peta FTTH!` });
+                    setShowQuickDeviceModal(false);
+                  } catch (err: any) {
+                    setToastMsg({ type: 'error', text: 'Gagal memasang perangkat: ' + err?.message });
+                  } finally {
+                    setActionLoadingId(null);
+                  }
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-black text-xs cursor-pointer shadow-md shadow-blue-200 flex items-center gap-1.5"
+              >
+                <Zap size={14} />
+                <span>⚡ Simpan & Pasang Node di Peta Sekarang</span>
               </button>
             </div>
           </div>
