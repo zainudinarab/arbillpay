@@ -115,8 +115,9 @@ export default function App() {
   });
 
   const [currentView, setCurrentView] = useState<string>(() => {
-    const hash = window.location.hash.replace('#/', '').replace('#', '');
-    if (hash && hash !== 'admin-login') return hash;
+    const rawHash = window.location.hash.replace('#/', '').replace('#', '');
+    const cleanRoute = rawHash.includes('?') ? rawHash.split('?')[0] : rawHash;
+    if (cleanRoute && cleanRoute !== 'admin-login') return cleanRoute;
     return 'overview';
   });
 
@@ -261,7 +262,8 @@ export default function App() {
   // Check URL query string or pathname for admin login route or ArabPay OAuth callback
   useEffect(() => {
     const handleHashAndRoute = async () => {
-      const hash = window.location.hash.replace('#/', '').replace('#', '');
+      const rawHash = window.location.hash.replace('#/', '').replace('#', '');
+      const cleanRoute = rawHash.includes('?') ? rawHash.split('?')[0] : rawHash;
       const pathname = window.location.pathname.replace('/', '');
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
@@ -459,10 +461,10 @@ export default function App() {
         }
       }
 
-      if (hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin') {
+      if (cleanRoute === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin') {
         setShowAdminLoginModal(true);
-      } else if (hash) {
-        setCurrentView(hash);
+      } else if (cleanRoute) {
+        setCurrentView(cleanRoute);
       }
     };
 
