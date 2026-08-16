@@ -266,8 +266,18 @@ export default function App() {
       const hash = rawHash;
       const cleanRoute = rawHash.includes('?') ? rawHash.split('?')[0] : rawHash;
       const pathname = window.location.pathname.replace('/', '');
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
+      let searchStr = window.location.search;
+      if (!searchStr && window.location.hash.includes('?')) {
+        searchStr = window.location.hash.substring(window.location.hash.indexOf('?'));
+      }
+      const params = new URLSearchParams(searchStr);
+      let code = params.get('code');
+      if (!code && window.location.hash.includes('code=')) {
+        try {
+          const hashQuery = window.location.hash.substring(window.location.hash.indexOf('code='));
+          code = new URLSearchParams(hashQuery).get('code');
+        } catch (e) {}
+      }
       
       // Handle ArabPay OAuth SSO Callback
       if (hash.includes('oauth/callback') || code) {
