@@ -134,7 +134,7 @@ export default function Sidebar({
     },
     {
       id: 'settings_group',
-      label: 'Pengaturan & Wilayah',
+      label: 'Pengaturan',
       icon: Settings,
       roles: ['owner', 'teknisi', 'marketing', 'kasir'],
       items: [

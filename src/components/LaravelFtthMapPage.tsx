@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import HeaderBar from './HeaderBar';
-import { saveFtthMapToFirestore, getFtthMapFromFirestore } from '../services/firebaseService';
+import { saveFtthMapToFirestore, getFtthMapFromFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 
 // Inject exact CSS animation from Laravel arbill map-ftth/index.blade.php
 const styleId = 'laravel-arbill-map-ftth-style';
