@@ -73,7 +73,7 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
   const [gatewayIp, setGatewayIp] = useState('10.100.100.1');
   const [profileName, setProfileName] = useState('ppoe-expired');
   const [rateLimit, setRateLimit] = useState('128k/128k');
-  const [serverHost, setServerHost] = useState('30.30.2.53');
+  const [serverHost, setServerHost] = useState('arbill.arabpay.my.id');
   const [serverPort, setServerPort] = useState('3006');
 
   // Script preview
@@ -93,7 +93,7 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
     if (selectedRouterId) {
       fetchIsolirStatus(selectedRouterId);
       fetchIsolatedCustomers(selectedRouterId);
-      fetchIsolirScript(selectedRouterId);
+      fetchIsolirScript(selectedRouterId, serverHost, serverPort);
     }
   }, [selectedRouterId]);
 
@@ -165,9 +165,9 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
     }
   };
 
-  const fetchIsolirScript = async (rId: string) => {
+  const fetchIsolirScript = async (rId: string, host = serverHost, port = serverPort) => {
     try {
-      const res = await fetch(`/api/routers/${rId}/isolir-script`);
+      const res = await fetch(`/api/routers/${rId}/isolir-script?server_host=${encodeURIComponent(host)}&server_port=${encodeURIComponent(port)}`);
       const data = await res.json();
       if (data.success && data.script) {
         setScriptText(data.script);
@@ -765,12 +765,22 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">IP Server Billing (Tujuan Redirect)</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-600">Domain / IP Server Billing</label>
+                      {!/^(\d{1,3}\.){3}\d{1,3}$/.test(serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()) && (
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">
+                          Cloudflare Tunnel
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={serverHost}
-                      onChange={(e) => setServerHost(e.target.value)}
-                      placeholder="Contoh: 30.30.2.53"
+                      onChange={(e) => {
+                        setServerHost(e.target.value);
+                        if (selectedRouterId) fetchIsolirScript(selectedRouterId, e.target.value, serverPort);
+                      }}
+                      placeholder="Contoh: arbill.arabpay.my.id atau 30.30.2.53"
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 font-semibold"
                     />
                   </div>
@@ -779,12 +789,27 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
                     <input
                       type="text"
                       value={serverPort}
-                      onChange={(e) => setServerPort(e.target.value)}
+                      onChange={(e) => {
+                        setServerPort(e.target.value);
+                        if (selectedRouterId) fetchIsolirScript(selectedRouterId, serverHost, e.target.value);
+                      }}
                       placeholder="3006"
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800"
                     />
                   </div>
                 </div>
+
+                {!/^(\d{1,3}\.){3}\d{1,3}$/.test(serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()) && (
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+                    <span className="text-base leading-none mt-0.5">🌐</span>
+                    <div className="text-[11px] leading-relaxed">
+                      <p className="font-bold">Mode Domain / Cloudflare Tunnel Aktif</p>
+                      <p className="text-amber-800 mt-0.5">
+                        MikroTik akan otomatis mengaktifkan <strong>Web Proxy (Port 8080)</strong> dengan redirect ke <code>https://{serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()}/#/isolir</code> dan menambahkan <code>{serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()}</code> ke Address-List MikroTik (auto-resolve DNS Anycast Cloudflare).
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
                   <p className="font-bold flex items-center gap-1.5">
@@ -794,8 +819,9 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
                   <p className="text-[11px] text-rose-700">
                     &bull; IP Pool <code className="font-mono">{poolRange}</code><br />
                     &bull; Profile PPP <code className="font-mono">{profileName}</code> (Rate: {rateLimit}, List: ISOLIR-USERS)<br />
+                    &bull; Address-List: Whitelist <code className="font-mono">{serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()}</code> (ARBILL-BILLING-HOST)<br />
                     &bull; Firewall Filter: Izinkan DNS & Billing, Blokir Internet Lain<br />
-                    &bull; Firewall NAT: Redirect Port 80 HTTP ke Server Arbill<br />
+                    &bull; Redirect HTTP: {!/^(\d{1,3}\.){3}\d{1,3}$/.test(serverHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim()) ? 'Web Proxy MikroTik 8080 (Cloudflare 302 Redirect)' : `DST-NAT ke ${serverHost}:${serverPort}`}<br />
                     &bull; Scheduler: <code className="font-mono">monitor-ppp-arbil</code> (Interval 10 Menit)
                   </p>
                 </div>

@@ -1974,8 +1974,10 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
       return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
     }
     const router = rRes.rows[0];
-    const serverHost = (server_host && String(server_host).trim()) || process.env.BILLING_SERVER_HOST || process.env.DB_HOST || '30.30.2.53';
+    const rawHost = (server_host && String(server_host).trim()) || process.env.BILLING_SERVER_HOST || 'arbill.arabpay.my.id';
+    const cleanHost = rawHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim();
     const serverPort = (server_port && String(server_port).trim()) || process.env.PORT || '3006';
+    const isDomain = !/^(\d{1,3}\.){3}\d{1,3}$/.test(cleanHost);
 
     const conn = new RouterOSAPI({
       host: router.ip_address,
@@ -2028,7 +2030,24 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
       `, [`rp-${crypto.randomUUID().substring(0, 8)}`, id, profile_name, rate_limit, gateway_ip, pool_name]);
     }
 
-    // 3. Setup Firewall Filter Rules
+    // 3. Whitelist Domain/IP Server Billing ke Address-List MikroTik
+    try {
+      const addrLists: any = await conn.write('/ip/firewall/address-list/print');
+      const addrList = Array.isArray(addrLists) ? addrLists : [];
+      const matchAddr = addrList.find((a: any) => a.list === 'ARBILL-BILLING-HOST' && a.address === cleanHost);
+      if (!matchAddr) {
+        await conn.write('/ip/firewall/address-list/add', [
+          `=list=ARBILL-BILLING-HOST`,
+          `=address=${cleanHost}`,
+          `=comment=Server Billing Arbill (${isDomain ? 'Cloudflare Domain' : 'Direct IP'})`
+        ]);
+        notes.push(`Address-List "ARBILL-BILLING-HOST" (${cleanHost}) ditambahkan`);
+      }
+    } catch (addrErr: any) {
+      console.warn('Gagal menambah address-list ARBILL-BILLING-HOST:', addrErr.message);
+    }
+
+    // 4. Setup Firewall Filter Rules
     const filters: any = await conn.write('/ip/firewall/filter/print');
     const filterList = Array.isArray(filters) ? filters : [];
 
@@ -2060,14 +2079,15 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
       '=place-before=1'
     ]);
 
-    // C. Allow Traffic ke Server Billing Arbill
-    await ensureFilterRule('ARBILL-ISOLIR-ALLOW-BILLING', [
+    // C. Allow Traffic ke Server Billing Arbill (Bisa Domain FQDN via Address-List atau IP)
+    const billingFilterArgs = [
       '=chain=forward',
       '=src-address-list=ISOLIR-USERS',
-      `=dst-address=${serverHost}`,
+      '=dst-address-list=ARBILL-BILLING-HOST',
       '=action=accept',
       '=place-before=2'
-    ]);
+    ];
+    await ensureFilterRule('ARBILL-ISOLIR-ALLOW-BILLING', billingFilterArgs);
 
     // D. Drop Other Internet Traffic
     await ensureFilterRule('ARBILL-ISOLIR-DROP-INTERNET', [
@@ -2077,31 +2097,83 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
       '=place-before=3'
     ]);
 
-    // 4. Setup Firewall NAT DST-NAT Redirect HTTP Port 80 ke Web Isolir Arbill
+    // 5. Setup Redirect HTTP ke Halaman Isolir Arbill
     const nats: any = await conn.write('/ip/firewall/nat/print');
     const natList = Array.isArray(nats) ? nats : [];
     const natComment = 'ARBILL-ISOLIR-REDIRECT-HTTP';
     const matchNat = natList.find((n: any) => n.comment === natComment);
-    const natArgs = [
-      '=chain=dstnat',
-      '=src-address-list=ISOLIR-USERS',
-      '=protocol=tcp',
-      '=dst-port=80',
-      '=action=dst-nat',
-      `=to-addresses=${serverHost}`,
-      `=to-ports=${serverPort}`,
-      `=comment=${natComment}`,
-      '=place-before=0'
-    ];
-    if (matchNat && matchNat['.id']) {
-      await conn.write('/ip/firewall/nat/set', [`=.id=${matchNat['.id']}`, ...natArgs]);
-      notes.push('NAT Redirect Port 80 diperbarui');
+
+    if (isDomain) {
+      // MODE DOMAIN / CLOUDFLARE TUNNEL: Gunakan Web Proxy MikroTik untuk HTTP 302 Redirect
+      try {
+        await conn.write('/ip/proxy/set', ['=enabled=yes', '=port=8080']);
+        notes.push('Web Proxy MikroTik diaktifkan (port 8080)');
+
+        const proxyAccess: any = await conn.write('/ip/proxy/access/print');
+        const paList = Array.isArray(proxyAccess) ? proxyAccess : [];
+        const matchPa = paList.find((p: any) => p.comment === 'ARBILL-ISOLIR-REDIRECT');
+        const redirectUrl = `https://${cleanHost}/#/isolir`;
+        if (matchPa && matchPa['.id']) {
+          await conn.write('/ip/proxy/access/set', [
+            `=.id=${matchPa['.id']}`,
+            '=action=deny',
+            `=redirect-to=${redirectUrl}`,
+            '=comment=ARBILL-ISOLIR-REDIRECT'
+          ]);
+          notes.push(`Web Proxy Access Redirect (${redirectUrl}) diperbarui`);
+        } else {
+          await conn.write('/ip/proxy/access/add', [
+            '=action=deny',
+            `=redirect-to=${redirectUrl}`,
+            '=comment=ARBILL-ISOLIR-REDIRECT'
+          ]);
+          notes.push(`Web Proxy Access Redirect (${redirectUrl}) dibuat baru`);
+        }
+      } catch (proxyErr: any) {
+        console.warn('Gagal setup Web Proxy:', proxyErr.message);
+      }
+
+      // Redirect port 80 ke Proxy 8080
+      const natArgs = [
+        '=chain=dstnat',
+        '=src-address-list=ISOLIR-USERS',
+        '=protocol=tcp',
+        '=dst-port=80',
+        '=action=redirect',
+        '=to-ports=8080',
+        `=comment=${natComment}`,
+        '=place-before=0'
+      ];
+      if (matchNat && matchNat['.id']) {
+        await conn.write('/ip/firewall/nat/set', [`=.id=${matchNat['.id']}`, ...natArgs]);
+        notes.push('NAT: Redirect Port 80 -> Proxy 8080 diperbarui');
+      } else {
+        await conn.write('/ip/firewall/nat/add', natArgs);
+        notes.push('NAT: Redirect Port 80 -> Proxy 8080 ditambahkan');
+      }
     } else {
-      await conn.write('/ip/firewall/nat/add', natArgs);
-      notes.push('NAT Redirect Port 80 ditambahkan');
+      // MODE DIRECT IP: Gunakan DST-NAT biasa
+      const natArgs = [
+        '=chain=dstnat',
+        '=src-address-list=ISOLIR-USERS',
+        '=protocol=tcp',
+        '=dst-port=80',
+        '=action=dst-nat',
+        `=to-addresses=${cleanHost}`,
+        `=to-ports=${serverPort}`,
+        `=comment=${natComment}`,
+        '=place-before=0'
+      ];
+      if (matchNat && matchNat['.id']) {
+        await conn.write('/ip/firewall/nat/set', [`=.id=${matchNat['.id']}`, ...natArgs]);
+        notes.push(`NAT: DST-NAT Port 80 -> ${cleanHost}:${serverPort} diperbarui`);
+      } else {
+        await conn.write('/ip/firewall/nat/add', natArgs);
+        notes.push(`NAT: DST-NAT Port 80 -> ${cleanHost}:${serverPort} ditambahkan`);
+      }
     }
 
-    // 5. Setup Scheduler monitor-ppp-arbil
+    // 6. Setup Scheduler monitor-ppp-arbil
     const schedNotes = await ensureMikrotikScheduler(conn, 'pppoe');
     notes.push(schedNotes);
 
@@ -2125,14 +2197,32 @@ export async function getIsolirScript(req: Request, res: Response) {
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
     const router = rRes.rows[0] || { name: 'MikroTik Router' };
-    const serverHost = process.env.BILLING_SERVER_HOST || process.env.DB_HOST || '30.30.2.53';
-    const serverPort = process.env.PORT || '3006';
+    const rawHost = (req.query.server_host as string) || process.env.BILLING_SERVER_HOST || 'arbill.arabpay.my.id';
+    const cleanHost = rawHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim();
+    const serverPort = (req.query.server_port as string) || process.env.PORT || '3006';
+    const isDomain = !/^(\d{1,3}\.){3}\d{1,3}$/.test(cleanHost);
+
+    const redirectScriptSection = isDomain
+      ? `# 4. Konfigurasi Web Proxy MikroTik untuk Redirect HTTP ke Domain Cloudflare
+/ip proxy
+set enabled=yes port=8080
+/ip proxy access
+add action=deny redirect-to="https://${cleanHost}/#/isolir" comment="ARBILL-ISOLIR-REDIRECT"
+
+# 5. Redirect Port 80 ke Web Proxy MikroTik Port 8080
+/ip firewall nat
+add chain=dstnat src-address-list=ISOLIR-USERS protocol=tcp dst-port=80 action=redirect \\
+    to-ports=8080 comment="ARBILL-ISOLIR-REDIRECT-HTTP" place-before=0`
+      : `# 4. Buat Firewall NAT DST-NAT Redirect HTTP Port 80 ke Halaman Isolir Arbill
+/ip firewall nat
+add chain=dstnat src-address-list=ISOLIR-USERS protocol=tcp dst-port=80 action=dst-nat \\
+    to-addresses=${cleanHost} to-ports=${serverPort} comment="ARBILL-ISOLIR-REDIRECT-HTTP" place-before=0`;
 
     const script = 
 `# =========================================================
 # SCRIPT OTOMATISASI SISTEM ISOLIR PPPOE - ARBILL BILLING
 # Router: ${router.name}
-# Server Host: ${serverHost}:${serverPort}
+# Server Host: ${cleanHost}${isDomain ? ' (Cloudflare Tunnel Domain)' : `:${serverPort}`}
 # =========================================================
 
 # 1. Buat IP Pool Khusus Isolir
@@ -2144,19 +2234,20 @@ add name=pool-isolir ranges=10.100.100.2-10.100.100.254 comment="Pool Khusus Pel
 add name=ppoe-expired local-address=10.100.100.1 remote-address=pool-isolir rate-limit=128k/128k \\
     address-list=ISOLIR-USERS dns-server=10.100.100.1,8.8.8.8 comment="Profile Khusus Pelanggan Terisolir - Arbill"
 
-# 3. Buat Firewall Filter Rules (Izinkan DNS & Server Billing, Blokir Internet Lain)
+# 3. Whitelist Host Server Billing ke Address-List (MikroTik auto-resolve IP Cloudflare)
+/ip firewall address-list
+add address=${cleanHost} list=ARBILL-BILLING-HOST comment="Arbill Billing Server Host"
+
+# 4. Buat Firewall Filter Rules (Izinkan DNS & Server Billing, Blokir Internet Lain)
 /ip firewall filter
 add chain=forward src-address-list=ISOLIR-USERS protocol=udp dst-port=53 action=accept comment="ARBILL-ISOLIR-ALLOW-DNS-UDP" place-before=0
 add chain=forward src-address-list=ISOLIR-USERS protocol=tcp dst-port=53 action=accept comment="ARBILL-ISOLIR-ALLOW-DNS-TCP" place-before=1
-add chain=forward src-address-list=ISOLIR-USERS dst-address=${serverHost} action=accept comment="ARBILL-ISOLIR-ALLOW-BILLING" place-before=2
+add chain=forward src-address-list=ISOLIR-USERS dst-address-list=ARBILL-BILLING-HOST action=accept comment="ARBILL-ISOLIR-ALLOW-BILLING" place-before=2
 add chain=forward src-address-list=ISOLIR-USERS action=drop comment="ARBILL-ISOLIR-DROP-INTERNET" place-before=3
 
-# 4. Buat Firewall NAT DST-NAT Redirect HTTP Port 80 ke Halaman Isolir Arbill
-/ip firewall nat
-add chain=dstnat src-address-list=ISOLIR-USERS protocol=tcp dst-port=80 action=dst-nat \\
-    to-addresses=${serverHost} to-ports=${serverPort} comment="ARBILL-ISOLIR-REDIRECT-HTTP" place-before=0
+${redirectScriptSection}
 
-# 5. Pasang Scheduler Otomatis "monitor-ppp-arbil" (Cek tiap 10 Menit)
+# 6. Pasang Scheduler Otomatis "monitor-ppp-arbil" (Cek tiap 10 Menit)
 /system scheduler
 add name=monitor-ppp-arbil interval=10m start-time=startup comment="Monitor Otomatis Jatuh Tempo & Isolir PPPoE (10 Menit) - Arbill" on-event="\\
 :local expProfile \\"ppoe-expired\\";\\
