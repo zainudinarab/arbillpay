@@ -17,7 +17,7 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
     if (initialMode === 'admin') return true;
     const hash = window.location.hash.replace('#/', '').replace('#', '');
     const pathname = window.location.pathname.replace('/', '');
-    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login';
+    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || hash.includes('admin-login') || pathname.includes('admin-login');
   });
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');

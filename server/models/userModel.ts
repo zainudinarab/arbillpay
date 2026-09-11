@@ -166,7 +166,7 @@ export async function findUserByIdentity(identity: string) {
   }
 
   const result = await pool.query(
-    'SELECT id, username, name, email, phone_number, role, password_hash FROM users WHERE username = $1 OR email = $1 OR phone_number = $1',
+    'SELECT id, username, name, email, phone_number, role, password_hash, password FROM users WHERE username = $1 OR email = $1 OR phone_number = $1',
     [cleanIdentity]
   );
   return result.rows[0] || null;

@@ -26,7 +26,8 @@ app.use(corsMiddleware);
 // Initialize DB schema & patch tables
 initDatabaseSchema().then(async () => {
   try {
-    const { syncFirestoreCustomersToPostgres } = await import('./server/services/customerSyncService.js');
+    const { syncFirestoreCustomersToPostgres, syncFirestoreSettingsAndUsersToPostgres } = await import('./server/services/customerSyncService.js');
+    await syncFirestoreSettingsAndUsersToPostgres();
     await syncFirestoreCustomersToPostgres();
   } catch (err: any) {
     console.warn('[SYNC NOTICE]', err.message);

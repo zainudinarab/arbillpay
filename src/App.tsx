@@ -83,7 +83,7 @@ export default function App() {
     const hash = window.location.hash.replace('#/', '').replace('#', '');
     const pathname = window.location.pathname.replace('/', '');
     const params = new URLSearchParams(window.location.search);
-    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin';
+    return hash === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin' || hash.includes('admin-login');
   });
   const [selectedPublicPackage, setSelectedPublicPackage] = useState<any>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
@@ -139,13 +139,19 @@ export default function App() {
       const saved = sessionStorage.getItem('arbil_modal_alert');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return { isOpen: false, title: '', message: '', type: 'warning' };
+    return { isOpen: false, title: '', message: '', type: 'info' };
   });
 
-  const showAlert = (message: string, title = 'Pemberitahuan Sistem', type: 'error' | 'warning' | 'success' | 'info' = 'warning') => {
-    const alertObj = { isOpen: true, title, message, type };
-    setCustomModalAlert(alertObj);
-    sessionStorage.setItem('arbil_modal_alert', JSON.stringify(alertObj));
+  // Global custom modal alert helper (Safe alternative to browser alert())
+  const showAlert = (message: string, title: string = 'Pemberitahuan Sistem', type: 'error' | 'warning' | 'success' | 'info' = 'info') => {
+    setCustomModalAlert({ isOpen: true, title, message, type });
+  };
+
+  const closeAlert = () => {
+    setCustomModalAlert(prev => ({ ...prev, isOpen: false }));
+    try {
+      sessionStorage.removeItem('arbil_modal_alert');
+    } catch (e) {}
   };
 
   const handleVerifyAndSaveNewSecret = async () => {
@@ -225,24 +231,48 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check setup installation status on startup DIRECTLY & EXCLUSIVELY FROM CLOUD FIRESTORE
+  // Check setup installation status on startup
   useEffect(() => {
-    const checkSetupStatusDirectFirebase = async () => {
+    const checkSetupStatus = async () => {
       const hash = window.location.hash.replace('#/', '').replace('#', '');
       const pathname = window.location.pathname.replace('/', '');
 
-      // Query Live Cloud Firestore Database exclusively for Merchant Setup document
-      let liveCreds: any = null;
-      try {
-        liveCreds = await getMerchantCredentialsFromFirestore();
-      } catch (e) {}
+      // Jangan tampilkan SetupWizard jika pengguna mengakses halaman login / admin-login
+      if (hash.includes('admin-login') || pathname.includes('admin-login') || pathname.includes('login') || hash.includes('login')) {
+        setShowSetupWizard(false);
+        setShowAdminLoginModal(true);
+        return;
+      }
 
-      // 100% EXCLUSIVE CLOUD FIRESTORE DETERMINATION (ZERO LOCALSTORAGE DETECT)
-      const isConfiguredInFirebase = Boolean(liveCreds && (liveCreds.client_id || liveCreds.client_secret || liveCreds.installed));
+      let isConfigured = false;
+
+      // 1. Cek status instalasi dari PostgreSQL / Backend API terlebih dahulu
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/setup/status`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.installed) {
+              isConfigured = true;
+            }
+          }
+        } catch (apiErr) {}
+      }
+
+      // 2. Fallback cek Cloud Firestore jika API belum merespons
+      if (!isConfigured) {
+        try {
+          const liveCreds = await getMerchantCredentialsFromFirestore();
+          if (liveCreds && (liveCreds.client_id || liveCreds.client_secret || liveCreds.installed)) {
+            isConfigured = true;
+          }
+        } catch (e) {}
+      }
 
       if (hash.includes('setup') || pathname.includes('setup')) {
-        if (isConfiguredInFirebase) {
-          console.warn('🔒 Setup wizard is permanently locked because installation document is present in Cloud Firestore.');
+        if (isConfigured) {
+          console.warn('🔒 Setup wizard is permanently locked because installation document is present.');
           window.location.hash = '#/overview';
           setShowSetupWizard(false);
           return;
@@ -251,14 +281,13 @@ export default function App() {
         return;
       }
 
-      if (!isConfiguredInFirebase) {
-        // Only show setup wizard if Firestore has no merchant credentials at all
+      if (!isConfigured) {
         setShowSetupWizard(true);
       } else {
         setShowSetupWizard(false);
       }
     };
-    checkSetupStatusDirectFirebase();
+    checkSetupStatus();
   }, []);
 
   // Check URL query string or pathname for admin login route or ArabPay OAuth callback
@@ -485,7 +514,8 @@ export default function App() {
         }
       }
 
-      if (cleanRoute === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin') {
+      if (cleanRoute === 'admin-login' || pathname === 'admin-login' || pathname === 'login' || params.get('login') === 'admin' || rawHash.includes('admin-login')) {
+        setShowSetupWizard(false);
         setShowAdminLoginModal(true);
       } else if (cleanRoute) {
         setCurrentView(cleanRoute);
@@ -1432,7 +1462,7 @@ const safeFormatDate = (val: any): string => {
 
 
   // 0. FIRST-TIME ONBOARDING SETUP WIZARD (Jika Belum Di-setup / Hash #setup)
-  if (showSetupWizard) {
+  if (showSetupWizard && !showAdminLoginModal && !window.location.hash.includes('admin-login')) {
     return (
       <SetupWizard
         onComplete={() => {

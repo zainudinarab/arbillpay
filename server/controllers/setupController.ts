@@ -4,9 +4,25 @@ import path from 'path';
 
 export const getSetupStatus = async (req: Request, res: Response) => {
   try {
-    const clientId = process.env.ARABPAY_CLIENT_ID;
-    const clientSecret = process.env.ARABPAY_CLIENT_SECRET;
-    const ownerUserId = process.env.ARABPAY_OWNER_USER_ID;
+    let clientId = process.env.ARABPAY_CLIENT_ID || '';
+    let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+    let ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '';
+    let ownerPhone = process.env.ARABPAY_OWNER_PHONE || '';
+
+    try {
+      const { pool } = await import('../config/db.js');
+      if (pool) {
+        const resSettings = await pool.query(
+          "SELECT key, value FROM system_settings WHERE key IN ('arabpay_client_id', 'arabpay_client_secret', 'arabpay_owner_user_id', 'arabpay_owner_phone', 'app_installed')"
+        );
+        for (const row of resSettings.rows) {
+          if (row.key === 'arabpay_client_id' && (!clientId || clientId.includes('YOUR_CLIENT_ID'))) clientId = row.value;
+          if (row.key === 'arabpay_client_secret' && (!clientSecret || clientSecret.includes('YOUR_CLIENT_SECRET'))) clientSecret = row.value;
+          if (row.key === 'arabpay_owner_user_id' && !ownerUserId) ownerUserId = row.value;
+          if (row.key === 'arabpay_owner_phone' && !ownerPhone) ownerPhone = row.value;
+        }
+      }
+    } catch (e) {}
 
     // Check if installed (has valid client ID & Secret)
     const isInstalled = !!(clientId && clientSecret && clientId !== 'AP_YOUR_CLIENT_ID_HERE' && !clientId.includes('YOUR_CLIENT_ID'));
@@ -15,7 +31,7 @@ export const getSetupStatus = async (req: Request, res: Response) => {
       installed: isInstalled,
       client_id: clientId || '',
       owner_user_id: ownerUserId || '',
-      owner_phone: process.env.ARABPAY_OWNER_PHONE || '',
+      owner_phone: ownerPhone || '',
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
