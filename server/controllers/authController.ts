@@ -249,3 +249,82 @@ export async function getLiveBalance(req: Request, res: Response) {
   }
 }
 
+/**
+ * Menyimpan / menyinkronkan user yang berhasil login via SSO ke tabel users di PostgreSQL
+ */
+export async function syncUser(req: Request, res: Response) {
+  try {
+    const { id, username, name, email, phone_number, role, arabpay_user_id, token_jwt, token } = req.body;
+    if (!name && !email && !username && !phone_number) {
+      return res.status(400).json({ success: false, message: 'Data profil user tidak valid' });
+    }
+
+    const cleanUsername = (username || name || 'user').toLowerCase().replace(/\s+/g, '_');
+    const cleanEmail = (email || `${cleanUsername}@arabnet.local`).toLowerCase().trim();
+    const cleanPhone = phone_number || null;
+    const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
+    const arabpayId = arabpay_user_id || id || null;
+
+    // Tentukan role: jika ID atau email cocok dengan Owner, atau username zainudinarab
+    let finalRole = role || 'pelanggan';
+    if (
+      id === ownerUserId ||
+      arabpayId === ownerUserId ||
+      cleanEmail.includes('owner') ||
+      cleanUsername === 'zainudinarab' ||
+      cleanEmail === 'ketua11@gmail.com'
+    ) {
+      finalRole = 'owner';
+    }
+
+    // Cek apakah user sudah ada di database
+    const existing = await pool.query(
+      `SELECT id, role FROM users 
+       WHERE id = $1 OR email = $2 OR (phone_number IS NOT NULL AND phone_number = $3) OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $4) 
+       LIMIT 1`,
+      [id || '', cleanEmail, cleanPhone, arabpayId]
+    );
+
+    let targetId = id;
+    if (existing.rows.length > 0) {
+      targetId = existing.rows[0].id;
+      await pool.query(`
+        UPDATE users 
+        SET username = COALESCE($1, username),
+            name = COALESCE($2, name),
+            email = COALESCE($3, email),
+            phone_number = COALESCE($4, phone_number),
+            arabpay_user_id = COALESCE($5, arabpay_user_id),
+            arabpay_token = COALESCE($6, arabpay_token),
+            role = CASE WHEN $7 = 'owner' THEN 'owner' ELSE role END
+        WHERE id = $8
+      `, [cleanUsername, name, cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, targetId]);
+    } else {
+      targetId = id || crypto.randomUUID();
+      const defaultPass = finalRole === 'owner' ? 'zainudinarab' : crypto.randomBytes(8).toString('hex');
+      const defaultHash = await bcrypt.hash(defaultPass, 10);
+
+      await pool.query(`
+        INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash, password)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (id) DO UPDATE SET
+          username = EXCLUDED.username,
+          name = EXCLUDED.name,
+          email = EXCLUDED.email,
+          phone_number = COALESCE(EXCLUDED.phone_number, users.phone_number),
+          arabpay_user_id = COALESCE(EXCLUDED.arabpay_user_id, users.arabpay_user_id),
+          arabpay_token = COALESCE(EXCLUDED.arabpay_token, users.arabpay_token),
+          role = CASE WHEN EXCLUDED.role = 'owner' THEN 'owner' ELSE users.role END
+      `, [targetId, cleanUsername, name || 'User', cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, defaultHash, defaultPass]);
+    }
+
+    const updated = await pool.query('SELECT id, username, name, email, phone_number, role, arabpay_user_id FROM users WHERE id = $1', [targetId]);
+    console.log(`✅ [USER SYNCED TO POSTGRESQL] User: ${name} (${cleanUsername}) | Role: ${finalRole}`);
+    return res.json({ success: true, user: updated.rows[0] });
+  } catch (err: any) {
+    console.error('[SYNC USER ERROR]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+

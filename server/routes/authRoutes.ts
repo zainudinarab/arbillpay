@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { login, arabpayOAuth, changePassword, getLiveBalance } from '../controllers/authController.js';
+import { login, arabpayOAuth, changePassword, getLiveBalance, syncUser } from '../controllers/authController.js';
 
 const router = Router();
 
 router.post('/login', login);
 router.post('/arabpay', arabpayOAuth);
+router.post('/sync-user', syncUser);
 router.post('/change-password', changePassword);
 router.post('/live-balance', getLiveBalance);
 router.get('/live-balance', getLiveBalance);

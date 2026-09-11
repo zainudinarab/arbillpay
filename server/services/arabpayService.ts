@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 
-export function generateArabPayHeaders(bodyStr: string) {
-  const clientId = process.env.ARABPAY_CLIENT_ID || 'AP24542931';
-  const clientSecret = process.env.ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+export function generateArabPayHeaders(bodyStr: string, customSecret?: string, customClientId?: string) {
+  const clientId = customClientId || process.env.ARABPAY_CLIENT_ID || 'AP24228873';
+  const clientSecret = customSecret || process.env.ARABPAY_CLIENT_SECRET || '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   
   const signature = crypto.createHmac('sha256', clientSecret)
@@ -31,10 +31,30 @@ export function decodeJwtPayload(token: string) {
 }
 
 export async function exchangeArabPayOAuthToken(code: string) {
-  const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+  let clientId = process.env.ARABPAY_CLIENT_ID || '';
+  let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+  let arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+
+  try {
+    const { pool } = await import('../config/db.js');
+    if (pool) {
+      const dbCreds = await pool.query(
+        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_client_id', 'arabpay_client_secret', 'arabpay_panel_url')"
+      );
+      for (const row of dbCreds.rows) {
+        if (row.key === 'arabpay_client_id' && !clientId) clientId = row.value;
+        if (row.key === 'arabpay_client_secret' && !clientSecret) clientSecret = row.value;
+        if (row.key === 'arabpay_panel_url') arabpayBaseUrl = row.value;
+      }
+    }
+  } catch (e) {}
+
+  if (!clientId) clientId = 'AP24228873';
+  if (!clientSecret) clientSecret = '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+
   const bodyObj = { code };
   const bodyStr = JSON.stringify(bodyObj);
-  const headers = generateArabPayHeaders(bodyStr);
+  const headers = generateArabPayHeaders(bodyStr, clientSecret, clientId);
 
   let jwtToken: string | null = null;
   let arabpayBalance = 0;

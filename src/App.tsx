@@ -537,19 +537,37 @@ export default function App() {
     window.location.hash = `#/${view}`;
   };
 
+  // Helper to sync user account to PostgreSQL database
+  const saveUserToPostgres = async (account: UserAccount) => {
+    const apiUrl = getApiUrl();
+    if (apiUrl) {
+      try {
+        await fetch(`${apiUrl}/api/auth/sync-user`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(account)
+        });
+      } catch (err) {
+        console.warn('PostgreSQL sync notice:', err);
+      }
+    }
+  };
+
   // Handle Login & Logout Handlers
   const handleLoginSuccess = (account: UserAccount) => {
     setCurrentUser(account);
     localStorage.setItem('arbil_current_user', JSON.stringify(account));
     saveUserToFirestore(account);
+    saveUserToPostgres(account);
     setShowAdminLoginModal(false);
   };
 
-  // Sync Current User to Local Storage & Update Profile Role dynamically
+  // Sync Current User to Local Storage, Firestore & PostgreSQL
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('arbil_current_user', JSON.stringify(currentUser));
       saveUserToFirestore(currentUser);
+      saveUserToPostgres(currentUser);
       setProfile(prev => ({
         ...prev,
         name: currentUser.name,
