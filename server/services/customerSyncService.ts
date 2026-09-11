@@ -134,13 +134,8 @@ export async function syncFirestoreCustomersToPostgres() {
 export async function initPostgresSettingsAndUsers() {
   const bcrypt = (await import('bcryptjs')).default;
 
-  // 1. Inisialisasi system_settings di PostgreSQL langsung dari environment / host
+  // 1. Inisialisasi tabel system_settings di PostgreSQL
   try {
-    const clientId = process.env.ARABPAY_CLIENT_ID || 'AP24228873';
-    const clientSecret = process.env.ARABPAY_CLIENT_SECRET || '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
-    const ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g';
-    const ownerPhone = process.env.ARABPAY_OWNER_PHONE || '085746520724';
-
     await pool.query(`
       CREATE TABLE IF NOT EXISTS system_settings (
         key VARCHAR(255) PRIMARY KEY,
@@ -149,20 +144,36 @@ export async function initPostgresSettingsAndUsers() {
       )
     `);
 
-    const saveSetting = async (k: string, v: string) => {
-      await pool.query(`
-        INSERT INTO system_settings (key, value, updated_at)
-        VALUES ($1, $2, NOW())
-        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-      `, [k, v]);
-    };
+    // Hanya simpan dari .env jika di .env benar-benar diisi kredensial valid
+    const envClientId = (process.env.ARABPAY_CLIENT_ID || '').trim();
+    const envClientSecret = (process.env.ARABPAY_CLIENT_SECRET || '').trim();
+    const envOwnerUserId = (process.env.ARABPAY_OWNER_USER_ID || '').trim();
+    const envOwnerPhone = (process.env.ARABPAY_OWNER_PHONE || '').trim();
 
-    await saveSetting('arabpay_client_id', clientId);
-    await saveSetting('arabpay_client_secret', clientSecret);
-    await saveSetting('arabpay_owner_user_id', ownerUserId);
-    await saveSetting('arabpay_owner_phone', ownerPhone);
-    await saveSetting('app_installed', 'true');
-    console.log('✅ [POSTGRESQL CONFIG] Tabel system_settings berhasil dikonfigurasi 100% di PostgreSQL!');
+    if (envClientId && envClientSecret && !envClientId.includes('YOUR_CLIENT_ID')) {
+      const saveSetting = async (k: string, v: string) => {
+        await pool.query(`
+          INSERT INTO system_settings (key, value, updated_at)
+          VALUES ($1, $2, NOW())
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        `, [k, v]);
+      };
+
+      await saveSetting('arabpay_client_id', envClientId);
+      await saveSetting('arabpay_client_secret', envClientSecret);
+      if (envOwnerUserId) await saveSetting('arabpay_owner_user_id', envOwnerUserId);
+      if (envOwnerPhone) await saveSetting('arabpay_owner_phone', envOwnerPhone);
+      await saveSetting('app_installed', 'true');
+      console.log('✅ [POSTGRESQL CONFIG] Kredensial ArabPay dari environment dimuat ke tabel system_settings.');
+    } else {
+      // Cek apakah tabel system_settings di database sudah memiliki data
+      const checkSetting = await pool.query("SELECT value FROM system_settings WHERE key = 'arabpay_client_id' LIMIT 1");
+      if (checkSetting.rows.length === 0) {
+        console.log('ℹ️ [POSTGRESQL CONFIG] Tabel system_settings KOSONG. Aplikasi akan meminta merchant memasukkan Client ID & Secret via Setup Wizard.');
+      } else {
+        console.log('✅ [POSTGRESQL CONFIG] Tabel system_settings sudah memiliki kredensial ArabPay yang tersimpan.');
+      }
+    }
   } catch (err: any) {
     console.warn('[POSTGRESQL CONFIG] Notice system_settings:', err.message);
   }

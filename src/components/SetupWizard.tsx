@@ -18,10 +18,32 @@ interface SetupWizardProps {
 
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState<1 | 2>(1);
+  const [isLocked, setIsLocked] = useState(false);
 
-  const isAlreadyCompleted = localStorage.getItem('arbill_setup_completed') === 'true' && Boolean(localStorage.getItem('arabpay_client_id'));
+  useEffect(() => {
+    const checkStatus = async () => {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/setup/status`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.installed && window.location.hash.includes('setup')) {
+              setIsLocked(true);
+            } else if (!data.installed) {
+              // Jika di database belum terpasang, hapus flag lama agar user bisa input
+              localStorage.removeItem('arbill_setup_completed');
+              localStorage.removeItem('arabpay_client_id');
+              setIsLocked(false);
+            }
+          }
+        } catch (e) {}
+      }
+    };
+    checkStatus();
+  }, []);
 
-  if (isAlreadyCompleted) {
+  if (isLocked) {
     return (
       <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4 font-sans text-slate-800">
         <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-100 text-center space-y-5 animate-scale-up">
@@ -222,14 +244,16 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         owner_user_id: ownerId,
       });
 
-      await saveMerchantCredentialsToFirestore({
-        client_id: cleanClientId,
-        client_secret: cleanClientSecret,
-        owner_user_id: ownerId,
-        owner_phone: oPhone,
-        owner_name: oName,
-        owner_password: cleanAdminPass
-      });
+      try {
+        await saveMerchantCredentialsToFirestore({
+          client_id: cleanClientId,
+          client_secret: cleanClientSecret,
+          owner_user_id: ownerId,
+          owner_phone: oPhone,
+          owner_name: oName,
+          owner_password: cleanAdminPass
+        });
+      } catch (fbErr) {}
 
       // Always save setup flags to localStorage for instant Client-Side persistence!
       localStorage.setItem('arbill_setup_completed', 'true');
@@ -262,6 +286,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       setSuccessMsg('Setup Instalasi Berhasil! Mengarahkan ke Dashboard Admin...');
       setTimeout(() => {
         onComplete();
+        window.location.hash = '#/overview';
+        window.location.reload();
       }, 1200);
     } catch (err: any) {
       setError(err.message || 'Terjadi kesalahan saat menyimpan setup');
