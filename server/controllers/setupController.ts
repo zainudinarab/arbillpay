@@ -4,25 +4,35 @@ import path from 'path';
 
 export const getSetupStatus = async (req: Request, res: Response) => {
   try {
-    let clientId = process.env.ARABPAY_CLIENT_ID || '';
-    let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
-    let ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '';
-    let ownerPhone = process.env.ARABPAY_OWNER_PHONE || '';
+    let clientId = '';
+    let clientSecret = '';
+    let ownerUserId = '';
+    let ownerPhone = '';
+    let hasDbConfig = false;
 
     try {
       const { pool } = await import('../config/db.js');
       if (pool) {
+        hasDbConfig = true;
         const resSettings = await pool.query(
           "SELECT key, value FROM system_settings WHERE key IN ('arabpay_client_id', 'arabpay_client_secret', 'arabpay_owner_user_id', 'arabpay_owner_phone', 'app_installed')"
         );
         for (const row of resSettings.rows) {
-          if (row.key === 'arabpay_client_id' && (!clientId || clientId.includes('YOUR_CLIENT_ID'))) clientId = row.value;
-          if (row.key === 'arabpay_client_secret' && (!clientSecret || clientSecret.includes('YOUR_CLIENT_SECRET'))) clientSecret = row.value;
-          if (row.key === 'arabpay_owner_user_id' && !ownerUserId) ownerUserId = row.value;
-          if (row.key === 'arabpay_owner_phone' && !ownerPhone) ownerPhone = row.value;
+          if (row.key === 'arabpay_client_id') clientId = row.value;
+          if (row.key === 'arabpay_client_secret') clientSecret = row.value;
+          if (row.key === 'arabpay_owner_user_id') ownerUserId = row.value;
+          if (row.key === 'arabpay_owner_phone') ownerPhone = row.value;
         }
       }
     } catch (e) {}
+
+    // Fallback ke .env hanya jika DB tidak terhubung
+    if (!hasDbConfig) {
+      clientId = process.env.ARABPAY_CLIENT_ID || '';
+      clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+      ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '';
+      ownerPhone = process.env.ARABPAY_OWNER_PHONE || '';
+    }
 
     // Check if installed (has valid client ID & Secret)
     const isInstalled = !!(clientId && clientSecret && clientId !== 'AP_YOUR_CLIENT_ID_HERE' && !clientId.includes('YOUR_CLIENT_ID'));

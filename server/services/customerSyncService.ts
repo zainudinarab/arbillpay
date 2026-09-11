@@ -132,8 +132,6 @@ export async function syncFirestoreCustomersToPostgres() {
 }
 
 export async function initPostgresSettingsAndUsers() {
-  const bcrypt = (await import('bcryptjs')).default;
-
   // 1. Inisialisasi tabel system_settings di PostgreSQL
   try {
     await pool.query(`
@@ -144,55 +142,27 @@ export async function initPostgresSettingsAndUsers() {
       )
     `);
 
-    // Hanya simpan dari .env jika di .env benar-benar diisi kredensial valid
-    const envClientId = (process.env.ARABPAY_CLIENT_ID || '').trim();
-    const envClientSecret = (process.env.ARABPAY_CLIENT_SECRET || '').trim();
-    const envOwnerUserId = (process.env.ARABPAY_OWNER_USER_ID || '').trim();
-    const envOwnerPhone = (process.env.ARABPAY_OWNER_PHONE || '').trim();
-
-    if (envClientId && envClientSecret && !envClientId.includes('YOUR_CLIENT_ID')) {
-      const saveSetting = async (k: string, v: string) => {
-        await pool.query(`
-          INSERT INTO system_settings (key, value, updated_at)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-        `, [k, v]);
-      };
-
-      await saveSetting('arabpay_client_id', envClientId);
-      await saveSetting('arabpay_client_secret', envClientSecret);
-      if (envOwnerUserId) await saveSetting('arabpay_owner_user_id', envOwnerUserId);
-      if (envOwnerPhone) await saveSetting('arabpay_owner_phone', envOwnerPhone);
-      await saveSetting('app_installed', 'true');
-      console.log('✅ [POSTGRESQL CONFIG] Kredensial ArabPay dari environment dimuat ke tabel system_settings.');
+    // Cek apakah tabel system_settings di database sudah memiliki data
+    const checkSetting = await pool.query("SELECT value FROM system_settings WHERE key = 'arabpay_client_id' LIMIT 1");
+    if (checkSetting.rows.length === 0) {
+      console.log('ℹ️ [POSTGRESQL CONFIG] Tabel system_settings KOSONG (Fresh Install). Menunggu input kredensial via Setup Wizard.');
     } else {
-      // Cek apakah tabel system_settings di database sudah memiliki data
-      const checkSetting = await pool.query("SELECT value FROM system_settings WHERE key = 'arabpay_client_id' LIMIT 1");
-      if (checkSetting.rows.length === 0) {
-        console.log('ℹ️ [POSTGRESQL CONFIG] Tabel system_settings KOSONG. Aplikasi akan meminta merchant memasukkan Client ID & Secret via Setup Wizard.');
-      } else {
-        console.log('✅ [POSTGRESQL CONFIG] Tabel system_settings sudah memiliki kredensial ArabPay yang tersimpan.');
-      }
+      console.log('✅ [POSTGRESQL CONFIG] Tabel system_settings sudah memiliki kredensial ArabPay yang tersimpan.');
     }
   } catch (err: any) {
     console.warn('[POSTGRESQL CONFIG] Notice system_settings:', err.message);
   }
 
-  // 2. Inisialisasi Akun Owner Default di PostgreSQL
+  // 2. Cek status akun di tabel users
   try {
-    const defaultOwnerId = process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g';
-    const defaultHash = await bcrypt.hash('zainudinarab', 10);
-    await pool.query(`
-      INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, role, password_hash, password)
-      VALUES ($1, 'zainudinarab', 'Zainudin Arab (Owner)', 'ketua11@gmail.com', '085746520724', $1, 'owner', $2, 'zainudinarab')
-      ON CONFLICT (id) DO UPDATE SET 
-        role = 'owner', 
-        username = 'zainudinarab',
-        password_hash = COALESCE(users.password_hash, EXCLUDED.password_hash),
-        password = COALESCE(users.password, EXCLUDED.password)
-    `, [defaultOwnerId, defaultHash]);
-    console.log('👑 [POSTGRESQL USERS] Akun Owner (zainudinarab) siap di tabel users PostgreSQL!');
+    const checkUsers = await pool.query('SELECT COUNT(*) as count FROM users');
+    const userCount = parseInt(checkUsers.rows[0]?.count || '0', 10);
+    if (userCount === 0) {
+      console.log('ℹ️ [POSTGRESQL USERS] Tabel users KOSONG (Fresh Install). Menunggu pendaftaran / SSO ArabPay.');
+    } else {
+      console.log(`✅ [POSTGRESQL USERS] Tabel users memiliki ${userCount} user terdaftar.`);
+    }
   } catch (err: any) {
-    console.warn('[POSTGRESQL USERS] Notice user owner:', err.message);
+    console.warn('[POSTGRESQL USERS] Notice users:', err.message);
   }
 }
