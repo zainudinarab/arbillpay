@@ -33,3 +33,9 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+    networks:
+      - app_shared_net
+
+networks:
+  app_shared_net:
+    external: true
