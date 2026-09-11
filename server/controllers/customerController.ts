@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { addIsoDuration } from '../utils/duration.js';
 import { formatMikrotikHotspotComment, formatMikrotikPppComment } from '../utils/mikrotikComment.js';
+import { redisDel } from '../config/redis.js';
 
 export async function listCustomers(req: Request, res: Response) {
   try {
@@ -65,6 +66,10 @@ export async function addCustomer(req: Request, res: Response) {
         livePushNote = ` (Catatan Mikrotik: ${e.message})`;
       }
     }
+
+    // Invalidate Redis cache
+    redisDel('mikrotik:active_users:all').catch(() => {});
+    if (router_id) redisDel(`mikrotik:isolated_customers:${router_id}`).catch(() => {});
 
     res.json({
       success: true,
@@ -322,6 +327,10 @@ export async function payCustomerBill(req: Request, res: Response) {
       SET expired_at = $1, grace_until = $2, status = 'active' 
       WHERE id = $3
     `, [formattedExp, formattedGrace, id]);
+
+    // Invalidate Redis cache
+    redisDel('mikrotik:active_users:all').catch(() => {});
+    if (c.router_id) redisDel(`mikrotik:isolated_customers:${c.router_id}`).catch(() => {});
 
     res.json({
       success: true,
@@ -816,6 +825,10 @@ export async function disconnectCustomerPpp(req: Request, res: Response) {
         conn.close();
       } catch (e) {}
     }
+
+    // Invalidate Redis cache
+    redisDel('mikrotik:active_users:all').catch(() => {});
+    if (cust.router_id) redisDel(`mikrotik:isolated_customers:${cust.router_id}`).catch(() => {});
 
     if (disconnectedCount > 0) {
       res.json({

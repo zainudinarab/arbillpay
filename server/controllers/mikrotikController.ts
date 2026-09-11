@@ -5,6 +5,7 @@ import { RouterOSAPI } from 'node-routeros';
 import { getFirestore } from '../config/firebase.js';
 import crypto from 'crypto';
 import { parseMikrotikHotspotComment, parseMikrotikPppComment, cleanToDateOnly } from '../utils/mikrotikComment.js';
+import { redisGet, redisSet, redisDel, isRedisReady } from '../config/redis.js';
 
 // --- ROUTERS ---
 export async function listRouters(req: Request, res: Response) {
@@ -1573,6 +1574,15 @@ export async function refreshActiveUsersCache() {
     activeCache.onlineUsernames = onlineUsernames;
     activeCache.activeConnections = activeConnections;
     activeCache.lastUpdated = new Date();
+
+    // Cache ke Redis selama 60 detik (1 menit)
+    try {
+      await redisSet('mikrotik:active_users:all', {
+        onlineUsernames,
+        activeConnections,
+        lastUpdated: new Date().toISOString()
+      }, 60);
+    } catch (_) {}
   } catch (err: any) {
     console.error('[MIKROTIK CACHE WORKER] Error:', err.message);
   } finally {
@@ -1588,20 +1598,30 @@ setInterval(() => {
 // Initialize cache immediately on server startup
 refreshActiveUsersCache().catch(() => {});
 
-// Controller Endpoint: Returns instant cached data (sub-millisecond response)
+// Controller Endpoint: Returns instant cached data (sub-millisecond response from Redis/RAM)
 export async function getPppActiveUsers(req: Request, res: Response) {
   try {
     const forceRefresh = req.query.force === 'true';
 
-    // Query online users from PostgreSQL directly (instant <5ms)
+    // Cek data di Redis terlebih dahulu jika tidak dipaksa refresh
+    let cachedFromRedis: any = null;
+    if (!forceRefresh) {
+      cachedFromRedis = await redisGet('mikrotik:active_users:all');
+    }
+
+    const onlineUsernames = cachedFromRedis?.onlineUsernames || activeCache.onlineUsernames;
+    const activeConnections = cachedFromRedis?.activeConnections || activeCache.activeConnections;
+    const lastUpdated = cachedFromRedis?.lastUpdated ? new Date(cachedFromRedis.lastUpdated) : (activeCache.lastUpdated || new Date());
+
+    // Query online users dari PostgreSQL secara lokal (<5ms)
     const dbOnlineRes = await pool.query("SELECT LOWER(pppoe_username) as u FROM customers WHERE is_online = true AND pppoe_username IS NOT NULL");
     const dbOnlineUsers = dbOnlineRes.rows.map((r: any) => r.u);
 
-    // Merge cached online usernames with PostgreSQL online tracking
-    const mergedUsernames = Array.from(new Set([...activeCache.onlineUsernames, ...dbOnlineUsers]));
+    // Merge cached online usernames dengan PostgreSQL online tracking
+    const mergedUsernames = Array.from(new Set([...onlineUsernames, ...dbOnlineUsers]));
 
-    // Refresh active users cache in background if stale or forced
-    const isStale = !activeCache.lastUpdated || (Date.now() - activeCache.lastUpdated.getTime() > 60000);
+    // Refresh active users cache in background jika data kadaluarsa atau force refresh
+    const isStale = !cachedFromRedis && (!activeCache.lastUpdated || (Date.now() - activeCache.lastUpdated.getTime() > 60000));
     if ((isStale || forceRefresh) && !activeCache.isFetching) {
       refreshActiveUsersCache().catch(() => {});
     }
@@ -1609,9 +1629,10 @@ export async function getPppActiveUsers(req: Request, res: Response) {
     res.json({
       success: true,
       cached: true,
-      lastUpdated: activeCache.lastUpdated || new Date(),
+      cache_driver: cachedFromRedis ? 'redis' : 'memory',
+      lastUpdated,
       onlineUsernames: mergedUsernames,
-      activeConnections: activeCache.activeConnections,
+      activeConnections,
       count: mergedUsernames.length
     });
   } catch (err: any) {
@@ -1855,6 +1876,17 @@ export async function importHotspotUsers(req: Request, res: Response) {
  */
 export async function getIsolirStatus(req: Request, res: Response) {
   const { id } = req.params;
+  const force = req.query.force === 'true';
+  const cacheKey = `mikrotik:isolir_status:${id}`;
+
+  // Cek cache Redis terlebih dahulu (TTL 60 detik)
+  if (!force) {
+    const cached = await redisGet(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, cached: true, cache_source: 'redis' });
+    }
+  }
+
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
     if (rRes.rows.length === 0) {
@@ -1917,7 +1949,7 @@ export async function getIsolirStatus(req: Request, res: Response) {
     // Database registered isolated customers
     const dbIsolated = await pool.query("SELECT COUNT(*)::int as count FROM customers WHERE router_id = $1 AND (status = 'isolated' OR status = 'isolir')", [id]);
 
-    res.json({
+    const resultPayload = {
       success: true,
       router_id: id,
       router_name: router.name,
@@ -1941,7 +1973,14 @@ export async function getIsolirStatus(req: Request, res: Response) {
         live_active: liveIsolatedUsers.length,
         db_registered: dbIsolated.rows[0]?.count || 0
       }
-    });
+    };
+
+    // Simpan ke Redis selama 60 detik (1 menit)
+    try {
+      await redisSet(cacheKey, resultPayload, 60);
+    } catch (_) {}
+
+    res.json(resultPayload);
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal membaca status isolir: ${err.message}` });
   }
@@ -2179,6 +2218,13 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
 
     conn.close();
 
+    // Invalidate Redis cache agar status teranyar langsung terbaca
+    try {
+      await redisDel(`mikrotik:isolir_status:${id}`);
+      await redisDel(`mikrotik:isolated_customers:${id}`);
+      await redisDel('mikrotik:active_users:all');
+    } catch (_) {}
+
     res.json({
       success: true,
       message: `⚡ Sistem Isolir Berhasil Dipasang ke Router "${router.name}"!`,
@@ -2284,6 +2330,16 @@ add name=monitor-ppp-arbil interval=10m start-time=startup comment="Monitor Otom
  */
 export async function getIsolatedCustomers(req: Request, res: Response) {
   const { id } = req.params;
+  const force = req.query.force === 'true';
+  const cacheKey = `mikrotik:isolated_customers:${id}`;
+
+  if (!force) {
+    const cached = await redisGet(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, cached: true, cache_source: 'redis' });
+    }
+  }
+
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
     if (rRes.rows.length === 0) {
@@ -2334,11 +2390,17 @@ export async function getIsolatedCustomers(req: Request, res: Response) {
       };
     });
 
-    res.json({
+    const resultPayload = {
       success: true,
       count: isolatedCustomers.length,
       customers: isolatedCustomers
-    });
+    };
+
+    try {
+      await redisSet(cacheKey, resultPayload, 60);
+    } catch (_) {}
+
+    res.json(resultPayload);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
