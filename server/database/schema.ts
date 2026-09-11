@@ -15,6 +15,7 @@ export async function initDatabaseSchema() {
         email VARCHAR(255),
         phone_number VARCHAR(64),
         arabpay_user_id VARCHAR(64),
+        arabpay_token TEXT,
         role VARCHAR(32) DEFAULT 'teknisi',
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -289,10 +290,11 @@ export async function initDatabaseSchema() {
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255),
       ADD COLUMN IF NOT EXISTS arabpay_user_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS arabpay_token TEXT,
       ADD COLUMN IF NOT EXISTS role VARCHAR(32) DEFAULT 'teknisi',
       ADD COLUMN IF NOT EXISTS phone_number VARCHAR(64);
     `).catch((err) => console.warn('Patch users notice:', err.message));
-    console.log('✅ users schema (password_hash, arabpay_user_id, role) patched successfully!');
+    console.log('✅ users schema (password_hash, arabpay_user_id, arabpay_token, role) patched successfully!');
 
     // 4. Alter & Patch customers table columns
     await pool.query(`

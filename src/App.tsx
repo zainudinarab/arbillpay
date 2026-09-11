@@ -347,6 +347,10 @@ export default function App() {
               handleLoginSuccess(userWithBalance);
               setCurrentView('overview');
               return;
+            } else if (data && !data.success) {
+              console.error('❌ [OAUTH SSO LOG] Backend login error:', data.message);
+              alert(data.message || 'Login ArabPay gagal diproses di server.');
+              return;
             }
           } catch (err) {
             console.warn('⚠️ [OAUTH SSO LOG] Backend OAuth exchange failed:', err);
