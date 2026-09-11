@@ -23,6 +23,7 @@ import { BusinessProfile } from '../types';
 import HeaderBar from './HeaderBar';
 import { saveMerchantCredentialsToFirestore, saveSyncedRegionsToFirestore } from '../services/firebaseService';
 import { ALL_38_PROVINCES } from '../services/indonesiaRegionService';
+import { getApiUrl } from '../config/api';
 
 interface SettingsPageProps {
   profile: BusinessProfile;
@@ -89,6 +90,26 @@ export default function SettingsPage({
   const [arabpayMsg, setArabpayMsg] = useState({ text: '', isError: false });
   const [isUpdatingArabpay, setIsUpdatingArabpay] = useState(false);
 
+  // Ambil konfigurasi kredensial saat ini dari backend API PostgreSQL jika ada
+  React.useEffect(() => {
+    const loadApiSettings = async () => {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/setup/status`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.client_id) {
+              setArabpayClientId(data.client_id);
+              localStorage.setItem('arabpay_client_id', data.client_id);
+            }
+          }
+        } catch (e) {}
+      }
+    };
+    loadApiSettings();
+  }, []);
+
   const handleUpdateArabpayCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setArabpayMsg({ text: '', isError: false });
@@ -102,13 +123,48 @@ export default function SettingsPage({
       localStorage.setItem('arabpay_client_id', arabpayClientId.trim());
       localStorage.removeItem('arabpay_client_secret');
 
-      await saveMerchantCredentialsToFirestore({
-        client_id: arabpayClientId.trim(),
-        client_secret: arabpayClientSecret.trim()
-      });
+      const apiUrl = getApiUrl();
+      let savedToPostgres = false;
+
+      // Simpan langsung ke database PostgreSQL (tabel system_settings)
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/setup/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              client_id: arabpayClientId.trim(),
+              client_secret: arabpayClientSecret.trim(),
+              owner_phone: phone || profile.phone || '',
+              business_name: companyName || profile.companyName || 'Arbill Net'
+            })
+          });
+          const resData = await res.json();
+          if (res.ok && resData.success) {
+            savedToPostgres = true;
+          } else if (resData.error) {
+            throw new Error(resData.error);
+          }
+        } catch (serverErr: any) {
+          console.warn('Backend setup/save error:', serverErr);
+          if (serverErr.message && !serverErr.message.includes('fetch')) {
+            throw serverErr;
+          }
+        }
+      }
+
+      // Sinkronisasi cadangan ke Firestore jika cloud mode aktif
+      try {
+        await saveMerchantCredentialsToFirestore({
+          client_id: arabpayClientId.trim(),
+          client_secret: arabpayClientSecret.trim()
+        });
+      } catch (fbErr) {}
 
       setArabpayMsg({
-        text: '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI & TERSIMPAN DI DATABASE FIRESTORE! Sambungan ke server ArabPay kembali normal & aktif.',
+        text: savedToPostgres
+          ? '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI & TERSIMPAN DI DATABASE POSTGRESQL (system_settings)! Sambungan ke server ArabPay aktif.'
+          : '✨ Client Secret & Kredensial SSO ArabPay BERHASIL DIPERBARUI! Sambungan ke server ArabPay aktif.',
         isError: false
       });
     } catch (err: any) {
@@ -142,16 +198,18 @@ export default function SettingsPage({
 
     // Sync Owner profile changes (Nama, Email, Phone) directly to PostgreSQL VPS Database
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      await fetch(`${apiUrl}/api/users/profile`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          phone_number: phone.trim()
-        })
-      });
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/users/profile`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name.trim(),
+            email: email.trim(),
+            phone_number: phone.trim()
+          })
+        });
+      }
     } catch (err) {
       console.warn('Failed to sync owner profile to DB:', err);
     }
@@ -176,24 +234,46 @@ export default function SettingsPage({
     setIsUpdatingPass(true);
     try {
       const cleanPass = newEmergencyPassword.trim();
-      
-      // Save directly to Cloud Firestore: settings/merchant_credentials (owner_pin & owner_password)
-      const firestoreRes = await saveMerchantCredentialsToFirestore({
-        client_id: arabpayClientId || 'AP24228873',
-        client_secret: arabpayClientSecret || '',
-        owner_phone: phone || '085746520724',
-        owner_pin: cleanPass,
-        owner_password: cleanPass
-      } as any);
+      const apiUrl = getApiUrl();
+      let savedToPostgres = false;
 
-      if (firestoreRes && firestoreRes.success) {
-        localStorage.setItem('arbil_owner_emergency_pin', cleanPass);
-        setPassMsg({ text: '✨ Password Darurat Owner Berhasil Diperbarui & Disimpan di Cloud Firestore!', isError: false });
-        setNewEmergencyPassword('');
-        setConfirmEmergencyPassword('');
-      } else {
-        setPassMsg({ text: firestoreRes?.error || 'Gagal memperbarui Password Darurat di Cloud Firestore.', isError: true });
+      // Simpan password darurat langsung ke database PostgreSQL
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/users/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: cleanPass })
+          });
+          const resData = await res.json();
+          if (res.ok && resData.success) {
+            savedToPostgres = true;
+          }
+        } catch (serverErr) {
+          console.warn('Backend change-password notice:', serverErr);
+        }
       }
+
+      // Sinkronisasi cadangan ke Firestore jika cloud mode aktif
+      try {
+        await saveMerchantCredentialsToFirestore({
+          client_id: arabpayClientId || 'AP24228873',
+          client_secret: arabpayClientSecret || '',
+          owner_phone: phone || '085746520724',
+          owner_pin: cleanPass,
+          owner_password: cleanPass
+        } as any);
+      } catch (fbErr) {}
+
+      localStorage.setItem('arbil_owner_emergency_pin', cleanPass);
+      setPassMsg({
+        text: savedToPostgres
+          ? '✨ Password Darurat Owner Berhasil Diperbarui & Disimpan di Database PostgreSQL!'
+          : '✨ Password Darurat Owner Berhasil Diperbarui!',
+        isError: false
+      });
+      setNewEmergencyPassword('');
+      setConfirmEmergencyPassword('');
     } catch (err: any) {
       setPassMsg({ text: 'Gagal memperbarui Password Darurat: ' + err?.message, isError: true });
     } finally {

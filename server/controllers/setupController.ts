@@ -163,7 +163,30 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
         if (business_name) await saveSetting('business_name', business_name);
         await saveSetting('app_installed', 'true');
 
-        console.log('✅ [SETUP WIZARD] Saved setup credentials into PostgreSQL database table system_settings');
+        console.log('✅ [SETTINGS/SETUP] Saved setup credentials into PostgreSQL database table system_settings');
+
+        // Jika tabel users kosong, daftarkan akun owner otomatis
+        const checkUsers = await pool.query('SELECT COUNT(*) as count FROM users');
+        if (parseInt(checkUsers.rows[0]?.count || '0', 10) === 0) {
+          const bcrypt = (await import('bcryptjs')).default;
+          const oPass = req.body.owner_password || 'zainudinarab';
+          const oHash = await bcrypt.hash(oPass, 10);
+          const oId = owner_user_id || '019f74af9fcdWDgDxM8g';
+          const oName = owner_name || business_name || 'Zainudin Arab (Owner)';
+          const oPhone = owner_phone || '085746520724';
+          const oEmail = req.body.owner_email || 'ketua11@gmail.com';
+          const oUser = 'zainudinarab';
+
+          await pool.query(`
+            INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, role, password_hash, password)
+            VALUES ($1, $2, $3, $4, $5, $1, 'owner', $6, $7)
+            ON CONFLICT (id) DO UPDATE SET
+              role = 'owner',
+              password_hash = EXCLUDED.password_hash,
+              password = EXCLUDED.password
+          `, [oId, oUser, oName, oEmail, oPhone, oHash, oPass]);
+          console.log('👑 [SETTINGS/SETUP] Akun Owner berhasil diinisialisasi ke tabel users PostgreSQL!');
+        }
       }
     } catch (dbErr) {
       console.warn('PostgreSQL database save notice:', dbErr);
