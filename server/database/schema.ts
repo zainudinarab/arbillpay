@@ -1,5 +1,4 @@
 import { pool } from '../config/db.js';
-import { getFirestore } from '../config/firebase.js';
 
 export async function initDatabaseSchema() {
   try {
@@ -443,45 +442,10 @@ export async function initDatabaseSchema() {
       ON CONFLICT (id) DO NOTHING;
     `).catch(() => {});
 
-    // 10. Smart Seeder: Sync / Seed Packages if empty in Postgres
+    // 10. Smart Seeder: Seed default packages if empty in PostgreSQL
     try {
       const pkgCheck = await pool.query('SELECT COUNT(*)::int as total FROM packages');
       if (pkgCheck.rows[0]?.total === 0) {
-        let importedCount = 0;
-        try {
-          const db = getFirestore();
-          if (db) {
-            const snap = await db.collection('packages').get();
-            for (const doc of snap.docs) {
-              if (doc.id === '_init') continue;
-              const p = doc.data();
-              const vUnit = p.validity_unit || 'month';
-              const vVal = parseInt(p.validity_value) || 1;
-              const vIso = p.validity_iso || (vUnit === 'month' ? `P${vVal}M` : vUnit === 'day' ? `P${vVal}D` : `PT${vVal}H`);
-              const gIso = p.grace_period_iso || `P${p.grace_period_days || 5}D`;
-              const price = parseFloat(p.price) || 0;
-              await pool.query(`
-                INSERT INTO packages (
-                  id, name, type, price, speed_limit, 
-                  validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, 
-                  mikrotik_profile, shared_users
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                ON CONFLICT (id) DO NOTHING
-              `, [
-                doc.id, p.name || 'Paket', p.type || 'pppoe', price, p.speed_limit || '10M/10M',
-                vIso, gIso,
-                Boolean(p.only_one_user), p.uptime_limit || null, p.quota_mb || null, p.mikrotik_profile || 'default',
-                parseInt(p.shared_users) || 1
-              ]);
-              importedCount++;
-            }
-          }
-        } catch (fErr: any) {
-          console.warn('Firestore package import note:', fErr.message);
-        }
-
-        // Fallback default packages if Firestore had none
         await pool.query(`
           INSERT INTO packages (id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, mikrotik_profile, shared_users) VALUES
           ('pkg-hotspot-m', 'Hotspot Unlimited Bulanan', 'hotspot_monthly', 50000, '5M/5M', 'P1M', 'P5D', false, NULL, NULL, 'default', 1),
@@ -490,7 +454,7 @@ export async function initDatabaseSchema() {
           ('pkg-pppoe-20m', 'Home BroadBand 20 Mbps', 'pppoe', 150000, '20M/20M', 'P1M', 'P5D', false, NULL, NULL, 'default', 1)
           ON CONFLICT (id) DO NOTHING;
         `);
-        console.log(`✅ Smart package seeder: Internet packages seeded into PostgreSQL successfully (Imported: ${importedCount})!`);
+        console.log('✅ Smart package seeder: Internet packages seeded into PostgreSQL successfully!');
       }
     } catch (err: any) {
       console.warn('Package smart seeder notice:', err.message);

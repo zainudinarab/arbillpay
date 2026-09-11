@@ -15,6 +15,11 @@ export interface FirebaseConfig {
 let firestoreInstance: any = null;
 
 export function getFirestore() {
+  // Jika DB_DRIVER diatur ke postgres, jangan hubungi Firebase sama sekali
+  if (process.env.DB_DRIVER === 'postgres') {
+    return null;
+  }
+
   if (firestoreInstance) return firestoreInstance;
 
   const projectId = process.env.FIREBASE_PROJECT_ID || 'arbillpay';
@@ -41,14 +46,13 @@ export function getFirestore() {
         });
         console.log(`✅ Firebase Admin SDK terhubung via Env Credentials (${projectId})`);
       } else {
-        initializeApp({ projectId });
-        console.log(`✅ Firebase Admin SDK terhubung dengan Project ID (${projectId})`);
+        // Jangan inisialisasi tanpa kredensial karena akan memicu Unhandled Rejection
+        return null;
       }
     }
     firestoreInstance = getAdminFirestore();
     return firestoreInstance;
   } catch (err: any) {
-    console.warn(`[FIREBASE INIT WARNING] ${err.message}.`);
     return null;
   }
 }

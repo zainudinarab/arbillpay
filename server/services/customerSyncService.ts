@@ -2,9 +2,11 @@ import { pool } from '../config/db.js';
 import { getFirestore } from '../config/firebase.js';
 
 export async function syncFirestoreCustomersToPostgres() {
+  if (process.env.DB_DRIVER === 'postgres') {
+    return { success: true, count: 0 };
+  }
   const db = getFirestore();
   if (!db) {
-    console.warn('[SYNC] Firebase Admin not available, skipping Firestore -> Postgres customer sync.');
     return { success: false, message: 'Firestore not available' };
   }
 
@@ -129,30 +131,15 @@ export async function syncFirestoreCustomersToPostgres() {
   }
 }
 
-export async function syncFirestoreSettingsAndUsersToPostgres() {
-  const db = getFirestore();
+export async function initPostgresSettingsAndUsers() {
   const bcrypt = (await import('bcryptjs')).default;
 
-  // 1. Sync Settings dari Firestore ke tabel system_settings di PostgreSQL
+  // 1. Inisialisasi system_settings di PostgreSQL langsung dari environment / host
   try {
-    let clientId: string | null = null;
-    let clientSecret: string | null = null;
-    let ownerUserId: string | null = null;
-
-    if (db) {
-      const settingsSnap = await db.collection('settings').doc('merchant_credentials').get();
-      if (settingsSnap.exists) {
-        const data = settingsSnap.data() || {};
-        clientId = data.client_id || null;
-        clientSecret = data.client_secret || null;
-        ownerUserId = data.owner_user_id || null;
-      }
-    }
-
-    // Fallback ke process.env jika Firestore belum terisi
-    if (!clientId) clientId = process.env.ARABPAY_CLIENT_ID || null;
-    if (!clientSecret) clientSecret = process.env.ARABPAY_CLIENT_SECRET || null;
-    if (!ownerUserId) ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g';
+    const clientId = process.env.ARABPAY_CLIENT_ID || 'AP24228873';
+    const clientSecret = process.env.ARABPAY_CLIENT_SECRET || '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+    const ownerUserId = process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g';
+    const ownerPhone = process.env.ARABPAY_OWNER_PHONE || '085746520724';
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS system_settings (
@@ -170,59 +157,31 @@ export async function syncFirestoreSettingsAndUsersToPostgres() {
       `, [k, v]);
     };
 
-    if (clientId && clientSecret) {
-      await saveSetting('arabpay_client_id', clientId);
-      await saveSetting('arabpay_client_secret', clientSecret);
-      if (ownerUserId) await saveSetting('arabpay_owner_user_id', ownerUserId);
-      await saveSetting('app_installed', 'true');
-      console.log('✅ [SYNC SUCCESS] Kredensial merchant berhasil disinkronkan ke tabel system_settings di PostgreSQL!');
-    }
+    await saveSetting('arabpay_client_id', clientId);
+    await saveSetting('arabpay_client_secret', clientSecret);
+    await saveSetting('arabpay_owner_user_id', ownerUserId);
+    await saveSetting('arabpay_owner_phone', ownerPhone);
+    await saveSetting('app_installed', 'true');
+    console.log('✅ [POSTGRESQL CONFIG] Tabel system_settings berhasil dikonfigurasi 100% di PostgreSQL!');
   } catch (err: any) {
-    console.warn('[SYNC NOTICE] Gagal sync system_settings:', err.message);
+    console.warn('[POSTGRESQL CONFIG] Notice system_settings:', err.message);
   }
 
-  // 2. Sync Koleksi USERS dari Firestore ke PostgreSQL
+  // 2. Inisialisasi Akun Owner Default di PostgreSQL
   try {
-    if (db) {
-      const usersSnap = await db.collection('users').get();
-      for (const docSnap of usersSnap.docs) {
-        const u = docSnap.data();
-        const uId = docSnap.id;
-        const username = (u.username || u.name || 'user').toLowerCase().trim();
-        const name = u.name || 'User';
-        const email = (u.email || `${username}@arabnet.local`).toLowerCase().trim();
-        const phone = u.phone_number || null;
-        const role = u.role || 'pelanggan';
-        const passHash = u.password_hash || u.password || null;
-
-        await pool.query(`
-          INSERT INTO users (id, username, name, email, phone_number, role, password_hash, password)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (id) DO UPDATE SET
-            username = EXCLUDED.username,
-            name = EXCLUDED.name,
-            email = EXCLUDED.email,
-            phone_number = EXCLUDED.phone_number,
-            role = EXCLUDED.role,
-            password_hash = COALESCE(EXCLUDED.password_hash, users.password_hash),
-            password = COALESCE(EXCLUDED.password, users.password)
-        `, [uId, username, name, email, phone, role, passHash, u.password || null]);
-      }
-    }
-
-    // Pastikan akun Owner default (zainudinarab) selalu ada di tabel users
-    const ownerCheck = await pool.query("SELECT id FROM users WHERE role = 'owner' LIMIT 1");
-    if (ownerCheck.rows.length === 0) {
-      const defaultOwnerId = '019f74af9fcdWDgDxM8g';
-      const defaultHash = await bcrypt.hash('zainudinarab', 10);
-      await pool.query(`
-        INSERT INTO users (id, username, name, email, phone_number, role, password_hash, password)
-        VALUES ($1, $2, $3, $4, $5, 'owner', $6, 'zainudinarab')
-        ON CONFLICT (id) DO UPDATE SET role = 'owner', password_hash = EXCLUDED.password_hash
-      `, [defaultOwnerId, 'zainudinarab', 'Zainudin Arab (Owner)', 'ketua11@gmail.com', '085746520724', defaultHash]);
-      console.log('👑 [SEED] Akun Owner (zainudinarab) berhasil dibuat di PostgreSQL users!');
-    }
+    const defaultOwnerId = process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g';
+    const defaultHash = await bcrypt.hash('zainudinarab', 10);
+    await pool.query(`
+      INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, role, password_hash, password)
+      VALUES ($1, 'zainudinarab', 'Zainudin Arab (Owner)', 'ketua11@gmail.com', '085746520724', $1, 'owner', $2, 'zainudinarab')
+      ON CONFLICT (id) DO UPDATE SET 
+        role = 'owner', 
+        username = 'zainudinarab',
+        password_hash = COALESCE(users.password_hash, EXCLUDED.password_hash),
+        password = COALESCE(users.password, EXCLUDED.password)
+    `, [defaultOwnerId, defaultHash]);
+    console.log('👑 [POSTGRESQL USERS] Akun Owner (zainudinarab) siap di tabel users PostgreSQL!');
   } catch (err: any) {
-    console.warn('[SYNC NOTICE] Gagal sync users:', err.message);
+    console.warn('[POSTGRESQL USERS] Notice user owner:', err.message);
   }
 }

@@ -557,16 +557,14 @@ export default function App() {
   const handleLoginSuccess = (account: UserAccount) => {
     setCurrentUser(account);
     localStorage.setItem('arbil_current_user', JSON.stringify(account));
-    saveUserToFirestore(account);
     saveUserToPostgres(account);
     setShowAdminLoginModal(false);
   };
 
-  // Sync Current User to Local Storage, Firestore & PostgreSQL
+  // Sync Current User to Local Storage & PostgreSQL
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('arbil_current_user', JSON.stringify(currentUser));
-      saveUserToFirestore(currentUser);
       saveUserToPostgres(currentUser);
       setProfile(prev => ({
         ...prev,
