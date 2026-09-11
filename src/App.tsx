@@ -253,15 +253,11 @@ export default function App() {
           const res = await fetch(`${apiUrl}/api/setup/status`);
           if (res.ok) {
             const data = await res.json();
-            if (data.installed) {
-              isConfigured = true;
-            }
+            isConfigured = Boolean(data.installed);
           }
         } catch (apiErr) {}
-      }
-
-      // 2. Fallback cek Cloud Firestore jika API belum merespons
-      if (!isConfigured) {
+      } else {
+        // 2. Fallback cek Cloud Firestore HANYA jika TIDAK ADA API Backend (Pure Cloud Firestore Hosting)
         try {
           const liveCreds = await getMerchantCredentialsFromFirestore();
           if (liveCreds && (liveCreds.client_id || liveCreds.client_secret || liveCreds.installed)) {
@@ -282,6 +278,10 @@ export default function App() {
       }
 
       if (!isConfigured) {
+        // Jika tabel system_settings di database kosong, paksa ke SetupWizard dan bersihkan sesi lama
+        setCurrentUser(null);
+        localStorage.removeItem('arbil_current_user');
+        localStorage.removeItem('arabpay_token');
         setShowSetupWizard(true);
       } else {
         setShowSetupWizard(false);
