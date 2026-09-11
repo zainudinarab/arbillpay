@@ -23,12 +23,21 @@ import {
   DollarSign, 
   FileText,
   AlertCircle,
-  Users
+  AlertTriangle,
+  Users,
+  Eye,
+  Key,
+  Shuffle,
+  Dice5,
+  Lock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { CustomerItem as Customer } from './CustomerManagement';
-import { getCustomersFromFirestore, getPackagesFromFirestore } from '../services/firebaseService';
+import { getCustomersFromFirestore, getPackagesFromFirestore, deleteCustomerFromFirestore } from '../services/firebaseService';
+import { getApiUrl } from '../config/api';
+import { parseIso8601 } from '../utils/iso8601';
+import IndonesianAddressForm from './IndonesianAddressForm';
 
 interface HotspotCustomerManagementProps {
   profile: BusinessProfile;
@@ -62,6 +71,10 @@ export default function HotspotCustomerManagement({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [importRouterId, setImportRouterId] = useState('');
+  const [importProfileFilter, setImportProfileFilter] = useState('all_members');
+  const [updateExistingImport, setUpdateExistingImport] = useState(true);
+  const [importLoading, setImportLoading] = useState(false);
   const [showBillingModal, setShowBillingModal] = useState(false);
   const [billingCustomer, setBillingCustomer] = useState<Customer | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
@@ -76,6 +89,14 @@ export default function HotspotCustomerManagement({
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Delete Customer Confirmation Modal States
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+  const [deleteFromMikrotik, setDeleteFromMikrotik] = useState(true);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [autoSyncOnSave, setAutoSyncOnSave] = useState(true);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
 
   const fetchCustomerInvoices = async (cust: Customer) => {
     try {
@@ -127,6 +148,7 @@ export default function HotspotCustomerManagement({
   const [kecamatan, setKecamatan] = useState('');
   const [kabupaten, setKabupaten] = useState('');
   const [provinsi, setProvinsi] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [pppoeUsername, setPppoeUsername] = useState('');
   const [pppoePassword, setPppoePassword] = useState('');
   const [packageId, setPackageId] = useState('');
@@ -136,10 +158,21 @@ export default function HotspotCustomerManagement({
   const [expiredAt, setExpiredAt] = useState<string>('');
   const [graceUntil, setGraceUntil] = useState<string>('');
 
-  // Import State
-  const [importRouterId, setImportRouterId] = useState('');
-  const [updateExistingImport, setUpdateExistingImport] = useState(true);
-  const [importLoading, setImportLoading] = useState(false);
+  const generateRandomStr = (len = 6) => {
+    const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+    let res = '';
+    for (let i = 0; i < len; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return res;
+  };
+
+  const handleGenerateCredentials = (mode: 'same' | 'different') => {
+    const u = generateRandomStr(6);
+    const p = mode === 'same' ? u : generateRandomStr(6);
+    setPppoeUsername(u);
+    setPppoePassword(p);
+  };
 
   const parseJsonResponse = async (res: Response) => {
     const contentType = res.headers.get('content-type') || '';
@@ -158,68 +191,77 @@ export default function HotspotCustomerManagement({
     let loadedCustomers: any[] = [];
     let loadedPackages: any[] = [];
 
+    const apiUrl = getApiUrl();
+    const timeoutOpt = { signal: AbortSignal.timeout(5000) };
+
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const [cRes, pRes, rRes, rpRes, actRes] = await Promise.all([
-        fetch(`${apiUrl}/api/customers`).catch(() => null),
-        fetch(`${apiUrl}/api/packages`).catch(() => null),
-        fetch(`${apiUrl}/api/routers`).catch(() => null),
-        fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
-        fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null)
+      if (apiUrl) {
+        try {
+          const [cRes, pRes, rRes, rpRes, actRes] = await Promise.all([
+            fetch(`${apiUrl}/api/customers`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/packages`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/routers`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/router-profiles`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/routers/ppp-active-users`, timeoutOpt).catch(() => null)
+          ]);
+
+          if (cRes && cRes.ok) {
+            const cData = await parseJsonResponse(cRes).catch(() => null);
+            if (cData && cData.success && Array.isArray(cData.customers)) {
+              loadedCustomers = cData.customers;
+            }
+          }
+          if (pRes && pRes.ok) {
+            const pData = await parseJsonResponse(pRes).catch(() => null);
+            if (pData && pData.success && Array.isArray(pData.packages)) {
+              loadedPackages = pData.packages;
+            }
+          }
+          if (rRes && rRes.ok) {
+            const rData = await parseJsonResponse(rRes).catch(() => null);
+            if (rData && rData.success && Array.isArray(rData.routers)) setRouters(rData.routers);
+          }
+          if (rpRes && rpRes.ok) {
+            const rpData = await parseJsonResponse(rpRes).catch(() => null);
+            if (rpData && rpData.success && Array.isArray(rpData.profiles)) setRouterProfiles(rpData.profiles);
+          }
+          if (actRes && actRes.ok) {
+            const actData = await parseJsonResponse(actRes).catch(() => null);
+            if (actData && actData.success && Array.isArray(actData.onlineUsernames)) {
+              setOnlineUsernames(actData.onlineUsernames);
+            }
+          }
+        } catch (err: any) { }
+      }
+
+      // ⚡ 1. Jika PostgreSQL mengembalikan data pelanggan, RENDER SEGERA (sangat cepat ~50ms)!
+      if (loadedCustomers.length > 0) {
+        const hotspotCusts = loadedCustomers.filter((c: any) => c.connection_type === 'hotspot' && !c.is_voucher);
+        const hotspotPkgs = loadedPackages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'hotspot' || (p.type && p.type.includes('hotspot')));
+        setCustomers(hotspotCusts);
+        setPackages(hotspotPkgs);
+        setLoading(false);
+        return;
+      }
+
+      // ⚡ 2. Fallback: Query Cloud Firestore hanya jika PostgreSQL mengembalikan 0 / offline
+      const [fbCust, fbPkg] = await Promise.all([
+        getCustomersFromFirestore().catch(() => ({ success: false, customers: [] })),
+        getPackagesFromFirestore().catch(() => ({ success: false, packages: [] }))
       ]);
 
-      if (cRes && cRes.ok) {
-        const cData = await parseJsonResponse(cRes).catch(() => null);
-        if (cData && cData.success && Array.isArray(cData.customers)) {
-          loadedCustomers = cData.customers;
-        }
+      if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
+        loadedCustomers = fbCust.customers;
       }
-      if (pRes && pRes.ok) {
-        const pData = await parseJsonResponse(pRes).catch(() => null);
-        if (pData && pData.success && Array.isArray(pData.packages)) {
-          loadedPackages = pData.packages;
-        }
+      if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
+        loadedPackages = fbPkg.packages;
       }
-      if (rRes && rRes.ok) {
-        const rData = await parseJsonResponse(rRes).catch(() => null);
-        if (rData && rData.success && Array.isArray(rData.routers)) setRouters(rData.routers);
-      }
-      if (rpRes && rpRes.ok) {
-        const rpData = await parseJsonResponse(rpRes).catch(() => null);
-        if (rpData && rpData.success && Array.isArray(rpData.profiles)) setRouterProfiles(rpData.profiles);
-      }
-      if (actRes && actRes.ok) {
-        const actData = await parseJsonResponse(actRes).catch(() => null);
-        if (actData && actData.success && Array.isArray(actData.onlineUsernames)) {
-          setOnlineUsernames(actData.onlineUsernames);
-        }
-      }
-    } catch (err: any) { }
 
-    // Always merge with Firebase Cloud Firestore for instant serverless cloud sync
-    const fbCust = await getCustomersFromFirestore();
-    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
-      const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
-      fbCust.customers.forEach((fc: any) => {
-        if (!existingIds.has(String(fc.id))) {
-          loadedCustomers.push(fc);
-        }
-      });
+      setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'hotspot' && !c.is_voucher));
+      setPackages(loadedPackages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'hotspot' || (p.type && p.type.includes('hotspot'))));
+    } finally {
+      setLoading(false);
     }
-
-    const fbPkg = await getPackagesFromFirestore();
-    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
-      const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
-      fbPkg.packages.forEach((fp: any) => {
-        if (!existingPkgIds.has(String(fp.id))) {
-          loadedPackages.push(fp);
-        }
-      });
-    }
-
-    setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'hotspot' && !c.is_voucher));
-    setPackages(loadedPackages.filter((p: any) => p.type === 'hotspot_monthly'));
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -235,14 +277,25 @@ export default function HotspotCustomerManagement({
     const selPkg = packages.find(p => p.id === pkgId);
     if (!selPkg) return;
 
-    const baseDate = instDateStr ? new Date(instDateStr) : new Date();
-    const vDays = selPkg.validity_days || 30;
-    const expDate = new Date(baseDate);
-    expDate.setDate(expDate.getDate() + vDays);
+    const parsedV = parseIso8601((selPkg as any).validity_iso);
+    const parsedG = parseIso8601((selPkg as any).grace_period_iso || 'P5D');
 
-    const gDays = selPkg.grace_period_days || 5;
+    const baseDate = instDateStr ? new Date(instDateStr) : new Date();
+    const expDate = new Date(baseDate);
+    if (parsedV.unit === 'month') {
+      expDate.setMonth(expDate.getMonth() + (parsedV.val || 1));
+    } else if (parsedV.unit === 'day') {
+      expDate.setDate(expDate.getDate() + (parsedV.val || 30));
+    } else {
+      expDate.setDate(expDate.getDate() + 30);
+    }
+
     const graceDate = new Date(expDate);
-    graceDate.setDate(graceDate.getDate() + gDays);
+    if (parsedG.unit === 'day') {
+      graceDate.setDate(graceDate.getDate() + (parsedG.val || 5));
+    } else {
+      graceDate.setDate(graceDate.getDate() + 5);
+    }
 
     setExpiredAt(expDate.toISOString().split('T')[0]);
     setGraceUntil(graceDate.toISOString().split('T')[0]);
@@ -272,14 +325,21 @@ export default function HotspotCustomerManagement({
     setProvinsi('');
     setPppoeUsername('');
     setPppoePassword('');
-    setPackageId(packages.length > 0 ? packages[0].id : '');
-    setSelectedRouterId(routers.length > 0 ? routers[0].id : '');
+    const defaultRouter = routers.length > 0 ? routers[0].id : '';
+    setSelectedRouterId(defaultRouter);
+    const linkedPkgs = packages.filter(pkg => 
+      pkg.type === 'hotspot_monthly' && 
+      routerProfiles.some(rp => rp.router_id === defaultRouter && rp.package_id === pkg.id)
+    );
+    const defaultPkg = linkedPkgs.length > 0 ? linkedPkgs[0].id : '';
+    setPackageId(defaultPkg);
+    setPostalCode('');
     setStatus('active');
     
     const today = new Date().toISOString().split('T')[0];
     setInstallationDate(today);
-    if (packages.length > 0) {
-      calculateDatesFromPackage(packages[0].id, today);
+    if (defaultPkg) {
+      calculateDatesFromPackage(defaultPkg, today);
     }
   };
 
@@ -299,6 +359,7 @@ export default function HotspotCustomerManagement({
     setKecamatan(c.kecamatan || '');
     setKabupaten(c.kabupaten || '');
     setProvinsi(c.provinsi || '');
+    setPostalCode((c as any).postal_code || '');
     setPppoeUsername(c.pppoe_username || '');
     setPppoePassword(c.pppoe_password || '');
     setPackageId(c.package_id || '');
@@ -321,9 +382,9 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && (rp.package_id === packageId || rp.type === 'hotspot'));
+      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,6 +398,7 @@ export default function HotspotCustomerManagement({
           kecamatan: kecamatan.trim() || null,
           kabupaten: kabupaten.trim() || null,
           provinsi: provinsi.trim() || null,
+          postal_code: postalCode.trim() || null,
           connection_type: 'hotspot',
           pppoe_username: pppoeUsername.trim(),
           pppoe_password: pppoePassword.trim(),
@@ -376,9 +438,9 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && (rp.package_id === packageId || rp.type === 'hotspot'));
+      const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -392,6 +454,7 @@ export default function HotspotCustomerManagement({
           kecamatan: kecamatan.trim() || null,
           kabupaten: kabupaten.trim() || null,
           provinsi: provinsi.trim() || null,
+          postal_code: postalCode.trim() || null,
           connection_type: 'hotspot',
           pppoe_username: pppoeUsername.trim(),
           pppoe_password: pppoePassword.trim(),
@@ -407,7 +470,23 @@ export default function HotspotCustomerManagement({
 
       const data = await parseJsonResponse(res);
       if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
+        if (autoSyncOnSave && selectedRouterId) {
+          try {
+            const syncRes = await fetch(`${apiUrl}/api/customers/${editingCustomer.id}/sync-to-mikrotik`, {
+              method: 'POST'
+            });
+            const syncData = await parseJsonResponse(syncRes);
+            if (syncData.success) {
+              setToastMsg({ type: 'success', text: `Data berhasil diperbarui & disinkronkan ke Router MikroTik!` });
+            } else {
+              setToastMsg({ type: 'error', text: `Data tersimpan, tapi sync Mikrotik gagal: ${syncData.message}` });
+            }
+          } catch (syncErr: any) {
+            setToastMsg({ type: 'error', text: `Data tersimpan, tapi gagal sync ke Mikrotik: ${syncErr.message}` });
+          }
+        } else {
+          setToastMsg({ type: 'success', text: data.message });
+        }
         setShowEditModal(false);
         setEditingCustomer(null);
         fetchData();
@@ -431,11 +510,14 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/routers/${importRouterId}/import-hotspot-users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ update_existing: updateExistingImport })
+        body: JSON.stringify({ 
+          update_existing: updateExistingImport,
+          profile_filter: importProfileFilter
+        })
       });
 
       const data = await parseJsonResponse(res);
@@ -458,7 +540,7 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/customers/${c.id}/sync-to-mikrotik`, {
         method: 'POST'
       });
@@ -477,6 +559,42 @@ export default function HotspotCustomerManagement({
     }
   };
 
+  const handleSyncAllHotspot = async () => {
+    const hotspotList = customers.filter(c => c.connection_type === 'hotspot' && c.pppoe_username);
+    if (hotspotList.length === 0) {
+      setToastMsg({ type: 'error', text: 'Tidak ada pelanggan Hotspot untuk disinkronkan.' });
+      return;
+    }
+
+    if (!confirm(`Sinkronkan seluruh (${hotspotList.length}) pelanggan Hotspot ke MikroTik?`)) return;
+
+    setSyncAllLoading(true);
+    setToastMsg(null);
+    let successCount = 0;
+    let failCount = 0;
+
+    const apiUrl = getApiUrl() || 'http://localhost:3006';
+    for (const c of hotspotList) {
+      try {
+        const res = await fetch(`${apiUrl}/api/customers/${c.id}/sync-to-mikrotik`, {
+          method: 'POST'
+        });
+        const d = await parseJsonResponse(res);
+        if (d.success) successCount++;
+        else failCount++;
+      } catch (e) {
+        failCount++;
+      }
+    }
+
+    setSyncAllLoading(false);
+    fetchData();
+    setToastMsg({
+      type: failCount === 0 ? 'success' : 'error',
+      text: `Selesai sinkronisasi Hotspot: ${successCount} berhasil${failCount > 0 ? `, ${failCount} gagal` : ''}.`
+    });
+  };
+
   const handleDisconnect = async (c: Customer) => {
     if (!confirm(`Apakah Anda yakin ingin memutus koneksi aktif Hotspot "${c.pppoe_username}" dari Mikrotik?`)) return;
 
@@ -484,7 +602,7 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/customers/${c.id}/disconnect-ppp`, {
         method: 'POST'
       });
@@ -510,7 +628,7 @@ export default function HotspotCustomerManagement({
     setInvoiceLoading(true);
     setToastMsg(null);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/invoices/create-batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -533,7 +651,7 @@ export default function HotspotCustomerManagement({
     setActionLoadingId(c.id);
     setToastMsg(null);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/invoices/create-manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -553,24 +671,55 @@ export default function HotspotCustomerManagement({
     }
   };
 
-  const handleDeleteCustomer = async (c: Customer) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus pelanggan Hotspot "${c.name}"?`)) return;
+  const promptDeleteCustomer = (cust: Customer) => {
+    setCustomerToDelete(cust);
+    setDeleteFromMikrotik(true);
+    setShowDeleteModal(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!customerToDelete) return;
+    const cust = customerToDelete;
+
+    setDeleteLoading(true);
+    setActionLoadingId(cust.id);
+    setToastMsg(null);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/customers/${c.id}`, {
-        method: 'DELETE'
-      });
-      const data = await parseJsonResponse(res);
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${cust.id}?delete_mikrotik=${deleteFromMikrotik}`, {
+          method: 'DELETE'
+        }).catch(() => null);
 
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message });
-        fetchData();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus pelanggan.' });
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+          }
+        }
       }
+
+      // Also delete from Cloud Firestore
+      await deleteCustomerFromFirestore(cust.id, cust).catch(() => null);
+
+      // Optimistic update: instantly remove from UI!
+      setCustomers(prev => prev.filter(c => c.id !== cust.id));
+      setToastMsg({ 
+        type: 'success', 
+        text: `🗑️ Pelanggan "${cust.name}" berhasil dihapus${deleteFromMikrotik ? ' & user MikroTik dicabut' : ''}!` 
+      });
+      setShowDeleteModal(false);
+      setCustomerToDelete(null);
+      if (editingCustomer && editingCustomer.id === cust.id) {
+        setShowEditModal(false);
+        setEditingCustomer(null);
+      }
+      fetchData();
     } catch (err: any) {
-      setToastMsg({ type: 'error', text: err?.message || 'Gagal menghapus pelanggan.' });
+      setToastMsg({ type: 'error', text: `Gagal menghapus pelanggan: ${err?.message || 'Error'}` });
+    } finally {
+      setDeleteLoading(false);
+      setActionLoadingId(null);
     }
   };
 
@@ -606,6 +755,10 @@ export default function HotspotCustomerManagement({
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
 
+  const onlineCount = customers.filter(c => isUserOnline(c)).length;
+  const offlineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
+  const pendingCount = customers.filter(c => c.status !== 'active').length;
+
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8 min-h-screen">
       <HeaderBar
@@ -616,7 +769,7 @@ export default function HotspotCustomerManagement({
         onLogout={onLogout}
       />
 
-      <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
+      <main className="p-4 md:p-8 space-y-5 max-w-7xl mx-auto">
         {toastMsg && (
           <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm animate-fade-in ${
             toastMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
@@ -629,9 +782,71 @@ export default function HotspotCustomerManagement({
           </div>
         )}
 
+        {/* Quick Status Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'all'
+                ? 'bg-slate-800 text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <span>Semua Hotspot</span>
+            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${statusFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
+              {customers.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('online')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'online'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Online</span>
+            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${statusFilter === 'online' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700'}`}>
+              {onlineCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('offline')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'offline'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+            <span>Offline</span>
+            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${statusFilter === 'offline' ? 'bg-rose-700 text-white' : 'bg-rose-50 text-rose-700'}`}>
+              {offlineCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setStatusFilter('non-active')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              statusFilter === 'non-active'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span>Non-Aktif / Isolir</span>
+            <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${statusFilter === 'non-active' ? 'bg-amber-700 text-white' : 'bg-amber-50 text-amber-700'}`}>
+              {pendingCount}
+            </span>
+          </button>
+        </div>
+
         {/* Toolbar & Filters */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-          <div className="flex items-center gap-3 flex-1">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-3 flex-1 flex-wrap sm:flex-nowrap">
             <div className="relative flex-1 max-w-md">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -639,95 +854,92 @@ export default function HotspotCustomerManagement({
                 placeholder="Cari nama, kode, username Hotspot, no hp..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-sans text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all"
               />
             </div>
 
             <select
               value={selectedPackageFilter}
               onChange={(e) => setSelectedPackageFilter(e.target.value)}
-              className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-sans font-bold text-slate-700 focus:outline-none"
+              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-700 focus:outline-none"
             >
               <option value="all">Semua Paket Hotspot</option>
-              {packages.filter(p => p.type && p.type.includes('hotspot')).map(p => (
-                <option key={p.id} value={p.id}>{p.name} ({p.speed_limit})</option>
+              {packages.map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({p.speed_limit || 'Default'})</option>
               ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-sans font-bold text-slate-700 focus:outline-none"
-            >
-              <option value="all">Semua Status</option>
-              <option value="online">🟢 Online Hotspot</option>
-              <option value="offline">🔴 Offline</option>
-              <option value="non-active">🟡 Non-Aktif / Isolir</option>
             </select>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => { window.location.hash = '#/map-ftth'; }}
-              className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-sans font-bold text-xs rounded-2xl shadow-md shadow-sky-100 flex items-center gap-2 transition-all cursor-pointer"
+              className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-sans font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
             >
-              <MapPin size={15} />
-              <span>🗺️ Peta Jaringan FTTH</span>
+              <MapPin size={14} />
+              <span>Peta Jaringan</span>
             </button>
 
             <button
               onClick={handleCreateBatchInvoices}
               disabled={invoiceLoading}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-2xl shadow-md shadow-indigo-100 transition-all cursor-pointer inline-flex items-center gap-2 disabled:opacity-50"
+              className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-xs rounded-xl transition cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
             >
-              <FileText size={15} className={invoiceLoading ? 'animate-spin' : ''} />
-              <span>{invoiceLoading ? 'Memproses...' : '🧾 Buat Tagihan Masal'}</span>
+              <FileText size={14} className={invoiceLoading ? 'animate-spin' : ''} />
+              <span>{invoiceLoading ? 'Memproses...' : 'Tagihan Masal'}</span>
+            </button>
+
+            <button
+              onClick={handleSyncAllHotspot}
+              disabled={syncAllLoading}
+              className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl transition cursor-pointer border border-amber-200 inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="Sinkronkan semua pelanggan Hotspot ke Router MikroTik"
+            >
+              <RefreshCw size={14} className={syncAllLoading ? 'animate-spin text-amber-600' : 'text-amber-600'} />
+              <span>{syncAllLoading ? 'Menyinkronkan...' : 'Singkron ke MikroTik'}</span>
             </button>
 
             <button
               onClick={() => setShowImportModal(true)}
-              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition-all cursor-pointer border border-slate-200 inline-flex items-center gap-2"
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer border border-slate-200 inline-flex items-center gap-1.5"
             >
-              <Download size={15} />
-              <span>Impor User Hotspot</span>
+              <Download size={14} />
+              <span>Impor Mikrotik</span>
             </button>
 
             <button
               onClick={openAddModal}
-              className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-2xl shadow-lg shadow-sky-200 transition-all cursor-pointer inline-flex items-center gap-2"
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer inline-flex items-center gap-1.5"
             >
-              <Plus size={16} />
-              <span>Tambah Pelanggan Hotspot</span>
+              <Plus size={15} />
+              <span>+ Tambah Pelanggan</span>
             </button>
           </div>
         </div>
 
         {/* Customer Table */}
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
-                  <th className="py-4 px-6">Pelanggan</th>
-                  <th className="py-4 px-6">Username Hotspot</th>
-                  <th className="py-4 px-6">Paket Internet</th>
-                  <th className="py-4 px-6">Server Router</th>
-                  <th className="py-4 px-6">Masa Aktif</th>
-                  <th className="py-4 px-6 text-center">Mikrotik Sync</th>
-                  <th className="py-4 px-6 text-right">Aksi</th>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3.5 px-5">Pelanggan</th>
+                  <th className="py-3.5 px-5">Paket & Kecepatan</th>
+                  <th className="py-3.5 px-5">Username & Router</th>
+                  <th className="py-3.5 px-5">Status & Masa Aktif</th>
+                  <th className="py-3.5 px-5 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-sans text-slate-700">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
                       <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-sky-500" />
-                      <span>Memuat data pelanggan Hotspot...</span>
+                      <span>Memuat data pelanggan Hotspot dari PostgreSQL...</span>
                     </td>
                   </tr>
                 ) : filteredCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
                       Belum ada pelanggan Hotspot ditemukan.
                     </td>
                   </tr>
@@ -737,116 +949,148 @@ export default function HotspotCustomerManagement({
                     const isLoadingAction = actionLoadingId === c.id;
 
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                        {/* Pelanggan Name & Online Dot */}
-                        <td className="py-4 px-6 font-bold text-slate-800">
-                          <div className="flex items-center gap-2">
+                      <tr 
+                        key={c.id} 
+                        onClick={() => openBillingModal(c)}
+                        className="hover:bg-sky-50/40 transition-colors cursor-pointer group"
+                      >
+                        {/* 1. Pelanggan */}
+                        <td className="py-4 px-5">
+                          <div className="flex items-center gap-3">
                             <span 
-                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${online ? 'bg-emerald-500 shadow-sm shadow-emerald-200' : c.status === 'active' ? 'bg-rose-500' : 'bg-amber-500'}`}
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                online 
+                                  ? 'bg-emerald-500 shadow-xs shadow-emerald-300 ring-2 ring-emerald-200 animate-pulse' 
+                                  : c.status === 'active' 
+                                    ? 'bg-slate-300' 
+                                    : 'bg-amber-500'
+                              }`}
                               title={online ? 'Online Hotspot' : 'Offline'}
                             />
                             <div>
-                              <div className="font-bold text-slate-900">{c.name}</div>
-                              <div className="text-[10px] font-mono text-slate-400">{c.customer_code} • {c.phone_number || 'Tanpa HP'}</div>
+                              <div className="font-extrabold text-slate-900 group-hover:text-sky-600 transition-colors">
+                                {c.name}
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                <span className="font-bold text-slate-500">{c.customer_code || 'CUST-HOTSPOT'}</span>
+                                {c.phone_number && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{c.phone_number}</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
 
-                        {/* Username Hotspot & Password */}
-                        <td className="py-4 px-6">
-                          <div className="font-mono font-bold text-sky-700">{c.pppoe_username}</div>
-                          <div className="text-[10px] font-mono text-slate-400">Pass: {c.pppoe_password}</div>
-                        </td>
-
-                        {/* Paket Internet */}
-                        <td className="py-4 px-6">
-                          <div className="font-bold text-slate-800">{c.package_name || 'Tanpa Paket'}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            Rp {c.package_price ? c.package_price.toLocaleString('id-ID') : '0'} • {c.speed_limit || '-'}
+                        {/* 2. Paket & Kecepatan */}
+                        <td className="py-4 px-5">
+                          <div className="space-y-1">
+                            <span className="inline-block px-2.5 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-extrabold text-xs">
+                              {c.package_name || 'Hotspot Member'}
+                            </span>
+                            <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
+                              <span>Rp {c.package_price ? Number(c.package_price).toLocaleString('id-ID') : '0'}</span>
+                              <span>•</span>
+                              <span className="text-amber-600">⚡ {c.speed_limit || 'Unlimited'}</span>
+                            </div>
                           </div>
                         </td>
 
-                        {/* Server Router */}
-                        <td className="py-4 px-6">
-                          <div className="font-bold text-slate-700">{c.router_name || 'Default Router'}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{c.router_ip || '-'}</div>
-                        </td>
-
-                        {/* Masa Aktif */}
-                        <td className="py-4 px-6">
-                          <div className="font-mono text-[11px] font-bold text-slate-700">
-                            {c.expired_at ? new Date(c.expired_at).toLocaleDateString('id-ID') : '-'}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            Pasang: {c.installation_date ? new Date(c.installation_date).toLocaleDateString('id-ID') : '-'}
+                        {/* 3. Username & Router */}
+                        <td className="py-4 px-5">
+                          <div className="space-y-0.5 font-mono">
+                            <div className="font-black text-xs text-indigo-700 flex items-center gap-1">
+                              <span>{c.pppoe_username}</span>
+                              <span className="text-[10px] text-slate-400 font-normal">({c.pppoe_password})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-sans font-medium flex items-center gap-1">
+                              <Server size={11} className="text-slate-400" />
+                              <span>{c.router_name || 'Default Router'}</span>
+                            </div>
                           </div>
                         </td>
 
-                        {/* Mikrotik Sync & Disconnect */}
-                        <td className="py-4 px-6 text-center">
-                          {!c.is_synced ? (
-                            <button
-                              onClick={() => handleSyncMikrotik(c)}
-                              disabled={isLoadingAction}
-                              className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px] rounded-xl shadow-sm cursor-pointer inline-flex items-center gap-1.5 transition-all"
-                            >
-                              {isLoadingAction ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
-                              <span>Sync Mikrotik</span>
-                            </button>
-                          ) : online ? (
-                            <button
-                              onClick={() => handleDisconnect(c)}
-                              disabled={isLoadingAction}
-                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-xl shadow-sm cursor-pointer inline-flex items-center gap-1.5 transition-all"
-                            >
-                              {isLoadingAction ? <RefreshCw size={12} className="animate-spin" /> : <XCircle size={12} />}
-                              <span>Diskonek</span>
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleSyncMikrotik(c)}
-                              disabled={isLoadingAction}
-                              className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold text-[10px] rounded-lg inline-flex items-center gap-1 hover:bg-emerald-100 transition-all cursor-pointer"
-                              title="Klik untuk re-sync manual"
-                            >
-                              <CheckCircle2 size={11} />
-                              <span>Synced</span>
-                            </button>
-                          )}
+                        {/* 4. Status & Masa Aktif */}
+                        <td className="py-4 px-5">
+                          <div className="space-y-1">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              c.status === 'active' 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : c.status === 'isolated'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {c.status || 'active'}
+                            </span>
+                            <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+                              <Calendar size={11} className="text-slate-400" />
+                              <span>{c.expired_at ? `Exp: ${new Date(c.expired_at).toLocaleDateString('id-ID')}` : 'Tanpa Expired'}</span>
+                            </div>
+                          </div>
                         </td>
 
-                        {/* Actions */}
-                        <td className="py-4 px-6 text-right space-x-2">
-                          {Boolean((c as any).latitude || c.maps_url) && (
+                        {/* 5. Aksi */}
+                        <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {online && (
+                              <button
+                                onClick={() => handleDisconnect(c)}
+                                disabled={isLoadingAction}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] rounded-lg transition cursor-pointer"
+                                title="Putus koneksi user ini di MikroTik"
+                              >
+                                {isLoadingAction ? <RefreshCw size={11} className="animate-spin" /> : 'Diskonek'}
+                              </button>
+                            )}
+
                             <button
-                              onClick={() => { window.location.hash = '#/map-ftth'; }}
-                              className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all cursor-pointer"
-                              title="Lihat Lokasi Pelanggan di Peta FTTH"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncMikrotik(c);
+                              }}
+                              disabled={isLoadingAction}
+                              className={`px-2.5 py-1 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer ${
+                                c.is_synced
+                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                                  : 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold animate-pulse shadow-xs'
+                              }`}
+                              title={c.is_synced ? 'Singkron Ulang ke MikroTik' : 'Belum Sinkron - Klik untuk Singkron ke MikroTik'}
                             >
-                              <MapPin size={14} />
+                              {isLoadingAction ? (
+                                <RefreshCw size={13} className="animate-spin text-amber-600" />
+                              ) : (
+                                <Zap size={13} className={c.is_synced ? 'text-amber-600' : 'text-white'} />
+                              )}
+                              <span className="text-[11px] font-bold">Sync</span>
                             </button>
-                          )}
-                          <button
-                            onClick={() => openBillingModal(c)}
-                            className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl transition-all cursor-pointer"
-                            title="Detail & Tagihan Pelanggan"
-                          >
-                            <FileText size={14} />
-                          </button>
-                          <button
-                            onClick={() => openEditModal(c)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all cursor-pointer"
-                            title="Edit Data Pelanggan"
-                          >
-                            <Edit size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCustomer(c)}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-all cursor-pointer"
-                            title="Hapus Pelanggan"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+
+                            <button
+                              onClick={() => openBillingModal(c)}
+                              className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                              title="Detail Pelanggan & Tagihan"
+                            >
+                              <Eye size={14} />
+                              <span className="hidden sm:inline">Detail</span>
+                            </button>
+
+                            <button
+                              onClick={() => openEditModal(c)}
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition cursor-pointer"
+                              title="Edit Data Pelanggan"
+                            >
+                              <Edit size={14} />
+                            </button>
+
+                            <button
+                              onClick={() => promptDeleteCustomer(c)}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition cursor-pointer"
+                              title="Hapus Pelanggan"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -922,9 +1166,9 @@ export default function HotspotCustomerManagement({
 
       {/* Modal Tambah Pelanggan Hotspot */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-5xl shadow-2xl overflow-hidden animate-slide-up max-h-[94vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
                   <Wifi size={20} />
@@ -934,189 +1178,281 @@ export default function HotspotCustomerManagement({
                   <p className="text-xs text-slate-400">Akun Hotspot Member Bulanan / Langganan Tetap</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-2xl cursor-pointer leading-none">&times;</button>
             </div>
 
-            <form onSubmit={handleCreateCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Server Router Mikrotik *</label>
-                  <select
-                    value={selectedRouterId}
-                    onChange={(e) => setSelectedRouterId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    {routers.map(r => (
-                      <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={handleCreateCustomer} className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                {/* Kolom Kiri: Akun & Paket */}
+                <div className="space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Server Router Mikrotik *</label>
+                      <select
+                        value={selectedRouterId}
+                        onChange={(e) => {
+                          const newRouterId = e.target.value;
+                          setSelectedRouterId(newRouterId);
+                          const isStillLinked = routerProfiles.some(
+                            rp => rp.router_id === newRouterId && rp.package_id === packageId
+                          );
+                          if (!isStillLinked) {
+                            setPackageId('');
+                            setExpiredAt('');
+                            setGraceUntil('');
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                      >
+                        <option value="">-- Pilih Router --</option>
+                        {routers.map(r => (
+                          <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Paket Hotspot *</label>
-                  <select
-                    value={packageId}
-                    onChange={(e) => handlePackageChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    {packages.filter(p => p.type && p.type.includes('hotspot')).map(p => (
-                      <option key={p.id} value={p.id}>{p.name} - Rp {p.price.toLocaleString('id-ID')} ({p.speed_limit})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Paket Hotspot *</label>
+                      {(() => {
+                        const linkedPackages = packages.filter(pkg =>
+                          pkg.type === 'hotspot_monthly' &&
+                          routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
+                        );
+                        const hasPackages = linkedPackages.length > 0;
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Pelanggan *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Ahmad Hotspot"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
-              </div>
+                        return (
+                          <select
+                            value={hasPackages ? packageId : ''}
+                            onChange={(e) => handlePackageChange(e.target.value)}
+                            disabled={!hasPackages || !selectedRouterId}
+                            className={`w-full px-3 py-2 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-sky-500 focus:outline-none transition ${
+                              !hasPackages || !selectedRouterId
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-slate-50 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            {!selectedRouterId ? (
+                              <option value="">-- Pilih Router Terlebih Dahulu --</option>
+                            ) : !hasPackages ? (
+                              <option value="">-- Belum ada paket tertaut di router ini --</option>
+                            ) : (
+                              <>
+                                <option value="">-- Silakan Pilih Paket --</option>
+                                {linkedPackages.map(pkg => (
+                                  <option key={pkg.id} value={pkg.id}>
+                                    {pkg.name} - Rp {Number(pkg.price).toLocaleString('id-ID')} ({pkg.speed_limit || 'Unlimited'})
+                                  </option>
+                                ))}
+                              </>
+                            )}
+                          </select>
+                        );
+                      })()}
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Username Hotspot *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: ahmad-hs"
-                    value={pppoeUsername}
-                    onChange={(e) => setPppoeUsername(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-sky-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
+                  {/* Warning jika belum ada paket tertaut di router ini */}
+                  {(() => {
+                    const linkedPackages = packages.filter(pkg =>
+                      pkg.type === 'hotspot_monthly' &&
+                      routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
+                    );
+                    if (linkedPackages.length === 0 && selectedRouterId) {
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold">Router ini belum memiliki Paket Member Hotspot tertaut!</div>
+                            <div className="text-[11px] text-amber-700 mt-0.5">
+                              Silakan hubungkan paket dengan profile MikroTik di menu <a href="#/profiles" className="font-bold underline text-blue-600">Profile & Paket</a> agar paket dapat dipilih.
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Hotspot *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Password"
-                    value={pppoePassword}
-                    onChange={(e) => setPppoePassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp</label>
-                  <input
-                    type="text"
-                    placeholder="081234567890"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pasang / Aktif *</label>
-                  <input
-                    type="date"
-                    required
-                    value={installationDate}
-                    onChange={(e) => handleInstallationDateChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Structured Address Block */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">📍 Detail Alamat Lengkap & Wilayah (Filter)</span>
-                
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Dusun / RT RW / Alamat Jalan</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
-                    value={dusun}
-                    onChange={(e) => setDusun(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Desa / Kelurahan</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Pelanggan *</label>
                     <input
                       type="text"
-                      placeholder="Desa Sukamaju"
-                      value={desa}
-                      onChange={(e) => setDesa(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      required
+                      placeholder="Contoh: Ahmad Hotspot"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Kecamatan</label>
-                    <input
-                      type="text"
-                      placeholder="Kec. Majujaya"
-                      value={kecamatan}
-                      onChange={(e) => setKecamatan(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                    />
+                  {/* Kredensial Akun Hotspot dengan Generator Buttons */}
+                  <div className="p-3.5 bg-slate-50/90 border border-slate-200 rounded-2xl space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Key size={14} className="text-sky-600" />
+                        <span>Kredensial Login Hotspot *</span>
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCredentials('same')}
+                          title="Generate Username dan Password yang SAMA (User = Password)"
+                          className="px-2.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <Key size={12} />
+                          <span>User = Pass</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCredentials('different')}
+                          title="Generate Username dan Password BERBEDA (User ≠ Password)"
+                          className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <Shuffle size={12} />
+                          <span>User ≠ Pass</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[11px] font-bold text-slate-600">Username Hotspot *</span>
+                          <button
+                            type="button"
+                            onClick={() => setPppoeUsername(generateRandomStr(6))}
+                            title="Acak username saja"
+                            className="text-[10px] text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Dice5 size={11} /> Acak
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: ahmad-hs"
+                          value={pppoeUsername}
+                          onChange={(e) => setPppoeUsername(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-sky-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[11px] font-bold text-slate-600">Password Hotspot *</span>
+                          <button
+                            type="button"
+                            onClick={() => setPppoePassword(generateRandomStr(6))}
+                            title="Acak password saja"
+                            className="text-[10px] text-purple-600 hover:text-purple-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Dice5 size={11} /> Acak
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Password"
+                          value={pppoePassword}
+                          onChange={(e) => setPppoePassword(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp</label>
+                      <input
+                        type="text"
+                        placeholder="081234567890"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pasang / Aktif *</label>
+                      <input
+                        type="date"
+                        required
+                        value={installationDate}
+                        onChange={(e) => handleInstallationDateChange(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Calendar size={13} className="text-sky-600" />
+                        <span>Periode Tagihan & Batas Isolir</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <Lock size={10} className="text-slate-400" />
+                        Otomatis mengikuti paket
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">Tanggal Jatuh Tempo (Exp)</label>
+                        <input
+                          type="date"
+                          readOnly
+                          tabIndex={-1}
+                          value={expiredAt}
+                          className="w-full px-3 py-1.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">Batas Tenggang Isolir</label>
+                        <input
+                          type="date"
+                          readOnly
+                          tabIndex={-1}
+                          value={graceUntil}
+                          className="w-full px-3 py-1.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Kabupaten / Kota</label>
-                    <input
-                      type="text"
-                      placeholder="Kab. Bandung"
-                      value={kabupaten}
-                      onChange={(e) => setKabupaten(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                {/* Kolom Kanan: Detail Alamat Lengkap & Wilayah (Autocomplete) */}
+                <div className="space-y-3.5">
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <IndonesianAddressForm
+                      darkTheme={false}
+                      value={{
+                        provinsi,
+                        kabupaten,
+                        kecamatan,
+                        desa,
+                        dusun,
+                        kode_pos: (postalCode || '')
+                      }}
+                      onChange={(addr) => {
+                        setProvinsi(addr.provinsi);
+                        setKabupaten(addr.kabupaten);
+                        setKecamatan(addr.kecamatan);
+                        setDesa(addr.desa);
+                        setDusun(addr.dusun);
+                        setPostalCode(addr.kode_pos);
+                        const full = [addr.dusun, addr.desa, addr.kecamatan, addr.kabupaten, addr.provinsi, addr.kode_pos].filter(Boolean).join(', ');
+                        setAddress(full);
+                      }}
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Provinsi</label>
-                    <input
-                      type="text"
-                      placeholder="Jawa Barat"
-                      value={provinsi}
-                      onChange={(e) => setProvinsi(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 p-3 bg-sky-50/70 border border-sky-200 rounded-2xl">
-                <div>
-                  <label className="block text-[11px] font-bold text-sky-900 mb-1">Tanggal Jatuh Tempo (Exp)</label>
-                  <input
-                    type="date"
-                    value={expiredAt}
-                    onChange={(e) => setExpiredAt(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-sky-200 rounded-xl text-xs font-mono font-bold text-sky-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-amber-900 mb-1">Batas Tenggang Isolir</label>
-                  <input
-                    type="date"
-                    value={graceUntil}
-                    onChange={(e) => setGraceUntil(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900"
-                  />
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2">
+                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
+                <button type="submit" disabled={submitLoading} className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2 cursor-pointer">
                   {submitLoading && <RefreshCw size={14} className="animate-spin" />}
                   <span>{submitLoading ? 'Menyimpan...' : 'Simpan Pelanggan Hotspot'}</span>
                 </button>
@@ -1128,9 +1464,9 @@ export default function HotspotCustomerManagement({
 
       {/* Modal Edit Pelanggan Hotspot */}
       {showEditModal && editingCustomer && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-5xl shadow-2xl overflow-hidden animate-slide-up max-h-[94vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/70 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
                   <Edit size={20} />
@@ -1140,205 +1476,312 @@ export default function HotspotCustomerManagement({
                   <p className="text-xs text-slate-400">{editingCustomer.name} ({editingCustomer.customer_code})</p>
                 </div>
               </div>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-2xl cursor-pointer leading-none">&times;</button>
             </div>
 
-            <form onSubmit={handleUpdateCustomer} className="p-6 space-y-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Server Router Mikrotik *</label>
-                  <select
-                    value={selectedRouterId}
-                    onChange={(e) => setSelectedRouterId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    {routers.map(r => (
-                      <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={handleUpdateCustomer} className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                {/* Kolom Kiri: Akun & Paket */}
+                <div className="space-y-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Server Router Mikrotik *</label>
+                      <select
+                        value={selectedRouterId}
+                        onChange={(e) => {
+                          const newRouterId = e.target.value;
+                          setSelectedRouterId(newRouterId);
+                          const isStillLinked = routerProfiles.some(
+                            rp => rp.router_id === newRouterId && rp.package_id === packageId
+                          );
+                          if (!isStillLinked) {
+                            setPackageId('');
+                            setExpiredAt('');
+                            setGraceUntil('');
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                      >
+                        <option value="">-- Pilih Router --</option>
+                        {routers.map(r => (
+                          <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Paket Hotspot *</label>
-                  <select
-                    value={packageId}
-                    onChange={(e) => handlePackageChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    {packages.filter(p => p.type && p.type.includes('hotspot')).map(p => (
-                      <option key={p.id} value={p.id}>{p.name} - Rp {p.price.toLocaleString('id-ID')} ({p.speed_limit})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Paket Hotspot *</label>
+                      {(() => {
+                        const linkedPackages = packages.filter(pkg =>
+                          pkg.type === 'hotspot_monthly' &&
+                          routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
+                        );
+                        const hasPackages = linkedPackages.length > 0;
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Pelanggan *</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                />
-              </div>
+                        return (
+                          <select
+                            value={hasPackages ? packageId : ''}
+                            onChange={(e) => handlePackageChange(e.target.value)}
+                            disabled={!hasPackages || !selectedRouterId}
+                            className={`w-full px-3 py-2 border rounded-xl text-xs font-bold focus:ring-2 focus:ring-sky-500 focus:outline-none transition ${
+                              !hasPackages || !selectedRouterId
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-slate-50 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            {!selectedRouterId ? (
+                              <option value="">-- Pilih Router Terlebih Dahulu --</option>
+                            ) : !hasPackages ? (
+                              <option value="">-- Belum ada paket tertaut di router ini --</option>
+                            ) : (
+                              <>
+                                <option value="">-- Silakan Pilih Paket --</option>
+                                {linkedPackages.map(pkg => (
+                                  <option key={pkg.id} value={pkg.id}>
+                                    {pkg.name} - Rp {Number(pkg.price).toLocaleString('id-ID')} ({pkg.speed_limit || 'Unlimited'})
+                                  </option>
+                                ))}
+                              </>
+                            )}
+                          </select>
+                        );
+                      })()}
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Username Hotspot *</label>
-                  <input
-                    type="text"
-                    required
-                    value={pppoeUsername}
-                    onChange={(e) => setPppoeUsername(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-sky-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
+                  {/* Warning jika belum ada paket tertaut di router ini */}
+                  {(() => {
+                    const linkedPackages = packages.filter(pkg =>
+                      pkg.type === 'hotspot_monthly' &&
+                      routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
+                    );
+                    if (linkedPackages.length === 0 && selectedRouterId) {
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                          <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-bold">Router ini belum memiliki Paket Member Hotspot tertaut!</div>
+                            <div className="text-[11px] text-amber-700 mt-0.5">
+                              Silakan hubungkan paket dengan profile MikroTik di menu <a href="#/profiles" className="font-bold underline text-blue-600">Profile & Paket</a> agar paket dapat dipilih.
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Hotspot *</label>
-                  <input
-                    type="text"
-                    required
-                    value={pppoePassword}
-                    onChange={(e) => setPppoePassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp</label>
-                  <input
-                    type="text"
-                    placeholder="081234567890"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Status Pelanggan *</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
-                  >
-                    <option value="active">🟢 Aktif (Active)</option>
-                    <option value="isolated">🔴 Terisolir (Isolated)</option>
-                    <option value="non-active">⚪ Non-Aktif (Off)</option>
-                    <option value="terminated">❌ Dihentikan (Terminated)</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Structured Address Block */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">📍 Detail Alamat Lengkap & Wilayah (Filter)</span>
-                
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Dusun / RT RW / Alamat Jalan</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Dusun Krajan RT 02 RW 01 / Jl. Pemuda No. 5"
-                    value={dusun}
-                    onChange={(e) => setDusun(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Desa / Kelurahan</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Nama Pelanggan *</label>
                     <input
                       type="text"
-                      placeholder="Desa Sukamaju"
-                      value={desa}
-                      onChange={(e) => setDesa(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Kecamatan</label>
-                    <input
-                      type="text"
-                      placeholder="Kec. Majujaya"
-                      value={kecamatan}
-                      onChange={(e) => setKecamatan(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                    />
+                  {/* Kredensial Akun Hotspot dengan Generator Buttons */}
+                  <div className="p-3.5 bg-slate-50/90 border border-slate-200 rounded-2xl space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Key size={14} className="text-sky-600" />
+                        <span>Kredensial Login Hotspot *</span>
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCredentials('same')}
+                          title="Generate Username dan Password yang SAMA (User = Password)"
+                          className="px-2.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <Key size={12} />
+                          <span>User = Pass</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGenerateCredentials('different')}
+                          title="Generate Username dan Password BERBEDA (User ≠ Password)"
+                          className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-300 rounded-lg text-[11px] font-bold flex items-center gap-1 transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          <Shuffle size={12} />
+                          <span>User ≠ Pass</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[11px] font-bold text-slate-600">Username Hotspot *</span>
+                          <button
+                            type="button"
+                            onClick={() => setPppoeUsername(generateRandomStr(6))}
+                            title="Acak username saja"
+                            className="text-[10px] text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Dice5 size={11} /> Acak
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={pppoeUsername}
+                          onChange={(e) => setPppoeUsername(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-sky-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[11px] font-bold text-slate-600">Password Hotspot *</span>
+                          <button
+                            type="button"
+                            onClick={() => setPppoePassword(generateRandomStr(6))}
+                            title="Acak password saja"
+                            className="text-[10px] text-purple-600 hover:text-purple-800 font-semibold flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Dice5 size={11} /> Acak
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={pppoePassword}
+                          onChange={(e) => setPppoePassword(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nomor HP / WhatsApp</label>
+                      <input
+                        type="text"
+                        placeholder="081234567890"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Status Pelanggan *</label>
+                      <select
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as any)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                      >
+                        <option value="active">🟢 Aktif (Active)</option>
+                        <option value="isolated">🔴 Terisolir (Isolated)</option>
+                        <option value="non-active">⚪ Non-Aktif (Off)</option>
+                        <option value="terminated">❌ Dihentikan (Terminated)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pasang / Aktif *</label>
+                      <input
+                        type="date"
+                        required
+                        value={installationDate}
+                        onChange={(e) => handleInstallationDateChange(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Calendar size={13} className="text-sky-600" />
+                        <span>Periode Tagihan & Batas Isolir</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <Lock size={10} className="text-slate-400" />
+                        Otomatis mengikuti paket
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">Tanggal Jatuh Tempo (Exp)</label>
+                        <input
+                          type="date"
+                          readOnly
+                          tabIndex={-1}
+                          value={expiredAt}
+                          className="w-full px-3 py-1.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-1">Batas Tenggang Isolir</label>
+                        <input
+                          type="date"
+                          readOnly
+                          tabIndex={-1}
+                          value={graceUntil}
+                          className="w-full px-3 py-1.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Kabupaten / Kota</label>
-                    <input
-                      type="text"
-                      placeholder="Kab. Bandung"
-                      value={kabupaten}
-                      onChange={(e) => setKabupaten(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Provinsi</label>
-                    <input
-                      type="text"
-                      placeholder="Jawa Barat"
-                      value={provinsi}
-                      onChange={(e) => setProvinsi(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                {/* Kolom Kanan: Detail Alamat Lengkap & Wilayah (Autocomplete) */}
+                <div className="space-y-3.5">
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                    <IndonesianAddressForm
+                      darkTheme={false}
+                      value={{
+                        provinsi,
+                        kabupaten,
+                        kecamatan,
+                        desa,
+                        dusun,
+                        kode_pos: (postalCode || '')
+                      }}
+                      onChange={(addr) => {
+                        setProvinsi(addr.provinsi);
+                        setKabupaten(addr.kabupaten);
+                        setKecamatan(addr.kecamatan);
+                        setDesa(addr.desa);
+                        setDusun(addr.dusun);
+                        setPostalCode(addr.kode_pos);
+                        const full = [addr.dusun, addr.desa, addr.kecamatan, addr.kabupaten, addr.provinsi, addr.kode_pos].filter(Boolean).join(', ');
+                        setAddress(full);
+                      }}
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pasang / Aktif *</label>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100 shrink-0">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
                   <input
-                    type="date"
-                    required
-                    value={installationDate}
-                    onChange={(e) => handleInstallationDateChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                    type="checkbox"
+                    checked={autoSyncOnSave}
+                    onChange={(e) => setAutoSyncOnSave(e.target.checked)}
+                    className="w-4 h-4 text-sky-600 rounded border-slate-300 focus:ring-sky-500 cursor-pointer"
                   />
-                </div>
-              </div>
+                  <span className="flex items-center gap-1.5">
+                    <Zap size={14} className="text-amber-500" />
+                    <span>Langsung sinkronkan ke Router MikroTik saat disimpan</span>
+                  </span>
+                </label>
 
-              <div className="grid grid-cols-2 gap-3 p-3 bg-sky-50/70 border border-sky-200 rounded-2xl">
-                <div>
-                  <label className="block text-[11px] font-bold text-sky-900 mb-1">Tanggal Jatuh Tempo (Exp)</label>
-                  <input
-                    type="date"
-                    value={expiredAt}
-                    onChange={(e) => setExpiredAt(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-sky-200 rounded-xl text-xs font-mono font-bold text-sky-900"
-                  />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
+                  <button type="submit" disabled={submitLoading} className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2 cursor-pointer">
+                    {submitLoading && <RefreshCw size={14} className="animate-spin" />}
+                    <span>{submitLoading ? 'Memperbarui...' : autoSyncOnSave ? '⚡ Simpan & Singkronkan' : 'Simpan Perubahan'}</span>
+                  </button>
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-amber-900 mb-1">Batas Tenggang Isolir</label>
-                  <input
-                    type="date"
-                    value={graceUntil}
-                    onChange={(e) => setGraceUntil(e.target.value)}
-                    className="w-full px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
-                <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2">
-                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan'}</span>
-                </button>
               </div>
             </form>
           </div>
@@ -1361,7 +1804,10 @@ export default function HotspotCustomerManagement({
               <label className="block text-xs font-bold text-slate-700 mb-1">Pilih Server Router Mikrotik *</label>
               <select
                 value={importRouterId}
-                onChange={(e) => setImportRouterId(e.target.value)}
+                onChange={(e) => {
+                  setImportRouterId(e.target.value);
+                  setImportProfileFilter('all_members');
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
               >
                 <option value="">-- Pilih Router --</option>
@@ -1371,23 +1817,74 @@ export default function HotspotCustomerManagement({
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            {importRouterId && (() => {
+              const availableMemberProfiles = routerProfiles.filter(rp => 
+                rp.router_id === importRouterId && 
+                packages.some(pkg => pkg.id === rp.package_id && pkg.type === 'hotspot_monthly')
+              );
+
+              return availableMemberProfiles.length > 0 ? (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Filter Profil Paket Member</label>
+                  <select
+                    value={importProfileFilter}
+                    onChange={(e) => setImportProfileFilter(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none"
+                  >
+                    <option value="all_members">⚡ Semua Profil Paket Member Hotspot ({availableMemberProfiles.length} Profil)</option>
+                    {availableMemberProfiles.map(p => {
+                      const matchedPkg = packages.find(pkg => pkg.id === p.package_id);
+                      return (
+                        <option key={p.id} value={p.name}>
+                          Profil: {p.name} ➔ Paket: {matchedPkg?.name || 'Paket Member'}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <div className="p-2.5 mt-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 flex items-start gap-1.5">
+                    <span className="shrink-0">🛡️</span>
+                    <span>Hanya akun user MikroTik yang profilnya tertaut ke paket member di atas yang akan disimpan sebagai pelanggan. User voucher otomatis dilewati!</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                    <AlertTriangle size={15} className="shrink-0" />
+                    <span>Belum Ada Profil Member yang Tertaut</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-700">
+                    Router ini belum memiliki Profil MikroTik yang ditautkan ke <strong>Paket Hotspot Bulanan/Member</strong>. Silakan tautkan profil di menu <strong>Profile & Paket</strong> terlebih dahulu agar voucher tidak ikut terimpor.
+                  </p>
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center gap-2 pt-1">
               <input
                 type="checkbox"
                 id="updateExistingHs"
                 checked={updateExistingImport}
                 onChange={(e) => setUpdateExistingImport(e.target.checked)}
-                className="rounded border-slate-300 text-sky-600"
+                className="rounded border-slate-300 text-sky-600 cursor-pointer"
               />
-              <label htmlFor="updateExistingHs" className="text-xs font-bold text-slate-700">Update data jika username sudah ada di database</label>
+              <label htmlFor="updateExistingHs" className="text-xs font-bold text-slate-700 cursor-pointer">
+                Update data jika username sudah ada di database
+              </label>
             </div>
 
             <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl">Batal</button>
+              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
               <button
                 onClick={handleImportUsers}
-                disabled={importLoading || !importRouterId}
-                className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50"
+                disabled={
+                  importLoading || 
+                  !importRouterId || 
+                  routerProfiles.filter(rp => 
+                    rp.router_id === importRouterId && 
+                    packages.some(pkg => pkg.id === rp.package_id && (pkg.type === 'hotspot_monthly' || (pkg.type && pkg.type.includes('hotspot') && !pkg.type.includes('voucher'))))
+                  ).length === 0
+                }
+                className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {importLoading && <RefreshCw size={14} className="animate-spin" />}
                 <span>{importLoading ? 'Mengimpor...' : 'Mulai Impor'}</span>
@@ -1674,6 +2171,106 @@ export default function HotspotCustomerManagement({
           onClose={() => { setShowMapPickerModal(false); setMapCustomer(null); }}
           onSaved={() => { fetchData(); }}
         />
+      )}
+
+      {/* 🔴 MODAL KONFIRMASI HAPUS PELANGGAN 🔴 */}
+      {showDeleteModal && customerToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl border border-rose-100 w-full max-w-md overflow-hidden animate-scaleUp">
+            {/* Header Modal */}
+            <div className="bg-gradient-to-r from-rose-600 to-rose-700 p-5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-sans font-bold text-base text-white">Konfirmasi Hapus Pelanggan</h3>
+                  <p className="text-xs text-rose-100">Tindakan ini permanen & tidak dapat diulang</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowDeleteModal(false); setCustomerToDelete(null); }} 
+                className="text-rose-200 hover:text-white font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Detail Pelanggan yang akan dihapus */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">DATA PELANGGAN HOTSPOT:</div>
+                <div className="text-base font-extrabold text-slate-900">{customerToDelete.name}</div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 pt-2 border-t border-slate-200/70">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold">USERNAME / KODE:</span>
+                    <span className="font-mono font-bold text-blue-600">{customerToDelete.pppoe_username || customerToDelete.customer_code || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold">PAKET INTERNET:</span>
+                    <span className="font-bold text-slate-800">{customerToDelete.package_name || '-'}</span>
+                  </div>
+                  {customerToDelete.router_name && (
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block text-[10px] font-bold">ROUTER SERVER:</span>
+                      <span className="font-bold text-slate-700">{customerToDelete.router_name}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Opsi Checkbox MikroTik */}
+              <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    id="chkDeleteMikrotikHotspot"
+                    checked={deleteFromMikrotik}
+                    onChange={(e) => setDeleteFromMikrotik(e.target.checked)}
+                    className="w-5 h-5 rounded border-rose-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer accent-rose-600"
+                  />
+                  <div className="flex-1">
+                    <span className="text-xs font-black text-rose-950 block">
+                      Hapus juga user di router MikroTik
+                    </span>
+                    <span className="text-[11px] text-rose-700 leading-relaxed block mt-1">
+                      {deleteFromMikrotik 
+                        ? '✅ Akun user Hotspot pada router server MikroTik akan otomatis dicabut & dihapus permanen.'
+                        : '⚠️ Akun user pada router MikroTik TIDAK akan dihapus (hanya hapus dari database aplikasi).'
+                      }
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                <span>Data tagihan di database lokal & status hotspot akan otomatis dibersihkan.</span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteModal(false); setCustomerToDelete(null); }}
+                  disabled={deleteLoading}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteLoading}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {deleteLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  <span>{deleteLoading ? 'Menghapus...' : 'Ya, Hapus Sekarang'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

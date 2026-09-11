@@ -1,26 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Router, 
-  Plus, 
-  Search, 
-  CheckCircle2, 
-  AlertCircle, 
-  RefreshCw, 
-  Edit, 
-  Trash2, 
-  Zap, 
-  ShieldCheck, 
-  Clock, 
-  Server, 
-  Globe, 
-  Wifi, 
-  Key, 
-  User, 
+import {
+  Router,
+  Plus,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Edit,
+  Trash2,
+  Zap,
+  ShieldCheck,
+  Clock,
+  Server,
+  Globe,
+  Wifi,
+  Key,
+  User,
   Activity,
   Radio
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
+import { getApiUrl } from '../config/api';
+import {
+  getRoutersFromFirestore,
+  saveRouterToFirestore,
+  deleteRouterFromFirestore
+} from '../services/firebaseService';
 
 export interface RouterItem {
   id: string;
@@ -29,6 +35,7 @@ export interface RouterItem {
   api_port: number;
   username: string;
   password?: string;
+  dns_name?: string;
   status: 'online' | 'offline' | 'testing';
   last_synced?: string;
   profile_count?: number;
@@ -72,7 +79,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
   // Form State
   const [name, setName] = useState('');
-  const [ipAddress, setIpAddress] = useState('192.168.88.1');
+  const [dnsName, setDnsName] = useState('arab.net');
+  const [ipAddress, setIpAddress] = useState('30.30.0.1');
   const [apiPort, setApiPort] = useState('8728');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
@@ -94,7 +102,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -132,11 +140,25 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const fetchRouters = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/routers`);
-      const data = await parseJsonResponse(res);
-      if (data.success && Array.isArray(data.routers)) {
-        setRouters(data.routers);
+      const apiUrl = getApiUrl();
+      let fetched = false;
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/routers`);
+          const data = await parseJsonResponse(res);
+          if (data.success && Array.isArray(data.routers)) {
+            setRouters(data.routers);
+            fetched = true;
+          }
+        } catch (apiErr) {
+          console.warn('API fetch failed, falling back to direct Firestore:', apiErr);
+        }
+      }
+      if (!fetched) {
+        const fbData = await getRoutersFromFirestore();
+        if (fbData.success && Array.isArray(fbData.routers)) {
+          setRouters(fbData.routers as RouterItem[]);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch routers:', err);
@@ -151,7 +173,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
   const resetForm = () => {
     setName('');
-    setIpAddress('192.168.88.1');
+    setDnsName('arab.net');
+    setIpAddress('30.30.0.1');
     setApiPort('8728');
     setUsername('admin');
     setPassword('');
@@ -168,7 +191,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setTestConnResult(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || 'http://localhost:3006';
       const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,30 +236,48 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/routers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          ip_address: ipAddress.trim(),
-          api_port: parseInt(apiPort) || 8728,
-          username: username.trim(),
-          password: password.trim()
-        })
-      });
+      const apiUrl = getApiUrl();
+      let saved = false;
+      const routerPayload = {
+        name: name.trim(),
+        dns_name: (dnsName || 'arab.net').trim(),
+        ip_address: ipAddress.trim(),
+        api_port: parseInt(apiPort) || 8728,
+        username: username.trim(),
+        password: password.trim()
+      };
 
-      const data = await parseJsonResponse(res);
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil didaftarkan!` });
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/routers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(routerPayload)
+          });
+          const data = await parseJsonResponse(res);
+          if (data.success) {
+            saved = true;
+            await saveRouterToFirestore({ ...routerPayload, id: data.router?.id }).catch(() => null);
+            setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil didaftarkan!` });
+            setShowAddModal(false);
+            resetForm();
+            fetchRouters();
+            return;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API router create failed, fallback to Cloud Firestore:', apiErr);
+        }
+      }
+
+      if (!saved) {
+        await saveRouterToFirestore(routerPayload);
+        setToastMsg({ type: 'success', text: `Router "${name}" berhasil disimpan ke Cloud Firestore!` });
         setShowAddModal(false);
         resetForm();
         fetchRouters();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal mendaftarkan router.' });
       }
     } catch (err: any) {
-      setToastMsg({ type: 'error', text: `Gagal terhubung ke Database API: ${err?.message || 'Server error'}` });
+      setToastMsg({ type: 'error', text: `Gagal mendaftarkan router: ${err?.message || 'Server error'}` });
     } finally {
       setSubmitLoading(false);
     }
@@ -245,6 +286,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const openEditModal = (rtr: RouterItem) => {
     setEditingRouter(rtr);
     setName(rtr.name);
+    setDnsName(rtr.dns_name || 'arab.net');
     setIpAddress(rtr.ip_address);
     setApiPort(rtr.api_port.toString());
     setUsername(rtr.username);
@@ -264,31 +306,51 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/routers/${editingRouter.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          ip_address: ipAddress.trim(),
-          api_port: parseInt(apiPort) || 8728,
-          username: username.trim(),
-          password: password.trim() || undefined
-        })
-      });
+      const apiUrl = getApiUrl();
+      let updated = false;
+      const updatePayload = {
+        id: editingRouter.id,
+        name: name.trim(),
+        dns_name: (dnsName || 'arab.net').trim(),
+        ip_address: ipAddress.trim(),
+        api_port: parseInt(apiPort) || 8728,
+        username: username.trim(),
+        password: password.trim() || undefined
+      };
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil diperbarui!` });
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/routers/${editingRouter.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            updated = true;
+            await saveRouterToFirestore(updatePayload).catch(() => null);
+            setToastMsg({ type: 'success', text: data.message || `Router "${name}" berhasil diperbarui!` });
+            setShowEditModal(false);
+            setEditingRouter(null);
+            resetForm();
+            fetchRouters();
+            return;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API router update failed, fallback to Firestore:', apiErr);
+        }
+      }
+
+      if (!updated) {
+        await saveRouterToFirestore(updatePayload);
+        setToastMsg({ type: 'success', text: `Router "${name}" berhasil diperbarui di Cloud Firestore!` });
         setShowEditModal(false);
         setEditingRouter(null);
         resetForm();
         fetchRouters();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui router.' });
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal memperbarui data router.' });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal memperbarui data router: ' + (err?.message || 'Error') });
     } finally {
       setSubmitLoading(false);
     }
@@ -298,19 +360,32 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     if (!confirm(`Apakah Anda yakin ingin menghapus data Router Mikrotik "${rtr.name}" (${rtr.ip_address})?`)) return;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
-      const res = await fetch(`${apiUrl}/api/routers/${rtr.id}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (data.success) {
-        setToastMsg({ type: 'success', text: data.message || 'Router berhasil dihapus.' });
-        fetchRouters();
-      } else {
-        setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus router.' });
+      const apiUrl = getApiUrl();
+      let deleted = false;
+      if (apiUrl) {
+        try {
+          const res = await fetch(`${apiUrl}/api/routers/${rtr.id}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
+          if (data.success) {
+            deleted = true;
+            await deleteRouterFromFirestore(rtr.id).catch(() => null);
+            setToastMsg({ type: 'success', text: data.message || 'Router berhasil dihapus.' });
+            fetchRouters();
+            return;
+          }
+        } catch (apiErr) {
+          console.warn('Backend API router delete failed, fallback to Firestore:', apiErr);
+        }
       }
-    } catch (err) {
-      setToastMsg({ type: 'error', text: 'Gagal menghapus router dari server.' });
+      if (!deleted) {
+        await deleteRouterFromFirestore(rtr.id);
+        setToastMsg({ type: 'success', text: 'Router berhasil dihapus dari Cloud Firestore.' });
+        fetchRouters();
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal menghapus router: ' + (err?.message || 'Error') });
     }
   };
 
@@ -383,9 +458,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
         {/* Toast */}
         {toastMsg && (
-          <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm animate-fade-in ${
-            toastMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
-          }`}>
+          <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm animate-fade-in ${toastMsg.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}>
             <div className="flex items-center gap-3">
               {toastMsg.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
               <span className="text-sm font-medium">{toastMsg.text}</span>
@@ -439,16 +513,15 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filteredRouters.map((rtr) => (
-              <div 
+              <div
                 key={rtr.id}
                 className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group relative overflow-hidden"
               >
                 {/* Header */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                      rtr.status === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                    }`}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${rtr.status === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                      }`}>
                       <Activity size={12} />
                       {rtr.status === 'online' ? '● Router Online' : '🔒 Router Offline'}
                     </span>
@@ -470,6 +543,16 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                       API Username
                     </span>
                     <span className="font-mono font-bold text-slate-800">{rtr.username}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Globe size={14} className="text-sky-500" />
+                      ISP / Domain Voucher
+                    </span>
+                    <span className="font-mono font-extrabold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 text-xs">
+                      {rtr.dns_name || 'arab.net'}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
@@ -581,9 +664,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     {routerProfiles.map(p => (
                       <div key={p.id} className="py-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                            p.type === 'pppoe' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-sky-50 text-sky-700 border-sky-200'
-                          }`}>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${p.type === 'pppoe' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-sky-50 text-sky-700 border-sky-200'
+                            }`}>
                             {p.type === 'pppoe' ? '🌐 PPP Profile' : '📶 Hotspot User Profile'}
                           </span>
                           <span className="font-mono font-extrabold text-slate-800 text-xs">{p.name}</span>
@@ -619,16 +701,31 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
             </div>
 
             <form onSubmit={handleCreateRouter} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Router Mikrotik Utama (CCR Pusat)"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Router Mikrotik Utama (CCR Pusat)"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: arab.net"
+                    value={dnsName}
+                    onChange={(e) => setDnsName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                  />
+                  <span className="text-[10px] text-slate-400">Identitas penyedia / domain voucher (misal: arab.net)</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -695,9 +792,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                 </button>
 
                 {testConnResult && (
-                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
-                    testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}>
+                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                    }`}>
                     {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                     <span>{testConnResult.message}</span>
                   </div>
@@ -734,15 +830,30 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
             </div>
 
             <form onSubmit={handleUpdateRouter} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
+                  <input
+                    type="text"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: arab.net"
+                    value={dnsName}
+                    onChange={(e) => setDnsName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                  <span className="text-[10px] text-slate-400">Identitas penyedia / domain voucher (misal: arab.net)</span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -806,9 +917,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                 </button>
 
                 {testConnResult && (
-                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
-                    testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
-                  }`}>
+                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                    }`}>
                     {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                     <span>{testConnResult.message}</span>
                   </div>

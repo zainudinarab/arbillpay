@@ -10,6 +10,7 @@ import voucherRoutes from './voucherRoutes.js';
 import genieacsRoutes from './genieacsRoutes.js';
 import mikrotikRoutes from './mikrotikRoutes.js';
 import ftthMapRoutes from './ftthMapRoutes.js';
+import pppRoutes from './pppRoutes.js';
 
 const router = Router();
 
@@ -33,6 +34,13 @@ router.use('/invoices', invoiceRoutes);
 router.use('/vouchers', voucherRoutes);
 router.use('/genieacs', genieacsRoutes);
 router.use('/ftth', ftthMapRoutes);
+router.use('/ppp', pppRoutes);
+router.use('/mikrotik', mikrotikRoutes);
 router.use('/', mikrotikRoutes);
+
+// 404 handler for any unmatched /api requests to prevent hanging
+router.use((req, res) => {
+  res.status(404).json({ success: false, message: `API endpoint ${req.method} ${req.originalUrl} not found` });
+});
 
 export default router;

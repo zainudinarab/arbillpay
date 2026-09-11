@@ -1,7 +1,18 @@
 import { Router } from 'express';
-import { listVouchers, generateBatchVouchers, removeBatchVouchers, listAvailableVouchers, buyVoucher } from '../controllers/voucherController.js';
+import {
+  listVouchers,
+  generateBatchVouchers,
+  removeBatchVouchers,
+  listAvailableVouchers,
+  buyVoucher,
+  handleVoucherFirstLogin
+} from '../controllers/voucherController.js';
 
 const router = Router();
+
+// Endpoint webhook on-login pertama kali dari MikroTik RouterOS (/tool fetch)
+router.get('/first-login', handleVoucherFirstLogin);
+router.post('/first-login', handleVoucherFirstLogin);
 
 router.get('/', listVouchers);
 router.get('/available', listAvailableVouchers);
@@ -10,3 +21,4 @@ router.post('/generate', generateBatchVouchers);
 router.delete('/batch/:batch_id', removeBatchVouchers);
 
 export default router;
+

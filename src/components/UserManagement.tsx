@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
-import { getUsersFromFirestore, getCustomersFromFirestore, saveUserToFirestore } from '../services/firebaseService';
+import { getUsersFromFirestore, getCustomersFromFirestore, saveUserToFirestore, saveCustomerToFirestore } from '../services/firebaseService';
 import { getApiUrl } from '../config/api';
 
 // Helper: Normalize phone numbers for 100% accurate WhatsApp matching (08... format)

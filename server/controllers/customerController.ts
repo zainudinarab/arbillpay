@@ -2,8 +2,11 @@ import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getAllCustomers, createCustomer, deleteCustomer } from '../models/customerModel.js';
 import { RouterOSAPI } from 'node-routeros';
+import { getFirestore } from '../config/firebase.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { addIsoDuration } from '../utils/duration.js';
+import { formatMikrotikHotspotComment, formatMikrotikPppComment } from '../utils/mikrotikComment.js';
 
 export async function listCustomers(req: Request, res: Response) {
   try {
@@ -92,6 +95,23 @@ export async function editCustomer(req: Request, res: Response) {
     const lng = longitude ? parseFloat(longitude) : null;
     const mapUrl = maps_url || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
 
+    // Validate foreign keys to avoid FK constraint failures
+    let validPkgId = null;
+    if (package_id) {
+      const pCheck = await pool.query('SELECT id FROM packages WHERE id = $1', [package_id]);
+      if (pCheck.rows.length > 0) validPkgId = package_id;
+    }
+    let validRtrId = null;
+    if (router_id) {
+      const rCheck = await pool.query('SELECT id FROM routers WHERE id = $1', [router_id]);
+      if (rCheck.rows.length > 0) validRtrId = router_id;
+    }
+    let validProfId = null;
+    if (router_profile_id) {
+      const prCheck = await pool.query('SELECT id FROM router_profiles WHERE id = $1', [router_profile_id]);
+      if (prCheck.rows.length > 0) validProfId = router_profile_id;
+    }
+
     const result = await pool.query(`
       UPDATE customers
       SET user_id = COALESCE($1, user_id),
@@ -130,19 +150,50 @@ export async function editCustomer(req: Request, res: Response) {
       dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
       connection_type || 'pppoe', pppoe_username?.trim() || null, pppoe_password?.trim() || null,
       static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
-      odp_port?.trim() || null, sn_onu?.trim() || null, power_laser?.trim() || null, teknisi?.trim() || null,
+      odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
       lat, lng, mapUrl,
-      package_id, router_id || null, router_profile_id || null, status || 'active', id
+      validPkgId, validRtrId, validProfId, status || 'active', id
     ]);
 
+    let finalCustomer = result.rows[0];
+
+    // If customer wasn't in PostgreSQL yet, insert them now (UPSERT)
     if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+      const insertResult = await pool.query(`
+        INSERT INTO customers (
+          id, customer_code, name, phone_number, address, dusun, desa, kecamatan, kabupaten, provinsi,
+          connection_type, pppoe_username, pppoe_password, static_ip, installation_date, expired_at, grace_until,
+          odp_port, sn_onu, power_laser, teknisi, latitude, longitude, maps_url,
+          package_id, router_id, router_profile_id, status, is_synced
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, $17,
+          $18, $19, $20, $21, $22, $23, $24,
+          $25, $26, $27, $28, true
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          name = EXCLUDED.name,
+          phone_number = EXCLUDED.phone_number,
+          address = EXCLUDED.address,
+          status = EXCLUDED.status,
+          pppoe_username = EXCLUDED.pppoe_username
+        RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status
+      `, [
+        id, customer_code || id, name.trim(), phone_number?.trim() || null, address?.trim() || null,
+        dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
+        connection_type || 'pppoe', pppoe_username?.trim() || null, pppoe_password?.trim() || null,
+        static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
+        odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
+        lat, lng, mapUrl,
+        validPkgId, validRtrId, validProfId, status || 'active'
+      ]);
+      finalCustomer = insertResult.rows[0];
     }
 
     res.json({
       success: true,
       message: `Data pelanggan "${name}" berhasil diperbarui!`,
-      customer: result.rows[0]
+      customer: finalCustomer
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -238,7 +289,7 @@ export async function payCustomerBill(req: Request, res: Response) {
 
   try {
     const custRes = await pool.query(`
-      SELECT c.*, p.name as package_name, p.price as package_price, p.validity_days, p.grace_period_days
+      SELECT c.*, p.name as package_name, p.price as package_price, p.validity_iso, p.grace_period_iso
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE c.id = $1
@@ -249,8 +300,6 @@ export async function payCustomerBill(req: Request, res: Response) {
     }
 
     const c = custRes.rows[0];
-    const vDays = c.validity_days || 30;
-    const gDays = c.grace_period_days || 5;
 
     await pool.query(`
       UPDATE invoices 
@@ -262,11 +311,8 @@ export async function payCustomerBill(req: Request, res: Response) {
       ? new Date(c.expired_at) 
       : new Date();
 
-    const newExpDate = new Date(baseDate);
-    newExpDate.setDate(newExpDate.getDate() + vDays);
-
-    const newGraceDate = new Date(newExpDate);
-    newGraceDate.setDate(newGraceDate.getDate() + gDays);
+    const newExpDate = addIsoDuration(baseDate, c.validity_iso || 'P1M', 30);
+    const newGraceDate = addIsoDuration(newExpDate, c.grace_period_iso || 'P5D', 5);
 
     const formattedExp = newExpDate.toISOString().split('T')[0];
     const formattedGrace = newGraceDate.toISOString().split('T')[0];
@@ -279,7 +325,7 @@ export async function payCustomerBill(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `🎉 Tagihan pelanggan "${c.name}" berhasil DILUNASI! Masa aktif diperpanjang +${vDays} hari hingga ${formattedExp}.`
+      message: `🎉 Tagihan pelanggan "${c.name}" berhasil DILUNASI! Masa aktif berhasil diperpanjang hingga ${formattedExp}.`
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -288,14 +334,15 @@ export async function payCustomerBill(req: Request, res: Response) {
 
 export async function removeCustomer(req: Request, res: Response) {
   const { id } = req.params;
+  const deleteMikrotik = req.query.delete_mikrotik !== 'false' && req.body?.delete_mikrotik !== false;
   try {
-    const customer = await deleteCustomer(id);
+    const customer = await deleteCustomer(id, deleteMikrotik);
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
     }
     res.json({
       success: true,
-      message: `Pelanggan "${customer.name}" berhasil dihapus!`
+      message: `Pelanggan "${customer.name}" berhasil dihapus${deleteMikrotik ? ' & secret MikroTik dicabut' : ''}!`
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -309,16 +356,44 @@ export async function checkPhone(req: Request, res: Response) {
     return res.status(400).json({ success: false, message: 'Nomor HP wajib disertakan.' });
   }
 
+  const cleanPhone = String(phone_number).trim();
+  const safeUserId = userId ? String(userId).trim() : null;
+
+  // Helper for Firestore lookup
+  const checkInFirestore = async () => {
+    const db = getFirestore();
+    if (!db) return null;
+    const snap = await db.collection('customers').get();
+    let match: any = null;
+    snap.forEach((doc: any) => {
+      if (doc.id !== '_init') {
+        const d = doc.data();
+        if ((safeUserId && d.user_id === safeUserId) || d.phone_number === cleanPhone) {
+          match = { id: doc.id, ...d };
+        }
+      }
+    });
+    if (match) {
+      return { success: true, isLinked: true, matchFound: true, customer: match };
+    }
+    return { success: true, isLinked: false, matchFound: false };
+  };
+
+  if (process.env.DB_DRIVER === 'firebase') {
+    try {
+      const fbRes = await checkInFirestore();
+      if (fbRes) return res.json(fbRes);
+    } catch (_) {}
+  }
+
   try {
-    const cleanPhone = phone_number.trim();
-    
     const alreadyLinked = await pool.query(`
       SELECT c.id, c.name, c.connection_type, c.status, p.name as package_name, p.price as package_price
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
-      WHERE c.user_id = $1 OR c.phone_number = $2 AND c.user_id = $1
+      WHERE ($1::text IS NOT NULL AND c.user_id = $1) OR c.phone_number = $2
       LIMIT 1
-    `, [userId, cleanPhone]);
+    `, [safeUserId, cleanPhone]);
 
     if (alreadyLinked.rows.length > 0) {
       return res.json({
@@ -338,16 +413,16 @@ export async function checkPhone(req: Request, res: Response) {
 
     if (unlinkedMatch.rows.length > 0) {
       const foundCust = unlinkedMatch.rows[0];
-      if (userId) {
+      if (safeUserId) {
         // Auto-link customer to user_id directly in database!
-        await pool.query('UPDATE customers SET user_id = $1 WHERE id = $2', [userId, foundCust.id]);
-        foundCust.user_id = userId;
+        await pool.query('UPDATE customers SET user_id = $1 WHERE id = $2', [safeUserId, foundCust.id]);
+        foundCust.user_id = safeUserId;
       }
       return res.json({
         success: true,
         isLinked: true,
         matchFound: true,
-        autoLinked: Boolean(userId),
+        autoLinked: Boolean(safeUserId),
         customer: foundCust
       });
     }
@@ -358,6 +433,11 @@ export async function checkPhone(req: Request, res: Response) {
       matchFound: false
     });
   } catch (err: any) {
+    console.warn('[CHECK PHONE] Postgres query error, fallback to Firestore:', err.message);
+    try {
+      const fbRes = await checkInFirestore();
+      if (fbRes) return res.json(fbRes);
+    } catch (_) {}
     res.status(500).json({ success: false, message: err.message });
   }
 }
@@ -445,23 +525,51 @@ export async function syncCustomerToMikrotik(req: Request, res: Response) {
     }
 
     const cust = cRes.rows[0];
-    if (!cust.router_id || !cust.ip_address) {
-      return res.status(400).json({ success: false, message: 'Pelanggan belum dihubungkan ke Router Mikrotik.' });
-    }
     if (!cust.pppoe_username) {
       return res.status(400).json({ success: false, message: 'Username pelanggan masih kosong.' });
     }
 
+    let routerId = cust.router_id;
+    let routerIp = cust.ip_address;
+    let routerPort = cust.api_port || 8728;
+    let routerUser = cust.r_user || 'admin';
+    let routerPass = cust.r_pass || '';
+    let routerName = cust.router_name || 'Mikrotik';
+
+    if (!routerId || !routerIp) {
+      const defRtr = await pool.query('SELECT *, username as r_user, password as r_pass, name as router_name FROM routers ORDER BY created_at ASC LIMIT 1');
+      if (defRtr.rows.length > 0) {
+        const r = defRtr.rows[0];
+        routerId = r.id;
+        routerIp = r.ip_address;
+        routerPort = r.api_port || 8728;
+        routerUser = r.r_user || 'admin';
+        routerPass = r.r_pass || '';
+        routerName = r.name || 'Mikrotik';
+        await pool.query('UPDATE customers SET router_id = $1 WHERE id = $2', [routerId, id]);
+      } else {
+        return res.status(400).json({ success: false, message: 'Belum ada Router Mikrotik yang terdaftar di sistem.' });
+      }
+    }
+
+    let profName = cust.profile_name;
+    if (!profName && cust.package_id) {
+      const pkgProf = await pool.query('SELECT mikrotik_profile FROM packages WHERE id = $1', [cust.package_id]);
+      if (pkgProf.rows.length > 0 && pkgProf.rows[0].mikrotik_profile) {
+        profName = pkgProf.rows[0].mikrotik_profile;
+      }
+    }
+    if (!profName) profName = 'default';
+
     const conn = new RouterOSAPI({
-      host: cust.ip_address,
-      port: cust.api_port || 8728,
-      user: cust.r_user || 'admin',
-      password: cust.r_pass || '',
+      host: routerIp,
+      port: routerPort,
+      user: routerUser,
+      password: routerPass,
       timeout: 8
     });
     await conn.connect();
 
-    const profName = cust.profile_name || 'default';
     const isHotspot = cust.connection_type === 'hotspot';
     const targetPrintCmd = isHotspot ? '/ip/hotspot/user/print' : '/ppp/secret/print';
     const targetSetCmd = isHotspot ? '/ip/hotspot/user/set' : '/ppp/secret/set';
@@ -472,11 +580,22 @@ export async function syncCustomerToMikrotik(req: Request, res: Response) {
       ? itemsList.find((s: any) => (cust.mikrotik_id && s['.id'] === cust.mikrotik_id) || (s.name && s.name.trim().toLowerCase() === cust.pppoe_username.trim().toLowerCase()) || (s.user && s.user.trim().toLowerCase() === cust.pppoe_username.trim().toLowerCase()))
       : null;
 
+    const commentValue = isHotspot 
+      ? formatMikrotikHotspotComment(cust)
+      : formatMikrotikPppComment({
+          grace_until: cust.grace_until,
+          expired_at: cust.expired_at,
+          name: cust.name,
+          customer_code: cust.customer_code,
+          id: cust.id,
+          profile_name: profName
+        });
+
     const userArgs = [
       `=name=${cust.pppoe_username.trim()}`,
       `=password=${cust.pppoe_password || cust.pppoe_username}`,
       `=profile=${profName}`,
-      `=comment=arbil-cust-${cust.customer_code || cust.id.substring(0, 5)}`
+      `=comment=${commentValue}`
     ];
     if (!isHotspot && cust.static_ip) userArgs.push(`=remote-address=${cust.static_ip.trim()}`);
 
@@ -488,6 +607,19 @@ export async function syncCustomerToMikrotik(req: Request, res: Response) {
         `=.id=${existingItem['.id']}`,
         ...userArgs
       ]);
+
+      // Jika profile PPPoE berubah (misal dari isolir dipulihkan ke paket aktif), putus sesi aktif agar dial-up ulang dengan profil baru
+      if (!isHotspot && existingItem.profile !== profName) {
+        try {
+          const activeList: any = await conn.write('/ppp/active/print');
+          if (Array.isArray(activeList)) {
+            const matchAct = activeList.find((a: any) => a.name && a.name.trim().toLowerCase() === cust.pppoe_username.trim().toLowerCase());
+            if (matchAct && matchAct['.id']) {
+              await conn.write('/ppp/active/remove', [`=.id=${matchAct['.id']}`]);
+            }
+          }
+        } catch (e) {}
+      }
     } else {
       await conn.write(targetAddCmd, userArgs);
       try {
@@ -504,10 +636,129 @@ export async function syncCustomerToMikrotik(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `⚡ Berhasil Sync! Akun ${isHotspot ? 'Hotspot' : 'PPPoE'} "${cust.pppoe_username}" (ID: ${activeMikrotikId || 'Mikrotik'}) diperbarui ke Router "${cust.router_name}".`
+      message: `⚡ Berhasil Sync! Akun ${isHotspot ? 'Hotspot' : 'PPPoE'} "${cust.pppoe_username}" (ID: ${activeMikrotikId || 'Mikrotik'}) diperbarui ke Router "${routerName}".`
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal Sync Mikrotik: ${err.message}` });
+  }
+}
+
+export async function syncAllCustomersToMikrotik(req: Request, res: Response) {
+  try {
+    const custsRes = await pool.query(`
+      SELECT c.*, r.name as router_name, r.ip_address, r.api_port, r.username as r_user, r.password as r_pass,
+             rp.name as profile_name
+      FROM customers c
+      LEFT JOIN routers r ON c.router_id = r.id
+      LEFT JOIN router_profiles rp ON c.router_profile_id = rp.id
+      WHERE c.pppoe_username IS NOT NULL AND TRIM(c.pppoe_username) != ''
+      ORDER BY c.created_at ASC
+    `);
+
+    if (custsRes.rows.length === 0) {
+      return res.json({ success: true, count: 0, message: 'Tidak ada pelanggan dengan username PPPoE untuk disinkronkan.' });
+    }
+
+    const defaultRtrRes = await pool.query('SELECT *, username as r_user, password as r_pass, name as router_name FROM routers ORDER BY created_at ASC LIMIT 1');
+    const defaultRouter = defaultRtrRes.rows.length > 0 ? defaultRtrRes.rows[0] : null;
+
+    if (!defaultRouter && !custsRes.rows.some((c: any) => c.ip_address)) {
+      return res.status(400).json({ success: false, message: 'Tidak ada Router Mikrotik yang terhubung.' });
+    }
+
+    let successCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+
+    // Group customers by router to minimize connecting/disconnecting
+    const customersByRouter: Record<string, any[]> = {};
+    for (const c of custsRes.rows) {
+      const rIp = c.ip_address || defaultRouter?.ip_address;
+      if (!rIp) continue;
+      if (!customersByRouter[rIp]) customersByRouter[rIp] = [];
+      customersByRouter[rIp].push(c);
+    }
+
+    for (const [ip, cList] of Object.entries(customersByRouter)) {
+      const firstCust = cList[0];
+      const rPort = firstCust.api_port || defaultRouter?.api_port || 8728;
+      const rUser = firstCust.r_user || defaultRouter?.r_user || 'admin';
+      const rPass = firstCust.r_pass || defaultRouter?.r_pass || '';
+
+      try {
+        const conn = new RouterOSAPI({
+          host: ip,
+          port: rPort,
+          user: rUser,
+          password: rPass,
+          timeout: 10
+        });
+        await conn.connect();
+
+        // Print existing secrets once
+        const secretsList: any = await conn.write('/ppp/secret/print');
+
+        for (const cust of cList) {
+          try {
+            const profName = cust.profile_name || 'default';
+            const commentValue = cust.connection_type === 'hotspot'
+              ? formatMikrotikHotspotComment(cust)
+              : formatMikrotikPppComment({
+                  grace_until: cust.grace_until,
+                  expired_at: cust.expired_at,
+                  name: cust.name,
+                  customer_code: cust.customer_code,
+                  id: cust.id,
+                  profile_name: profName
+                });
+
+            const userArgs = [
+              `=name=${cust.pppoe_username.trim()}`,
+              `=password=${cust.pppoe_password || cust.pppoe_username}`,
+              `=profile=${profName}`,
+              `=comment=${commentValue}`
+            ];
+            if (cust.static_ip) userArgs.push(`=remote-address=${cust.static_ip.trim()}`);
+
+            const existingItem = Array.isArray(secretsList)
+              ? secretsList.find((s: any) => 
+                  (cust.mikrotik_id && s['.id'] === cust.mikrotik_id) || 
+                  (s.name && s.name.trim().toLowerCase() === cust.pppoe_username.trim().toLowerCase())
+                )
+              : null;
+
+            let mikrotikId = cust.mikrotik_id;
+            if (existingItem) {
+              mikrotikId = existingItem['.id'];
+              await conn.write('/ppp/secret/set', [`=.id=${existingItem['.id']}`, ...userArgs]);
+            } else {
+              await conn.write('/ppp/secret/add', userArgs);
+            }
+
+            const targetRouterId = cust.router_id || defaultRouter?.id;
+            await pool.query('UPDATE customers SET is_synced = true, mikrotik_id = $1, router_id = COALESCE(router_id, $2) WHERE id = $3', [mikrotikId, targetRouterId, cust.id]);
+            successCount++;
+          } catch (custErr: any) {
+            failedCount++;
+            errors.push(`${cust.pppoe_username}: ${custErr.message}`);
+          }
+        }
+
+        conn.close();
+      } catch (routerErr: any) {
+        errors.push(`Router ${ip}: ${routerErr.message}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      count: successCount,
+      failed: failedCount,
+      errors: errors.slice(0, 5),
+      message: `⚡ Selesai! Berhasil menyinkronkan ${successCount} akun PPPoE pelanggan ke Router Mikrotik.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
 }
 

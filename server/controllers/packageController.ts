@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { getAllPackages, createPackage, updatePackage, deletePackage } from '../models/packageModel.js';
+import { pool } from '../config/db.js';
 
 export async function listPackages(req: Request, res: Response) {
   try {
@@ -52,6 +53,28 @@ export async function editPackage(req: Request, res: Response) {
   }
 }
 
+export async function togglePackageStatus(req: Request, res: Response) {
+  const { id } = req.params;
+  const { is_active } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE packages SET is_active = $1 WHERE id = $2 RETURNING id, name, is_active',
+      [Boolean(is_active), id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Paket tidak ditemukan.' });
+    }
+    const updated = result.rows[0];
+    res.json({
+      success: true,
+      message: `Paket "${updated.name}" berhasil di-${updated.is_active ? 'aktifkan' : 'nonaktifkan'}!`,
+      package: updated
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 export async function removePackage(req: Request, res: Response) {
   const { id } = req.params;
   try {
@@ -62,9 +85,10 @@ export async function removePackage(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `Paket "${pkg.name}" berhasil dihapus!`
+      message: 'Paket Internet berhasil dihapus!'
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
+

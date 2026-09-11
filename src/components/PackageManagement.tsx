@@ -22,12 +22,16 @@ import {
   UserCheck,
   ToggleLeft,
   ToggleRight,
-  Users
+  Users,
+  Server,
+  ShieldAlert
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
-import { encodeIso8601, parseIso8601 } from '../utils/iso8601';
+import { encodeIso8601, parseIso8601, isoToMikrotikTime, mikrotikTimeToIso, formatUptimeDisplay, isValidIso8601Duration } from '../utils/iso8601';
 import { getPackagesFromFirestore } from '../services/firebaseService';
+import { getApiUrl } from '../config/api';
+import { IsoDurationInput } from './IsoDurationInput';
 
 export interface PackageItem {
   id: string;
@@ -35,17 +39,20 @@ export interface PackageItem {
   type: 'pppoe' | 'hotspot_monthly' | 'hotspot_voucher' | string;
   price: number;
   speed_limit: string;
-  validity_days: number;
+  validity_days?: number;
   validity_unit?: 'month' | 'day' | 'hour' | 'minute' | string;
   validity_value?: number;
   validity_iso?: string;
   grace_period_days?: number;
   grace_period_iso?: string;
   only_one_user?: boolean;
+  lock_server?: boolean;
+  expired_mode?: string;
   uptime_limit?: string;
   quota_mb?: number;
   mikrotik_profile?: string;
   shared_users?: number;
+  is_active?: boolean;
   created_at?: string;
 }
 
@@ -83,11 +90,18 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const [gracePeriodUnit, setGracePeriodUnit] = useState<'day' | 'hour'>('day');
   const [gracePeriodIso, setGracePeriodIso] = useState<string>('P15D');
   const [onlyOneUser, setOnlyOneUser] = useState<boolean>(false);
+  const [lockServer, setLockServer] = useState<boolean>(false);
+  const [expiredMode, setExpiredMode] = useState<string>('rem');
 
   // Hotspot extras
   const [uptimeLimit, setUptimeLimit] = useState<string>('3h');
   const [quotaMb, setQuotaMb] = useState<string>('');
   const [sharedUsers, setSharedUsers] = useState<string>('1');
+
+  // Validation States for Durations
+  const [validityValid, setValidityValid] = useState<boolean>(true);
+  const [gracePeriodValid, setGracePeriodValid] = useState<boolean>(true);
+  const [uptimeValid, setUptimeValid] = useState<boolean>(true);
 
   const parseJsonResponse = async (res: Response) => {
     const contentType = res.headers.get('content-type') || '';
@@ -104,7 +118,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const fetchPackages = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL;
+      const apiUrl = getApiUrl() || (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
       let fetched = false;
 
       if (apiUrl) {
@@ -166,45 +180,75 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setGracePeriodUnit('day');
     setGracePeriodIso('P15D');
     setOnlyOneUser(false);
-    setUptimeLimit('3h');
+    setLockServer(false);
+    setExpiredMode('rem');
+    setUptimeLimit('');
     setQuotaMb('');
     setSharedUsers('1');
+    setValidityValid(true);
+    setGracePeriodValid(true);
+    setUptimeValid(true);
   };
 
   const handleTypeChange = (newType: 'pppoe' | 'hotspot_monthly' | 'hotspot_voucher') => {
     setType(newType);
     if (newType === 'pppoe') {
-      setValidityValue('1');
-      setValidityUnit('month');
       setValidityIso('P1M');
-      setGracePeriodValue('15');
-      setGracePeriodUnit('day');
-      setOnlyOneUser(true);
+      setGracePeriodIso('P15D');
+      setPrice('150000');
+      setSpeedLimit('10M/10M');
+      setOnlyOneUser(false);
+      setLockServer(false);
+      setExpiredMode('rem');
+      setUptimeLimit('');
       setSharedUsers('1');
     } else if (newType === 'hotspot_monthly') {
-      setValidityValue('1');
-      setValidityUnit('month');
       setValidityIso('P1M');
-      setGracePeriodValue('5');
-      setGracePeriodUnit('day');
-      setUptimeLimit('30d');
+      setGracePeriodIso('P5D');
+      setPrice('50000');
+      setSpeedLimit('5M/5M');
+      setUptimeLimit('');
       setOnlyOneUser(false);
+      setLockServer(false);
+      setExpiredMode('rem');
       setSharedUsers('1');
     } else {
-      setValidityValue('3');
-      setValidityUnit('hour');
       setValidityIso('PT3H');
+      setGracePeriodIso('P1D');
       setPrice('5000');
-      setUptimeLimit('3h');
-      setOnlyOneUser(false);
+      setSpeedLimit('3M/3M');
+      setUptimeLimit('PT3H');
+      setOnlyOneUser(true);
+      setLockServer(true);
+      setExpiredMode('rem');
       setSharedUsers('1');
     }
+    setValidityValid(true);
+    setGracePeriodValid(true);
+    setUptimeValid(true);
   };
 
   const handleCreatePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !price || !type) {
       setToastMsg({ type: 'error', text: 'Nama paket, tipe, dan harga wajib diisi!' });
+      return;
+    }
+
+    // Validasi ketat format ISO-8601 Duration
+    if (!validityValid || !isValidIso8601Duration(validityIso)) {
+      setToastMsg({ type: 'error', text: 'Format Masa Aktif ISO-8601 tidak valid! Contoh: PT1H, P1D, P1DT6H' });
+      return;
+    }
+
+    if ((type === 'pppoe' || type === 'hotspot_monthly') && (!gracePeriodValid || !isValidIso8601Duration(gracePeriodIso))) {
+      setToastMsg({ type: 'error', text: 'Format Masa Tenggang ISO-8601 tidak valid! Contoh: P15D, P5D' });
+      return;
+    }
+
+    const cleanUptime = uptimeLimit?.trim() ? (mikrotikTimeToIso(uptimeLimit.trim()) || uptimeLimit.trim()) : null;
+    if ((type === 'hotspot_voucher' || type === 'hotspot_monthly') && cleanUptime && (!uptimeValid || !isValidIso8601Duration(cleanUptime))) {
+      setToastMsg({ type: 'error', text: 'Format Limit Uptime ISO-8601 tidak valid! Contoh: PT3H, 3h, PT30M' });
       return;
     }
 
@@ -222,13 +266,12 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           type,
           price: parseFloat(price),
           speed_limit: speedLimit.trim(),
-          validity_value: parseInt(validityValue) || 1,
-          validity_unit: validityUnit,
           validity_iso: validityIso,
-          grace_period_days: parseInt(gracePeriodValue) || 5,
-          grace_period_iso: gracePeriodIso,
+          grace_period_iso: (type === 'pppoe' || type === 'hotspot_monthly') ? gracePeriodIso : 'P1D',
           only_one_user: onlyOneUser,
-          uptime_limit: uptimeLimit.trim() || null,
+          lock_server: lockServer,
+          expired_mode: expiredMode,
+          uptime_limit: cleanUptime,
           quota_mb: quotaMb ? parseInt(quotaMb) : null,
           shared_users: parseInt(sharedUsers) || 1
         })
@@ -257,21 +300,19 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setPrice(pkg.price.toString());
     setSpeedLimit(pkg.speed_limit);
 
-    const parsedIso = parseIso8601(pkg.validity_iso || encodeIso8601(pkg.validity_value || 1, pkg.validity_unit || 'month'));
-    setValidityValue((pkg.validity_value || parsedIso.val || 1).toString());
-    setValidityUnit((pkg.validity_unit as any) || parsedIso.unit || 'month');
-    setValidityIso(pkg.validity_iso || parsedIso.raw);
-    setIsAdvancedIso(parsedIso.unit === 'custom');
-
-    const parsedGrace = parseIso8601(pkg.grace_period_iso || `P${pkg.grace_period_days || 15}D`);
-    setGracePeriodValue((pkg.grace_period_days || parsedGrace.val || 15).toString());
-    setGracePeriodUnit((parsedGrace.unit === 'hour' ? 'hour' : 'day') as any);
-    setGracePeriodIso(pkg.grace_period_iso || parsedGrace.raw);
+    setValidityIso(pkg.validity_iso || 'P1M');
+    setGracePeriodIso(pkg.grace_period_iso || 'P15D');
+    setUptimeLimit(pkg.uptime_limit || '');
 
     setOnlyOneUser(Boolean(pkg.only_one_user));
-    setUptimeLimit(pkg.uptime_limit || '3h');
+    setLockServer(Boolean(pkg.lock_server));
+    setExpiredMode(pkg.expired_mode || 'rem');
     setQuotaMb(pkg.quota_mb ? pkg.quota_mb.toString() : '');
     setSharedUsers((pkg.shared_users || 1).toString());
+
+    setValidityValid(true);
+    setGracePeriodValid(true);
+    setUptimeValid(true);
     setShowEditModal(true);
   };
 
@@ -279,6 +320,23 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     e.preventDefault();
     if (!editingPackage || !name.trim() || !price || !type) {
       setToastMsg({ type: 'error', text: 'Nama paket, tipe, dan harga wajib diisi!' });
+      return;
+    }
+
+    // Validasi ketat format ISO-8601 Duration
+    if (!validityValid || !isValidIso8601Duration(validityIso)) {
+      setToastMsg({ type: 'error', text: 'Format Masa Aktif ISO-8601 tidak valid! Contoh: PT1H, P1D, P1DT6H' });
+      return;
+    }
+
+    if ((type === 'pppoe' || type === 'hotspot_monthly') && (!gracePeriodValid || !isValidIso8601Duration(gracePeriodIso))) {
+      setToastMsg({ type: 'error', text: 'Format Masa Tenggang ISO-8601 tidak valid! Contoh: P15D, P5D' });
+      return;
+    }
+
+    const cleanUptime = uptimeLimit?.trim() ? (mikrotikTimeToIso(uptimeLimit.trim()) || uptimeLimit.trim()) : null;
+    if ((type === 'hotspot_voucher' || type === 'hotspot_monthly') && cleanUptime && (!uptimeValid || !isValidIso8601Duration(cleanUptime))) {
+      setToastMsg({ type: 'error', text: 'Format Limit Uptime ISO-8601 tidak valid! Contoh: PT3H, 3h, PT30M' });
       return;
     }
 
@@ -296,13 +354,12 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           type,
           price: parseFloat(price),
           speed_limit: speedLimit.trim(),
-          validity_value: parseInt(validityValue) || 1,
-          validity_unit: validityUnit,
           validity_iso: validityIso,
-          grace_period_days: parseInt(gracePeriodValue) || 5,
-          grace_period_iso: gracePeriodIso,
+          grace_period_iso: (type === 'pppoe' || type === 'hotspot_monthly') ? gracePeriodIso : 'P1D',
           only_one_user: onlyOneUser,
-          uptime_limit: uptimeLimit.trim() || null,
+          lock_server: lockServer,
+          expired_mode: expiredMode,
+          uptime_limit: cleanUptime,
           quota_mb: quotaMb ? parseInt(quotaMb) : null,
           shared_users: parseInt(sharedUsers) || 1
         })
@@ -343,6 +400,28 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
       }
     } catch (err: any) {
       setToastMsg({ type: 'error', text: 'Gagal menghapus paket.' });
+    }
+  };
+
+  const handleTogglePackageStatus = async (pkg: PackageItem) => {
+    const newStatus = pkg.is_active === false ? true : false;
+    try {
+      const apiUrl = getApiUrl();
+      if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
+      const res = await fetch(`${apiUrl}/api/packages/${pkg.id}/toggle-status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newStatus })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setPackages(prev => prev.map(p => p.id === pkg.id ? { ...p, is_active: newStatus } : p));
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengubah status paket.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal mengubah status paket.' });
     }
   };
 
@@ -524,7 +603,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                             <Clock size={14} className="text-emerald-500" />
                             Limit Uptime / Masa Pakai
                           </span>
-                          <span className="font-bold text-slate-800 font-mono">{pkg.uptime_limit || 'Tanpa Limit'}</span>
+                          <span className="font-bold text-slate-800 font-mono">{formatUptimeDisplay(pkg.uptime_limit)}</span>
                         </div>
 
                         <div className="flex items-center justify-between text-slate-600">
@@ -541,21 +620,46 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                   </div>
 
                   {/* Card Actions */}
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <button
-                      onClick={() => openEditModal(pkg)}
-                      className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200 inline-flex items-center gap-1.5"
+                      type="button"
+                      onClick={() => handleTogglePackageStatus(pkg)}
+                      className={`px-3 py-1.5 font-bold text-xs rounded-xl transition-all cursor-pointer border inline-flex items-center gap-1.5 ${
+                        pkg.is_active !== false
+                          ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-300'
+                      }`}
+                      title={pkg.is_active !== false ? 'Klik untuk menonaktifkan paket ini (semua profil terkait akan disembunyikan dari user)' : 'Klik untuk mengaktifkan paket ini'}
                     >
-                      <Edit size={13} />
-                      <span>Edit</span>
+                      {pkg.is_active !== false ? (
+                        <>
+                          <CheckCircle2 size={13} className="text-emerald-600" />
+                          <span>Paket Aktif</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={13} className="text-slate-400" />
+                          <span>Nonaktif</span>
+                        </>
+                      )}
                     </button>
-                    <button
-                      onClick={() => handleDeletePackage(pkg)}
-                      className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-rose-200 inline-flex items-center gap-1.5"
-                    >
-                      <Trash2 size={13} />
-                      <span>Hapus</span>
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditModal(pkg)}
+                        className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-slate-200 inline-flex items-center gap-1.5"
+                      >
+                        <Edit size={13} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeletePackage(pkg)}
+                        className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-rose-200 inline-flex items-center gap-1.5"
+                      >
+                        <Trash2 size={13} />
+                        <span>Hapus</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -567,7 +671,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
       {/* Modal Tambah Paket Internet Baru (Hybrid ISO-8601) */}
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-2xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100">
@@ -575,7 +679,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Buat Paket Internet Baru</h3>
-                  <p className="text-xs text-slate-400">Model Hybrid: UI Mudah + Format Standar ISO-8601 (P1M, P30D, PT12H)</p>
+                  <p className="text-xs text-slate-400">Pilihan Lengkap: Satuan Tunggal, Komposit (Hari + Jam), & ISO Manual</p>
                 </div>
               </div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
@@ -659,113 +763,32 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
               </div>
 
-              {/* MASA AKTIF HYBRID (UI DROPDOWN + ISO-8601 DURATION) */}
-              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                    <Calendar size={15} className="text-blue-600" />
-                    Masa Aktif (Format ISO-8601 Duration):
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsAdvancedIso(!isAdvancedIso)}
-                    className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Code size={12} />
-                    <span>{isAdvancedIso ? 'Kembali ke Dropdown' : 'Mode ISO Lanjutan'}</span>
-                  </button>
-                </div>
-
-                {!isAdvancedIso ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Jumlah Durasi</label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        placeholder="1"
-                        value={validityValue}
-                        onChange={(e) => setValidityValue(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Satuan Masa Aktif</label>
-                      <select
-                        value={validityUnit}
-                        onChange={(e) => setValidityUnit(e.target.value as any)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                      >
-                        <option value="month">📅 Bulan Kalender (ISO: P1M)</option>
-                        <option value="day">📆 Hari (ISO: P30D)</option>
-                        <option value="hour">⏱️ Jam (ISO: PT12H)</option>
-                        <option value="minute">⚡ Menit (ISO: PT30M)</option>
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Format ISO-8601 (Kombinasi Bebas)</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Contoh: P1M, P30D, PT12H, P1DT6H"
-                      value={validityIso}
-                      onChange={(e) => setValidityIso(e.target.value.toUpperCase())}
-                      className="w-full px-3.5 py-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-bold text-blue-900 focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
-                    />
-                    <span className="text-[10px] text-blue-700 mt-1 block">Contoh: P30D (30 hari), P1M (1 bulan), PT12H (12 jam), P1DT6H (1 hari 6 jam)</span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between text-xs font-mono text-blue-900 bg-white/80 p-2.5 rounded-xl border border-blue-200/60">
-                  <span>Hasil Format ISO: <strong className="text-blue-700">{validityIso}</strong></span>
-                  <span className="text-[11px] font-sans text-slate-600">({parseIso8601(validityIso).human})</span>
-                </div>
-              </div>
+              {/* MASA AKTIF ISO-8601 */}
+              <IsoDurationInput
+                label="Masa Aktif Paket Internet (ISO-8601)"
+                icon={Calendar}
+                value={validityIso}
+                themeColor="blue"
+                allowMonth={type !== 'hotspot_voucher'}
+                onChange={(val, valid) => {
+                  setValidityIso(val);
+                  setValidityValid(valid);
+                }}
+              />
 
               {/* MASA TENGGANG ISOLIR ISO-8601 FOR PPPOE / RUMAHAN */}
               {(type === 'pppoe' || type === 'hotspot_monthly') && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
-                  <label className="block text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                    <Hourglass size={15} className="text-amber-600" />
-                    Masa Tenggang Toleransi Isolir (ISO-8601):
-                  </label>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Durasi Toleransi</label>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="15"
-                        value={gracePeriodValue}
-                        onChange={(e) => setGracePeriodValue(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Satuan Toleransi</label>
-                      <select
-                        value={gracePeriodUnit}
-                        onChange={(e) => setGracePeriodUnit(e.target.value as any)}
-                        className="w-full px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs font-sans font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                      >
-                        <option value="day">📆 Hari (Misal: P15D, P3D)</option>
-                        <option value="hour">⏱️ Jam (Misal: PT6H, PT12H)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs font-mono text-amber-900 bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
-                    <span>Hasil Masa Tenggang ISO: <strong className="text-amber-800">{gracePeriodIso}</strong></span>
-                    <span className="text-[11px] font-sans text-slate-600">({parseIso8601(gracePeriodIso).human})</span>
-                  </div>
-                </div>
+                <IsoDurationInput
+                  label="Masa Tenggang Toleransi Isolir (ISO-8601)"
+                  icon={Hourglass}
+                  value={gracePeriodIso}
+                  themeColor="amber"
+                  allowMonth={false}
+                  onChange={(val, valid) => {
+                    setGracePeriodIso(val);
+                    setGracePeriodValid(valid);
+                  }}
+                />
               )}
 
               {/* ONLY ONE USER LOCK OPTION */}
@@ -789,9 +812,73 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </button>
               </div>
 
-              {/* UPTIME, QUOTA & SHARED USERS LIMIT FOR HOTSPOT */}
+              {/* LOCK SERVER OPTION (HOTSPOT) */}
               {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
+                      <Server size={15} className="text-sky-600" />
+                      Lock Server (Kunci Server Hotspot)
+                    </span>
+                    <p className="text-[11px] text-sky-700">
+                      Kunci voucher hanya dapat digunakan pada server hotspot tempat pertama kali login.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setLockServer(!lockServer)}
+                    className={`p-1 transition-colors rounded-xl cursor-pointer ${lockServer ? 'text-sky-600' : 'text-slate-300'}`}
+                  >
+                    {lockServer ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                  </button>
+                </div>
+              )}
+
+              {/* EXPIRED MODE DROPDOWN (HOTSPOT) */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                  <label className="block text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <ShieldAlert size={15} className="text-amber-600" />
+                    Pilihan Expired Mode (Masa Aktif Habis):
+                  </label>
+                  <select
+                    value={expiredMode}
+                    onChange={(e) => setExpiredMode(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                  >
+                    <option value="rem">🗑️ Remove (Otomatis hapus user voucher dari Mikrotik saat expired)</option>
+                    <option value="ntf">⚠️ Notice (Kunci user limit-uptime=1s agar muncul notifikasi expired)</option>
+                    <option value="remc">📋 Remove & Record (Hapus user dan catat ke system script Mikrotik)</option>
+                    <option value="ntfc">📝 Notice & Record (Kunci notice dan catat ke system script Mikrotik)</option>
+                    <option value="0">♾️ Tanpa Expired / Unlimited (Tidak ada kadaluarsa)</option>
+                  </select>
+                  <p className="text-[10px] text-amber-700">
+                    Aksi yang dieksekusi otomatis oleh skrip scheduler Mikrotik saat voucher mencapai batas waktu.
+                  </p>
+                </div>
+              )}
+
+              {/* UPTIME LIMIT FOR HOTSPOT */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <IsoDurationInput
+                  label="Limit Uptime / Masa Pakai Voucher (MikroTik)"
+                  icon={Clock}
+                  value={uptimeLimit}
+                  themeColor="emerald"
+                  allowEmpty={true}
+                  emptyLabel="Tanpa Batas Masa Pakai (Mengikuti Masa Aktif)"
+                  allowMonth={false}
+                  onChange={(val, valid) => {
+                    setUptimeLimit(val);
+                    setUptimeValid(valid);
+                  }}
+                />
+              )}
+
+              {/* SHARED USERS & QUOTA LIMIT FOR HOTSPOT */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                       <Users size={13} className="text-sky-600" />
@@ -810,20 +897,6 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                      <Clock size={13} className="text-emerald-600" />
-                      Limit Uptime / Masa Pakai
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: 3h, 12h, 1d, 30d"
-                      value={uptimeLimit}
-                      onChange={(e) => setUptimeLimit(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                       <HardDrive size={13} className="text-purple-600" />
                       Limit Kuota Data (MB)
                     </label>
@@ -834,6 +907,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                       onChange={(e) => setQuotaMb(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                     />
+                    <span className="text-[10px] text-slate-400 mt-1 block">Kosongkan jika unlimited</span>
                   </div>
                 </div>
               )}
@@ -853,7 +927,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
       {/* Modal Edit Paket Internet (Hybrid ISO-8601) */}
       {showEditModal && editingPackage && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-2xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200">
@@ -861,7 +935,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Edit Paket Internet</h3>
-                  <p className="text-xs text-slate-500">Perbarui durasi ISO-8601, masa tenggang, atau status single user</p>
+                  <p className="text-xs text-slate-500">Pilihan Lengkap: Satuan Tunggal, Komposit (Hari + Jam), & ISO Manual</p>
                 </div>
               </div>
               <button onClick={() => { setShowEditModal(false); setEditingPackage(null); }} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
@@ -903,110 +977,32 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </div>
               </div>
 
-              {/* MASA AKTIF HYBRID (UI DROPDOWN + ISO-8601 DURATION) */}
-              <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                    <Calendar size={15} className="text-blue-600" />
-                    Masa Aktif (Format ISO-8601 Duration):
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsAdvancedIso(!isAdvancedIso)}
-                    className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <Code size={12} />
-                    <span>{isAdvancedIso ? 'Kembali ke Dropdown' : 'Mode ISO Lanjutan'}</span>
-                  </button>
-                </div>
-
-                {!isAdvancedIso ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Jumlah Durasi</label>
-                      <input
-                        type="number"
-                        required
-                        min="1"
-                        value={validityValue}
-                        onChange={(e) => setValidityValue(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Satuan Masa Aktif</label>
-                      <select
-                        value={validityUnit}
-                        onChange={(e) => setValidityUnit(e.target.value as any)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                      >
-                        <option value="month">📅 Bulan Kalender (ISO: P1M)</option>
-                        <option value="day">📆 Hari (ISO: P30D)</option>
-                        <option value="hour">⏱️ Jam (ISO: PT12H)</option>
-                        <option value="minute">⚡ Menit (ISO: PT30M)</option>
-                      </select>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Custom Format ISO-8601 (Kombinasi Bebas)</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Contoh: P1M, P30D, PT12H, P1DT6H"
-                      value={validityIso}
-                      onChange={(e) => setValidityIso(e.target.value.toUpperCase())}
-                      className="w-full px-3.5 py-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-bold text-blue-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                    />
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between text-xs font-mono text-blue-900 bg-white/80 p-2.5 rounded-xl border border-blue-200/60">
-                  <span>Hasil Format ISO: <strong className="text-blue-700">{validityIso}</strong></span>
-                  <span className="text-[11px] font-sans text-slate-600">({parseIso8601(validityIso).human})</span>
-                </div>
-              </div>
+              {/* MASA AKTIF ISO-8601 */}
+              <IsoDurationInput
+                label="Masa Aktif Paket Internet (ISO-8601)"
+                icon={Calendar}
+                value={validityIso}
+                themeColor="indigo"
+                allowMonth={type !== 'hotspot_voucher'}
+                onChange={(val, valid) => {
+                  setValidityIso(val);
+                  setValidityValid(valid);
+                }}
+              />
 
               {/* MASA TENGGANG ISOLIR ISO-8601 FOR PPPOE / RUMAHAN */}
               {(type === 'pppoe' || type === 'hotspot_monthly') && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
-                  <label className="block text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                    <Hourglass size={15} className="text-amber-600" />
-                    Masa Tenggang Toleransi Isolir (ISO-8601):
-                  </label>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Durasi Toleransi</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={gracePeriodValue}
-                        onChange={(e) => setGracePeriodValue(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs font-mono font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Satuan Toleransi</label>
-                      <select
-                        value={gracePeriodUnit}
-                        onChange={(e) => setGracePeriodUnit(e.target.value as any)}
-                        className="w-full px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs font-sans font-bold text-amber-900 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
-                      >
-                        <option value="day">📆 Hari (ISO: P15D, P3D)</option>
-                        <option value="hour">⏱️ Jam (ISO: PT6H, PT12H)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs font-mono text-amber-900 bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
-                    <span>Hasil Masa Tenggang ISO: <strong className="text-amber-800">{gracePeriodIso}</strong></span>
-                    <span className="text-[11px] font-sans text-slate-600">({parseIso8601(gracePeriodIso).human})</span>
-                  </div>
-                </div>
+                <IsoDurationInput
+                  label="Masa Tenggang Toleransi Isolir (ISO-8601)"
+                  icon={Hourglass}
+                  value={gracePeriodIso}
+                  themeColor="amber"
+                  allowMonth={false}
+                  onChange={(val, valid) => {
+                    setGracePeriodIso(val);
+                    setGracePeriodValid(valid);
+                  }}
+                />
               )}
 
               {/* ONLY ONE USER LOCK OPTION */}
@@ -1030,9 +1026,73 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                 </button>
               </div>
 
-              {/* UPTIME, QUOTA & SHARED USERS LIMIT FOR HOTSPOT */}
+              {/* LOCK SERVER OPTION (HOTSPOT) */}
               {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
+                <div className="p-3.5 bg-sky-50/70 border border-sky-200 rounded-2xl flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-bold text-sky-900 flex items-center gap-1.5">
+                      <Server size={15} className="text-sky-600" />
+                      Lock Server (Kunci Server Hotspot)
+                    </span>
+                    <p className="text-[11px] text-sky-700">
+                      Kunci voucher hanya dapat digunakan pada server hotspot tempat pertama kali login.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setLockServer(!lockServer)}
+                    className={`p-1 transition-colors rounded-xl cursor-pointer ${lockServer ? 'text-sky-600' : 'text-slate-300'}`}
+                  >
+                    {lockServer ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                  </button>
+                </div>
+              )}
+
+              {/* EXPIRED MODE DROPDOWN (HOTSPOT) */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                  <label className="block text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                    <ShieldAlert size={15} className="text-amber-600" />
+                    Pilihan Expired Mode (Masa Aktif Habis):
+                  </label>
+                  <select
+                    value={expiredMode}
+                    onChange={(e) => setExpiredMode(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
+                  >
+                    <option value="rem">🗑️ Remove (Otomatis hapus user voucher dari Mikrotik saat expired)</option>
+                    <option value="ntf">⚠️ Notice (Kunci user limit-uptime=1s agar muncul notifikasi expired)</option>
+                    <option value="remc">📋 Remove & Record (Hapus user dan catat ke system script Mikrotik)</option>
+                    <option value="ntfc">📝 Notice & Record (Kunci notice dan catat ke system script Mikrotik)</option>
+                    <option value="0">♾️ Tanpa Expired / Unlimited (Tidak ada kadaluarsa)</option>
+                  </select>
+                  <p className="text-[10px] text-amber-700">
+                    Aksi yang dieksekusi otomatis oleh skrip scheduler Mikrotik saat voucher mencapai batas waktu.
+                  </p>
+                </div>
+              )}
+
+              {/* UPTIME LIMIT FOR HOTSPOT */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <IsoDurationInput
+                  label="Limit Uptime / Masa Pakai Voucher (MikroTik)"
+                  icon={Clock}
+                  value={uptimeLimit}
+                  themeColor="emerald"
+                  allowEmpty={true}
+                  emptyLabel="Tanpa Batas Masa Pakai (Mengikuti Masa Aktif)"
+                  allowMonth={false}
+                  onChange={(val, valid) => {
+                    setUptimeLimit(val);
+                    setUptimeValid(valid);
+                  }}
+                />
+              )}
+
+              {/* SHARED USERS & QUOTA LIMIT FOR HOTSPOT */}
+              {(type === 'hotspot_voucher' || type === 'hotspot_monthly') && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-slate-100">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                       <Users size={13} className="text-sky-600" />
@@ -1051,20 +1111,6 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
-                      <Clock size={13} className="text-emerald-600" />
-                      Limit Uptime / Masa Pakai
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: 3h, 12h, 1d, 30d"
-                      value={uptimeLimit}
-                      onChange={(e) => setUptimeLimit(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
                       <HardDrive size={13} className="text-purple-600" />
                       Limit Kuota Data (MB)
                     </label>
@@ -1075,6 +1121,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                       onChange={(e) => setQuotaMb(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                     />
+                    <span className="text-[10px] text-slate-400 mt-1 block">Kosongkan jika unlimited</span>
                   </div>
                 </div>
               )}

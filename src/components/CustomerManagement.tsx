@@ -29,10 +29,19 @@ import {
   Layers,
   FileText,
   Plug,
-  Cpu
+  Cpu,
+  AlertTriangle,
+  Activity,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Eye,
+  ExternalLink,
+  Clock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
+import CustomerDetailView from './CustomerDetailView';
 import { BusinessProfile } from '../types';
+import { parseIso8601 } from '../utils/iso8601';
 import { 
   getCustomersFromFirestore, 
   saveCustomerToFirestore, 
@@ -94,7 +103,9 @@ interface PackageItem {
   type: string;
   price: number;
   speed_limit: string;
-  validity_days: number;
+  validity_days?: number;
+  validity_iso?: string;
+  grace_period_iso?: string;
 }
 
 interface RouterItem {
@@ -156,6 +167,7 @@ export interface CustomerItem {
   latitude?: string;
   longitude?: string;
   maps_url?: string;
+  is_online?: boolean;
   created_at?: string;
 }
 
@@ -200,12 +212,67 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [billingCustomer, setBillingCustomer] = useState<CustomerItem | null>(null);
   const [payLoading, setPayLoading] = useState(false);
 
+  // Delete Customer Modal State & Mikrotik Checkbox
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerItem | null>(null);
+  const [deleteFromMikrotik, setDeleteFromMikrotik] = useState(true);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Connection Logs Modal State (log_koneksi / ppp_connection_logs)
+  const [showLogsModal, setShowLogsModal] = useState(false);
+  const [logsCustomer, setLogsCustomer] = useState<CustomerItem | null>(null);
+  const [customerLogs, setCustomerLogs] = useState<any[]>([]);
+  const [logsStats, setLogsStats] = useState<{ total_bytes_in: number; total_bytes_out: number; login_count: number; logout_count: number } | null>(null);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logsFilter, setLogsFilter] = useState('');
+
   // Live Mikrotik PPP Active Users & FTTH Map States
   const [onlineUsernames, setOnlineUsernames] = useState<string[]>([]);
   const [ftthNodes, setFtthNodes] = useState<any[]>([]);
   const [ftthLines, setFtthLines] = useState<any[]>([]);
+  const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<CustomerItem | null>(null);
+
+  const getLinkedFtthNode = (cust: CustomerItem) => {
+    if (!cust || ftthNodes.length === 0) return null;
+    return ftthNodes.find(n => 
+      (n.customerId && String(n.customerId) === String(cust.id || cust.customer_code)) ||
+      (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(String(cust.id))) ||
+      (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
+      (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === cust.sn_onu.toLowerCase().trim())
+    );
+  };
+
+  // Sync selectedCustomerDetail with live customers list
+  useEffect(() => {
+    if (selectedCustomerDetail) {
+      const updated = customers.find(c => c.id === selectedCustomerDetail.id);
+      if (updated) {
+        setSelectedCustomerDetail(updated);
+      }
+    }
+  }, [customers]);
+
+  // Deep-linking support via URL hash
+  useEffect(() => {
+    const checkHash = () => {
+      const hash = window.location.hash;
+      if (hash.includes('customerId=') || hash.includes('id=')) {
+        const queryPart = hash.includes('?') ? hash.split('?')[1] : '';
+        const params = new URLSearchParams(queryPart);
+        const targetId = params.get('id') || params.get('customerId');
+        if (targetId && customers.length > 0) {
+          const found = customers.find(c => c.id === targetId || c.customer_code === targetId);
+          if (found) setSelectedCustomerDetail(found);
+        }
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, [customers]);
 
   const isUserOnline = (c: CustomerItem) => {
+    if (Boolean(c.is_online)) return true;
     if (!c.pppoe_username) return false;
     return onlineUsernames.includes(c.pppoe_username.trim().toLowerCase());
   };
@@ -331,6 +398,41 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     fetchCustomerInvoices(cust);
   };
 
+  const formatBytes = (bytes: number) => {
+    if (!bytes || isNaN(bytes) || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const openConnectionLogsModal = async (cust: CustomerItem) => {
+    setLogsCustomer(cust);
+    setShowLogsModal(true);
+    setLogsLoading(true);
+    setCustomerLogs([]);
+    setLogsStats(null);
+    setLogsFilter('');
+
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${cust.id}/logs`);
+        if (res.ok) {
+          const data = await parseJsonResponse(res);
+          if (data && data.success) {
+            setCustomerLogs(data.logs || []);
+            setLogsStats(data.stats || null);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('Gagal memuat log koneksi:', err.message);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
   const handlePayInvoiceById = async (invId: string) => {
     setPayLoading(true);
     try {
@@ -411,6 +513,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   // Sync & Disconnect Handlers
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
 
   const handleSyncCustomer = async (cust: CustomerItem) => {
     setActionLoadingId(cust.id);
@@ -438,6 +541,43 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     }
   };
 
+  const handleSyncAllCustomers = async () => {
+    setSyncAllLoading(true);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/sync-all-to-mikrotik`, {
+          method: 'POST'
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+            fetchData();
+            return;
+          }
+        }
+      }
+
+      // Fallback: sync customers one by one
+      let count = 0;
+      for (const c of customers) {
+        if (c.pppoe_username) {
+          await handleSyncCustomer(c);
+          count++;
+        }
+      }
+      setToastMsg({ type: 'success', text: `⚡ Berhasil sinkronisasi ${count} pelanggan ke Mikrotik!` });
+      fetchData();
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal Sync Semua: ${err?.message || 'Error'}` });
+    } finally {
+      setSyncAllLoading(false);
+    }
+  };
+
   const handleDisconnectCustomer = async (cust: CustomerItem) => {
     if (!window.confirm(`Putuskan sesi koneksi aktif untuk "${cust.name}" (${cust.pppoe_username})?`)) return;
     setActionLoadingId(cust.id);
@@ -458,6 +598,57 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     } catch (err: any) {
       setToastMsg({ type: 'error', text: `Gagal Diskonek: ${err?.message || 'Error'}` });
     } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const promptDeleteCustomer = (cust: CustomerItem) => {
+    setCustomerToDelete(cust);
+    setDeleteFromMikrotik(true);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!customerToDelete) return;
+    const cust = customerToDelete;
+
+    setDeleteLoading(true);
+    setActionLoadingId(cust.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/customers/${cust.id}?delete_mikrotik=${deleteFromMikrotik}`, {
+          method: 'DELETE'
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          const data = await parseJsonResponse(res).catch(() => null);
+          if (data && data.success) {
+            setToastMsg({ type: 'success', text: data.message });
+          }
+        }
+      }
+
+      // Also delete from Cloud Firestore & FTTH map nodes
+      await deleteCustomerFromFirestore(cust.id, cust).catch(() => null);
+
+      setCustomers(prev => prev.filter(c => c.id !== cust.id));
+      setToastMsg({ 
+        type: 'success', 
+        text: `🗑️ Pelanggan "${cust.name}" berhasil dihapus${deleteFromMikrotik ? ' & secret MikroTik dicabut' : ''}!` 
+      });
+      setShowDeleteModal(false);
+      setCustomerToDelete(null);
+      if (editingCustomer && editingCustomer.id === cust.id) {
+        setShowEditModal(false);
+        setEditingCustomer(null);
+      }
+      fetchData();
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal menghapus pelanggan: ${err?.message || 'Error'}` });
+    } finally {
+      setDeleteLoading(false);
       setActionLoadingId(null);
     }
   };
@@ -613,6 +804,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [selectedRouterId, setSelectedRouterId] = useState<string>('');
   const [packageId, setPackageId] = useState<string>('');
   const [staticIp, setStaticIp] = useState('');
+  const [ipAllocationMode, setIpAllocationMode] = useState<'profile' | 'auto' | 'manual'>('profile');
+  const [ipPools, setIpPools] = useState<any[]>([]);
   const [connectionType, setConnectionType] = useState<'pppoe'>('pppoe');
   const [expiredAt, setExpiredAt] = useState<string>('');
   const [graceUntil, setGraceUntil] = useState<string>('');
@@ -656,6 +849,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [importRouterId, setImportRouterId] = useState<string>('');
   const [updateExistingImport, setUpdateExistingImport] = useState(true);
 
+
+
   const parseJsonResponse = async (res: Response) => {
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
@@ -672,98 +867,118 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setLoading(true);
     let loadedCustomers: any[] = [];
     let loadedPackages: any[] = [];
-
-    // 1. Fire Cloud Firestore parallel queries FIRST (Lightning fast ~150ms)!
-    const [fbCust, fbPkg, fbCat, fbMap] = await Promise.all([
-      getCustomersFromFirestore().catch(() => ({ success: false, customers: [] })),
-      getPackagesFromFirestore().catch(() => ({ success: false, packages: [] })),
-      getDeviceCatalogFromFirestore().catch(() => ({ success: false, catalog: [] })),
-      getFtthMapFromFirestore().catch(() => ({ success: false, nodes: [], lines: [] }))
-    ]);
-
-    if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
-      loadedCustomers = [...fbCust.customers];
-    }
-    if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
-      loadedPackages = [...fbPkg.packages];
-    }
-    if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
-      setDeviceCatalog(fbCat.catalog);
-    }
-    if (fbMap.success) {
-      setFtthNodes(fbMap.nodes || []);
-      setFtthLines(fbMap.lines || []);
-    }
-
-    // 2. Optional: If running on local server (localhost), also query local Mikrotik/Express API in parallel
     const apiUrl = getApiUrl();
-    if (apiUrl) {
-      try {
-        const [resCust, resPkg, resRtr, resProf, resActive, resMap] = await Promise.all([
-          fetch(`${apiUrl}/api/customers`).catch(() => null),
-          fetch(`${apiUrl}/api/packages`).catch(() => null),
-          fetch(`${apiUrl}/api/routers`).catch(() => null),
-          fetch(`${apiUrl}/api/router-profiles`).catch(() => null),
-          fetch(`${apiUrl}/api/routers/ppp-active-users`).catch(() => null),
-          fetch(`${apiUrl}/api/ftth/map`).catch(() => null)
-        ]);
 
-        if (resCust && resCust.ok) {
-          const dataCust = await parseJsonResponse(resCust).catch(() => null);
-          if (dataCust && dataCust.success && Array.isArray(dataCust.customers)) {
-            const existingIds = new Set(loadedCustomers.map((c: any) => String(c.id)));
-            dataCust.customers.forEach((c: any) => {
-              if (!existingIds.has(String(c.id))) loadedCustomers.push(c);
-            });
-          }
-        }
-        if (resPkg && resPkg.ok) {
-          const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
-          if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages)) {
-            const existingPkgIds = new Set(loadedPackages.map((p: any) => String(p.id)));
-            dataPkg.packages.forEach((p: any) => {
-              if (!existingPkgIds.has(String(p.id))) loadedPackages.push(p);
-            });
-          }
-        }
-        if (resRtr && resRtr.ok) {
-          const dataRtr = await parseJsonResponse(resRtr).catch(() => null);
-          if (dataRtr && dataRtr.success && Array.isArray(dataRtr.routers)) {
-            setRouters(dataRtr.routers);
-            if (dataRtr.routers.length > 0 && !selectedRouterId) {
-              setSelectedRouterId(dataRtr.routers[0].id);
-              setImportRouterId(dataRtr.routers[0].id);
+    // ⚡ 1. If PostgreSQL API is available (Local / VPS), query PostgreSQL FIRST (Ultra-Fast ~50ms)!
+    try {
+      if (apiUrl) {
+        try {
+          const timeoutOpt = { signal: AbortSignal.timeout(5000) };
+          const [resCust, resPkg, resRtr, resProf, resActive, resMap, resPool] = await Promise.all([
+            fetch(`${apiUrl}/api/customers`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/packages`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/routers`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/router-profiles`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/routers/ppp-active-users`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/ftth/map`, timeoutOpt).catch(() => null),
+            fetch(`${apiUrl}/api/ip-pools`, timeoutOpt).catch(() => null)
+          ]);
+
+          if (resCust && resCust.ok) {
+            const dataCust = await parseJsonResponse(resCust).catch(() => null);
+            if (dataCust && dataCust.success && Array.isArray(dataCust.customers) && dataCust.customers.length > 0) {
+              loadedCustomers = dataCust.customers;
             }
           }
-        }
-        if (resProf && resProf.ok) {
-          const dataProf = await parseJsonResponse(resProf).catch(() => null);
-          if (dataProf && dataProf.success && Array.isArray(dataProf.profiles)) {
-            setRouterProfiles(dataProf.profiles);
+          if (resPkg && resPkg.ok) {
+            const dataPkg = await parseJsonResponse(resPkg).catch(() => null);
+            if (dataPkg && dataPkg.success && Array.isArray(dataPkg.packages) && dataPkg.packages.length > 0) {
+              loadedPackages = dataPkg.packages;
+            }
           }
-        }
-        if (resActive && resActive.ok) {
-          const dataActive = await parseJsonResponse(resActive).catch(() => null);
-          if (dataActive && dataActive.success && Array.isArray(dataActive.activeUsers)) {
-            const activeList = dataActive.activeUsers.map((u: any) => 
-              typeof u === 'string' ? u.toLowerCase().trim() : String(u.name || u.username || '').toLowerCase().trim()
-            );
-            setOnlineUsernames(activeList);
+          if (resRtr && resRtr.ok) {
+            const dataRtr = await parseJsonResponse(resRtr).catch(() => null);
+            if (dataRtr && dataRtr.success && Array.isArray(dataRtr.routers)) {
+              setRouters(dataRtr.routers);
+              if (dataRtr.routers.length > 0 && !selectedRouterId) {
+                setSelectedRouterId(dataRtr.routers[0].id);
+                setImportRouterId(dataRtr.routers[0].id);
+              }
+            }
           }
-        }
-        if (resMap && resMap.ok) {
-          const dataMap = await parseJsonResponse(resMap).catch(() => null);
-          if (dataMap && dataMap.success && dataMap.mapData) {
-            setFtthNodes(dataMap.mapData.nodes || []);
-            setFtthLines(dataMap.mapData.edges || dataMap.mapData.lines || []);
+          if (resProf && resProf.ok) {
+            const dataProf = await parseJsonResponse(resProf).catch(() => null);
+            if (dataProf && dataProf.success && Array.isArray(dataProf.profiles)) {
+              setRouterProfiles(dataProf.profiles);
+            }
           }
-        }
-      } catch (err: any) { }
-    }
+          if (resPool && resPool.ok) {
+            const dataPool = await parseJsonResponse(resPool).catch(() => null);
+            if (dataPool && dataPool.success && Array.isArray(dataPool.pools)) {
+              setIpPools(dataPool.pools);
+            }
+          }
+          if (resActive && resActive.ok) {
+            const dataActive = await parseJsonResponse(resActive).catch(() => null);
+            if (dataActive && dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
+              const activeList = dataActive.onlineUsernames.map((u: any) => 
+                typeof u === 'string' ? u.toLowerCase().trim() : String(u.name || u.username || '').toLowerCase().trim()
+              );
+              setOnlineUsernames(activeList);
+            }
+          }
+          if (resMap && resMap.ok) {
+            const dataMap = await parseJsonResponse(resMap).catch(() => null);
+            if (dataMap && dataMap.success && dataMap.mapData) {
+              setFtthNodes(dataMap.mapData.nodes || []);
+              setFtthLines(dataMap.mapData.edges || dataMap.mapData.lines || []);
+            }
+          }
+        } catch (err: any) { }
+      }
 
-    setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
-    setPackages(loadedPackages.filter((p: any) => p.type === 'pppoe'));
-    setLoading(false);
+      // ⚡ 2. If PostgreSQL returned customers & packages, RENDER IMMEDIATELY! Do NOT wait for Firestore!
+      if (loadedCustomers.length > 0) {
+        setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+        setPackages(loadedPackages.filter((p: any) => p.type === 'pppoe'));
+        setLoading(false);
+
+        // Asynchronously fetch device catalog in background without blocking table render
+        getDeviceCatalogFromFirestore().then(fbCat => {
+          if (fbCat && fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
+            setDeviceCatalog(fbCat.catalog);
+          }
+        }).catch(() => null);
+        return;
+      }
+
+      // ⚡ 3. Fallback: Query Cloud Firestore only if PostgreSQL returned 0 customers (or server offline)
+      const [fbCust, fbPkg, fbCat, fbMap] = await Promise.all([
+        getCustomersFromFirestore().catch(() => ({ success: false, customers: [] })),
+        getPackagesFromFirestore().catch(() => ({ success: false, packages: [] })),
+        getDeviceCatalogFromFirestore().catch(() => ({ success: false, catalog: [] })),
+        getFtthMapFromFirestore().catch(() => ({ success: false, nodes: [], lines: [] }))
+      ]);
+
+      if (fbCust.success && Array.isArray(fbCust.customers) && fbCust.customers.length > 0) {
+        loadedCustomers = [...fbCust.customers];
+      }
+      if (fbPkg.success && Array.isArray(fbPkg.packages) && fbPkg.packages.length > 0) {
+        loadedPackages = [...fbPkg.packages];
+      }
+      if (fbCat.success && Array.isArray(fbCat.catalog) && fbCat.catalog.length > 0) {
+        setDeviceCatalog(fbCat.catalog);
+      }
+      if (fbMap.success) {
+        setFtthNodes(fbMap.nodes || []);
+        setFtthLines(fbMap.lines || []);
+      }
+
+      setCustomers(loadedCustomers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+      setPackages(loadedPackages.filter((p: any) => p.type === 'pppoe'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -772,25 +987,40 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   // Auto-calculate Expired & Grace dates based on Tanggal Pasang/Aktif and Paket Internet
   const autoCalculateDates = (instDateStr: string, pkgIdToUse?: string) => {
-    const selectedPkg = packages.find(p => p.id === pkgIdToUse);
-    const baseDate = instDateStr ? new Date(instDateStr) : new Date();
+    if (!pkgIdToUse) {
+      setExpiredAt('');
+      setGraceUntil('');
+      return;
+    }
 
+    const selectedPkg = packages.find(p => p.id === pkgIdToUse);
+    if (!selectedPkg) {
+      setExpiredAt('');
+      setGraceUntil('');
+      return;
+    }
+
+    const baseDate = instDateStr ? new Date(instDateStr) : new Date();
     if (isNaN(baseDate.getTime())) return;
 
-    let valDays = selectedPkg?.validity_days || 30;
-    const valUnit = (selectedPkg as any)?.validity_unit || 'month';
-    const valVal = (selectedPkg as any)?.validity_value || 1;
-    const graceDays = (selectedPkg as any)?.grace_period_days || 15;
+    const parsedV = parseIso8601((selectedPkg as any)?.validity_iso);
+    const parsedG = parseIso8601((selectedPkg as any)?.grace_period_iso || 'P5D');
 
     const expDate = new Date(baseDate);
-    if (selectedPkg && valUnit === 'month') {
-      expDate.setMonth(expDate.getMonth() + valVal);
+    if (parsedV.unit === 'month') {
+      expDate.setMonth(expDate.getMonth() + (parsedV.val || 1));
+    } else if (parsedV.unit === 'day') {
+      expDate.setDate(expDate.getDate() + (parsedV.val || 30));
     } else {
-      expDate.setDate(expDate.getDate() + valDays);
+      expDate.setDate(expDate.getDate() + 30);
     }
 
     const graceDate = new Date(expDate);
-    graceDate.setDate(graceDate.getDate() + graceDays);
+    if (parsedG.unit === 'day') {
+      graceDate.setDate(graceDate.getDate() + (parsedG.val || 5));
+    } else {
+      graceDate.setDate(graceDate.getDate() + 5);
+    }
 
     setExpiredAt(expDate.toISOString().split('T')[0]);
     setGraceUntil(graceDate.toISOString().split('T')[0]);
@@ -806,10 +1036,93 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     autoCalculateDates(installationDate, newPkgId);
   };
 
+  // ⚡ Smart Auto-Assign Next Free IP Address (Anti-Conflict)
+  const handleAutoAssignFreeIp = () => {
+    if (!selectedRouterId) {
+      setToastMsg({ type: 'error', text: 'Silakan pilih MikroTik Router terlebih dahulu.' });
+      return;
+    }
+
+    const matchedProf = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+    
+    // Kumpulkan seluruh IP yang sudah terpakai di router ini oleh pelanggan lain
+    const usedIps = new Set<string>();
+    customers.forEach((c: any) => {
+      if (c.router_id === selectedRouterId && c.static_ip) {
+        if (!editingCustomer || c.id !== editingCustomer.id) {
+          usedIps.add(c.static_ip.trim());
+        }
+      }
+    });
+
+    if (matchedProf?.local_address) {
+      usedIps.add(matchedProf.local_address.trim());
+    }
+
+    // Cari referensi Subnet / Pool
+    let startOctet = 2;
+    let endOctet = 254;
+    let basePrefix = '';
+
+    const profRemote = matchedProf?.remote_address?.trim() || '';
+    const poolObj = ipPools.find(p => p.router_id === selectedRouterId && p.name === profRemote);
+    const rangeString = poolObj?.ranges || (profRemote.includes('-') ? profRemote : '');
+
+    if (rangeString && rangeString.includes('-')) {
+      const parts = rangeString.split('-');
+      const startIp = parts[0].trim();
+      const endIp = parts[1].trim();
+      const startParts = startIp.split('.');
+      const endParts = endIp.split('.');
+      if (startParts.length === 4) {
+        basePrefix = `${startParts[0]}.${startParts[1]}.${startParts[2]}.`;
+        startOctet = parseInt(startParts[3], 10) || 2;
+        endOctet = endParts.length === 4 ? (parseInt(endParts[3], 10) || 254) : (parseInt(endParts[0], 10) || 254);
+      }
+    } else if (matchedProf?.local_address && matchedProf.local_address.includes('.')) {
+      const parts = matchedProf.local_address.split('.');
+      if (parts.length === 4) {
+        basePrefix = `${parts[0]}.${parts[1]}.${parts[2]}.`;
+        startOctet = 2;
+        endOctet = 254;
+      }
+    } else {
+      // Coba cari dari IP customer yang sudah ada di router ini
+      const existingWithIp = customers.find((c: any) => c.router_id === selectedRouterId && c.static_ip && c.static_ip.includes('.'));
+      if (existingWithIp && existingWithIp.static_ip) {
+        const parts = existingWithIp.static_ip.split('.');
+        if (parts.length === 4) {
+          basePrefix = `${parts[0]}.${parts[1]}.${parts[2]}.`;
+        }
+      }
+    }
+
+    // Fallback default jika belum ada subnet sama sekali
+    if (!basePrefix) {
+      basePrefix = '192.168.10.';
+    }
+
+    // Loop cari IP pertama yang belum pernah dipakai
+    let freeIpFound = '';
+    for (let i = startOctet; i <= endOctet; i++) {
+      const candidate = `${basePrefix}${i}`;
+      if (!usedIps.has(candidate)) {
+        freeIpFound = candidate;
+        break;
+      }
+    }
+
+    if (freeIpFound) {
+      setStaticIp(freeIpFound);
+      setToastMsg({ type: 'success', text: `Berhasil menemukan IP Kosong: ${freeIpFound}` });
+    } else {
+      setToastMsg({ type: 'error', text: `Tidak ditemukan IP kosong pada rentang ${basePrefix}${startOctet}-${endOctet}` });
+    }
+  };
+
   const resetForm = () => {
     const nextCode = generateNextCustomerCode();
     const today = new Date().toISOString().split('T')[0];
-    const initialPkgId = packages.length > 0 ? packages[0].id : '';
 
     setCustomerCode(nextCode);
     setName('');
@@ -830,6 +1143,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setPppoeUsername('');
     setPppoePassword('');
     setStaticIp('');
+    setIpAllocationMode('profile');
     setConnectionType('pppoe');
     
     setOdpPort('');
@@ -838,10 +1152,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setTeknisi('');
 
     if (routers.length > 0) setSelectedRouterId(routers[0].id);
-    if (initialPkgId) {
-      setPackageId(initialPkgId);
-    }
-    autoCalculateDates(today, initialPkgId);
+    // Kosongkan paket secara default agar admin harus memilih dari paket yang tertaut
+    setPackageId('');
+    setExpiredAt('');
+    setGraceUntil('');
   };
 
   const handleOpenAddModal = () => {
@@ -854,6 +1168,18 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (!name.trim() || !packageId) {
       setToastMsg({ type: 'error', text: 'Nama Pelanggan dan Paket Internet wajib diisi!' });
       return;
+    }
+
+    if (staticIp.trim()) {
+      const conflict = customers.find(c =>
+        c.router_id === selectedRouterId &&
+        c.static_ip &&
+        c.static_ip.trim() === staticIp.trim()
+      );
+      if (conflict) {
+        setToastMsg({ type: 'error', text: `IP ${staticIp.trim()} sudah digunakan oleh pelanggan ${conflict.name} (${conflict.customer_code || 'Pelanggan'})!` });
+        return;
+      }
     }
 
     setSubmitLoading(true);
@@ -985,8 +1311,24 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setDeviceModel((cust as any).device_model || (detectedType === 'ROUTER_WIFI' ? 'N301' : 'F609'));
     setDeviceLanPorts(Number((cust as any).device_lan_ports) || 4);
 
-    if (cust.router_id) setSelectedRouterId(cust.router_id);
-    if (cust.package_id) setPackageId(cust.package_id);
+    const targetRouterId = cust.router_id || (routers.length > 0 ? routers[0].id : '');
+    setSelectedRouterId(targetRouterId);
+
+    // Cek apakah paket customer ini benar-benar tertaut pada router ini
+    const isPkgLinked = routerProfiles.some(rp => rp.router_id === targetRouterId && rp.package_id === cust.package_id);
+    if (isPkgLinked && cust.package_id) {
+      setPackageId(cust.package_id);
+    } else {
+      setPackageId('');
+    }
+
+    if (cust.static_ip && cust.static_ip.trim()) {
+      setIpAllocationMode('manual');
+      setStaticIp(cust.static_ip.trim());
+    } else {
+      setIpAllocationMode('profile');
+      setStaticIp('');
+    }
 
     setShowEditModal(true);
   };
@@ -1008,6 +1350,19 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (!editingCustomer || !name.trim() || !packageId) {
       setToastMsg({ type: 'error', text: 'Nama dan Paket Internet wajib diisi!' });
       return;
+    }
+
+    if (staticIp.trim()) {
+      const conflict = customers.find(c =>
+        c.router_id === selectedRouterId &&
+        c.static_ip &&
+        c.static_ip.trim() === staticIp.trim() &&
+        c.id !== editingCustomer.id
+      );
+      if (conflict) {
+        setToastMsg({ type: 'error', text: `IP ${staticIp.trim()} sudah digunakan oleh pelanggan ${conflict.name} (${conflict.customer_code || 'Pelanggan'})!` });
+        return;
+      }
     }
 
     setSubmitLoading(true);
@@ -1075,24 +1430,6 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       setToastMsg({ type: 'error', text: err?.message || 'Gagal memperbarui data pelanggan.' });
     } finally {
       setSubmitLoading(false);
-    }
-  };
-
-  const handleDeleteCustomer = async (cust: CustomerItem) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus pelanggan "${cust.name}"? PERATURAN: Node perangkat di Peta FTTH & kabel optik akan otomatis dicabut, dan Port ODP akan kembali bebas!`)) return;
-    setActionLoadingId(cust.id);
-    try {
-      const apiUrl = getApiUrl();
-      if (apiUrl) {
-        await fetch(`${apiUrl}/api/customers/${cust.id}`, { method: 'DELETE' }).catch(() => null);
-      }
-      await deleteCustomerFromFirestore(cust.id, cust);
-      setCustomers(prev => prev.filter(c => c.id !== cust.id));
-      setToastMsg({ type: 'success', text: `🗑️ Pelanggan "${cust.name}" berhasil dihapus, jalur kabel dicabut & Port ODP kembali BEBAS!` });
-    } catch (err: any) {
-      setToastMsg({ type: 'error', text: 'Gagal menghapus pelanggan: ' + err?.message });
-    } finally {
-      setActionLoadingId(null);
     }
   };
 
@@ -1211,14 +1548,41 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8 min-h-screen">
       <HeaderBar
-        title="Daftar Pelanggan"
-        subtitle="Manajemen Pelanggan FTTH/PPPoE, Penagihan Bulanan, dan Integrasi Mikrotik Secret"
+        title={selectedCustomerDetail ? `Detail Pelanggan: ${selectedCustomerDetail.name}` : "Daftar Pelanggan"}
+        subtitle={selectedCustomerDetail ? "Rincian Lengkap Kredensial, Status Koneksi, FTTH, Lokasi, dan Tagihan Pelanggan" : "Manajemen Pelanggan FTTH/PPPoE, Penagihan Bulanan, dan Integrasi Mikrotik Secret"}
         profile={profile}
         t={t}
         onLogout={onLogout}
       />
 
       <main className="p-4 md:p-6 lg:p-8 space-y-6 w-full">
+        {selectedCustomerDetail ? (
+          <CustomerDetailView
+            customer={selectedCustomerDetail}
+            profile={profile}
+            isOnline={isUserOnline(selectedCustomerDetail)}
+            ftthInfo={getFtthInfoForCustomer(selectedCustomerDetail)}
+            linkedFtthNode={getLinkedFtthNode(selectedCustomerDetail)}
+            onBack={() => {
+              setSelectedCustomerDetail(null);
+              if (window.location.hash.includes('?')) {
+                window.location.hash = window.location.hash.split('?')[0];
+              }
+            }}
+            onEdit={(cust) => openEditModal(cust)}
+            onSync={(cust) => handleSyncCustomer(cust)}
+            onDisconnect={(cust) => handleDisconnectCustomer(cust)}
+            onApprove={(cust) => handleApprovePendingCustomer(cust)}
+            onDelete={(cust) => promptDeleteCustomer(cust)}
+            onOpenQuickDevice={(cust) => handleOpenQuickDeviceModal(cust)}
+            onSetGps={(cust) => {
+              setMapCustomer(cust);
+              setShowMapPickerModal(true);
+            }}
+            actionLoadingId={actionLoadingId}
+          />
+        ) : (
+          <>
         {/* Toast Notification */}
         {toastMsg && (
           <div className={`p-4 rounded-2xl border flex items-center justify-between shadow-sm animate-fade-in ${
@@ -1236,6 +1600,16 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <h2 className="text-2xl font-black font-sans text-slate-800 tracking-tight">Daftar Pelanggan Rumah</h2>
           <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={handleSyncAllCustomers}
+              disabled={syncAllLoading}
+              className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-emerald-100 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              title="Sinkronkan seluruh akun PPPoE & Hotspot pelanggan ke Router Mikrotik"
+            >
+              <RefreshCw size={15} className={syncAllLoading ? 'animate-spin' : ''} />
+              <span>{syncAllLoading ? 'Menyinkronkan...' : '🔄 Singkron ke MikroTik'}</span>
+            </button>
+
             <button
               onClick={() => { window.location.hash = '#/map-ftth'; }}
               className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-sky-100 flex items-center gap-2 transition-all cursor-pointer"
@@ -1405,18 +1779,20 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] uppercase font-black tracking-wider text-slate-500">
                         <th className="py-3 px-4">Pelanggan</th>
-                        <th className="py-3 px-4">Paket</th>
+                        <th className="py-3 px-4">Paket & Kecepatan</th>
                         <th className="py-3 px-4">Username / IP</th>
-                        <th className="py-3 px-4">Fisik Perangkat & Redaman FO</th>
-                        <th className="py-3 px-4">Titik GPS & Node FTTH</th>
-                        <th className="py-3 px-4 text-center">Mikrotik Sync</th>
+                        <th className="py-3 px-4">Status & Masa Aktif</th>
                         <th className="py-3 px-4 text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs font-sans">
                       {paginatedCustomers.map(cust => (
-                        <tr key={cust.id} className="hover:bg-slate-50/80 transition-colors">
-                          {/* PELANGGAN (with integrated status dot) */}
+                        <tr
+                          key={cust.id}
+                          onClick={() => setSelectedCustomerDetail(cust)}
+                          className="hover:bg-indigo-50/40 transition-colors cursor-pointer group"
+                        >
+                          {/* PELANGGAN */}
                           <td className="py-3.5 px-4 space-y-0.5">
                             <div className="flex items-center gap-2">
                               <span className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${
@@ -1424,20 +1800,17 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                   ? (isUserOnline(cust) ? 'bg-emerald-500 shadow-xs shadow-emerald-300 animate-pulse' : 'bg-rose-500') 
                                   : 'bg-amber-500'
                               }`} title={cust.status === 'active' ? (isUserOnline(cust) ? 'Online di Mikrotik' : 'Offline') : cust.status} />
-                              <span className="font-extrabold text-slate-800 text-xs">{cust.name}</span>
+                              <span className="font-extrabold text-slate-800 text-xs group-hover:text-indigo-600 transition-colors">
+                                {cust.name}
+                              </span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-mono pl-4.5 flex items-center gap-1.5 flex-wrap">
+                            <div className="text-[10px] text-slate-400 font-mono pl-4.5 flex items-center gap-2">
                               <span>{cust.customer_code || `CUST-${cust.id.substring(0, 5).toUpperCase()}`}</span>
-                              {cust.latitude && cust.longitude && (
-                                <a
-                                  href={cust.maps_url || `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[9.5px] font-mono font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 hover:bg-sky-100 transition-all inline-flex items-center gap-1"
-                                  title="Klik untuk membuka titik GPS di Google Maps"
-                                >
-                                  <span>📍 {Number(cust.latitude).toFixed(5)}, {Number(cust.longitude).toFixed(5)}</span>
-                                </a>
+                              {cust.phone_number && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-slate-500 font-sans">{cust.phone_number}</span>
+                                </>
                               )}
                             </div>
                           </td>
@@ -1447,6 +1820,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                             <span className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-bold text-[11px] text-slate-700 inline-block">
                               {cust.package_name || 'Default Package'}
                             </span>
+                            {cust.speed_limit && (
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5 pl-1">
+                                ⚡ {cust.speed_limit}
+                              </div>
+                            )}
                           </td>
 
                           {/* USERNAME / IP */}
@@ -1455,212 +1833,54 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                             <div className="text-slate-400 text-[11px]">{cust.static_ip || 'DHCP Pool'}</div>
                           </td>
 
-                          {/* FISIK PERANGKAT & REDAMAN FO & ODP LINK INFO */}
+                          {/* STATUS & MASA AKTIF */}
                           <td className="py-3.5 px-4 space-y-1">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {isUserOnline(cust) ? (
-                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black inline-flex items-center gap-1 border border-emerald-300">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
-                                  <span>ONU ONLINE</span>
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-black inline-flex items-center gap-1 border border-rose-300">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                                  <span>ONU OFFLINE</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {/* ODP Induk Link Info */}
-                            {(() => {
-                              const ftthInfo = getFtthInfoForCustomer(cust);
-                              if (ftthInfo) {
-                                return (
-                                  <div className="text-[10px] font-mono font-extrabold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 inline-flex items-center gap-1 shadow-2xs" title={`Node: ${ftthInfo.nodeName} | Penyuplai ODP: ${ftthInfo.odpName} (Port #${ftthInfo.odpPort})`}>
-                                    <span>🏢 {ftthInfo.odpName}</span>
-                                    <span className="bg-purple-200 text-purple-950 px-1 py-0.2 rounded text-[9px] font-black">Port #{ftthInfo.odpPort}</span>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div className="text-[9.5px] font-mono text-slate-400 italic">
-                                  (Belum Ditautkan ke ODP Peta)
-                                </div>
-                              );
-                            })()}
-
-                            <div className="text-[10px] font-mono font-bold text-slate-600 flex items-center gap-1">
-                              <span>⚡ Redaman:</span>
-                              <span className={
-                                parseFloat(cust.power_laser || '-19.5') < -27
-                                  ? 'text-rose-600 font-extrabold'
-                                  : parseFloat(cust.power_laser || '-19.5') < -23
-                                  ? 'text-amber-600 font-extrabold'
-                                  : 'text-emerald-700 font-extrabold'
-                              }>
-                                {cust.power_laser || '-19.50'} dBm
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                cust.status === 'active' 
+                                  ? (isUserOnline(cust) ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {cust.status === 'active' ? (isUserOnline(cust) ? '🟢 Online' : '🔴 Offline') : cust.status}
                               </span>
                             </div>
-                          </td>
-
-                          {/* TITIK GPS & NODE FTTH COLUMN */}
-                          <td className="py-3.5 px-4 font-mono text-[11px]">
-                            {cust.latitude && cust.longitude ? (
-                              <div className="space-y-1">
-                                <a
-                                  href={cust.maps_url || `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] font-mono font-bold text-sky-800 bg-sky-50 border border-sky-200 hover:bg-sky-100 px-2 py-0.5 rounded-md transition-all inline-flex items-center gap-1 shadow-2xs"
-                                  title="Klik untuk membuka lokasi GPS rumah pelanggan di Google Maps"
-                                >
-                                  <span>📍 {Number(cust.latitude).toFixed(5)}, {Number(cust.longitude).toFixed(5)}</span>
-                                </a>
-                                <div>
-                                  {(() => {
-                                    const linkedNode = ftthNodes.find((n: any) =>
-                                      String(n.customerId || '') === String(cust.id || cust.customer_code) ||
-                                      (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === String(cust.pppoe_username).toLowerCase().trim()) ||
-                                      (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(cust.sn_onu).toLowerCase().trim())
-                                    );
-                                    if (linkedNode) {
-                                      return (
-                                        <span className="text-emerald-800 font-extrabold bg-emerald-100 px-1.5 py-0.5 rounded text-[9px] inline-flex items-center gap-1" title={`Node: ${linkedNode.name || linkedNode.id}`}>
-                                          <span>⚡ Node: #{linkedNode.id}</span>
-                                        </span>
-                                      );
-                                    }
-                                    return (
-                                      <span className="text-amber-800 font-bold bg-amber-100 px-1.5 py-0.5 rounded text-[9px]">
-                                        ⚠️ Node Off-Map
-                                      </span>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setMapCustomer(cust);
-                                  setShowMapPickerModal(true);
-                                }}
-                                className="text-[10px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer"
-                                title="Klik untuk menentukan titik lokasi GPS rumah pelanggan pada Peta Interactive"
-                              >
-                                <span>⚠️ + Set Titik GPS</span>
-                              </button>
-                            )}
-                          </td>
-
-                          {/* MIKROTIK SYNC & DISCONNECT BUTTON COLUMN */}
-                          <td className="py-3.5 px-4 text-center">
-                            {isPendingStatus(cust.status) ? (
-                              <button
-                                onClick={() => handleApprovePendingCustomer(cust)}
-                                disabled={actionLoadingId === cust.id}
-                                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-amber-100"
-                                title="Klik untuk mengaktifkan permohonan pemasangan pelanggan ini"
-                              >
-                                {actionLoadingId === cust.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                <span>⚡ Proses & Aktifkan</span>
-                              </button>
-                            ) : !cust.is_synced ? (
-                              <button
-                                onClick={() => handleSyncCustomer(cust)}
-                                disabled={actionLoadingId === cust.id}
-                                className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
-                                title="Update / Push data PPPoE ke Mikrotik"
-                              >
-                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <Zap size={11} />}
-                                <span>Sync Mikrotik</span>
-                              </button>
-                            ) : isUserOnline(cust) ? (
-                              <button
-                                onClick={() => handleDisconnectCustomer(cust)}
-                                disabled={actionLoadingId === cust.id}
-                                className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
-                                title="Koneksi Aktif (Online) - Klik untuk diskonek/putuskan agar reconnect ulang"
-                              >
-                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <Plug size={11} />}
-                                <span>Diskonek</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleSyncCustomer(cust)}
-                                disabled={actionLoadingId === cust.id}
-                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-[10px] inline-flex items-center gap-1 transition-all cursor-pointer"
-                                title="Sudah ter-sync di Mikrotik - Klik untuk Update Sync ulang"
-                              >
-                                {actionLoadingId === cust.id ? <RefreshCw size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-                                <span>Synced</span>
-                              </button>
-                            )}
+                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                              <Clock size={11} className="text-slate-400" />
+                              <span>Exp: {formatDateSafe(cust.expired_at)}</span>
+                            </div>
                           </td>
 
                           {/* AKSI */}
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="inline-flex items-center gap-1.5">
                               <button
-                                onClick={() => handleOpenQuickDeviceModal(cust)}
-                                className={`p-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 font-bold text-[10px] ${
-                                  ftthNodes.some(n => 
-                                    (n.customerId && String(n.customerId) === String(cust.id || cust.customer_code)) ||
-                                    (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(String(cust.id))) ||
-                                    (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
-                                    (n.sn_onu && cust.sn_onu && n.sn_onu.toLowerCase().trim() === cust.sn_onu.toLowerCase().trim())
-                                  ) 
-                                    ? 'text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200' 
-                                    : 'text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 animate-pulse'
-                                }`}
-                                title="Kelola & Pasang Node Perangkat Pelanggan (1-Klik)"
+                                onClick={() => setSelectedCustomerDetail(cust)}
+                                className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                title="Lihat Detail Lengkap Pelanggan"
                               >
-                                <Cpu size={14} />
+                                <Eye size={13} />
+                                <span>Detail</span>
                               </button>
-                              {Boolean(
-                                (cust as any).latitude || 
-                                cust.maps_url || 
-                                ftthNodes.some(n => 
-                                  (n.customerId && String(n.customerId) === String(cust.id)) ||
-                                  (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
-                                  (n.name && cust.name && n.name.toLowerCase().trim() === cust.name.toLowerCase().trim())
-                                )
-                              ) && (
-                                <button 
-                                  onClick={() => {
-                                    const custIdStr = String(cust.id || cust.customer_code || '').trim();
-                                    const linkedNode = ftthNodes.find(n => 
-                                      String(n.customerId || '') === custIdStr ||
-                                      (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(custIdStr)) ||
-                                      (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === String(cust.pppoe_username).toLowerCase().trim()) ||
-                                      (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === String(cust.sn_onu).toLowerCase().trim())
-                                    );
-                                    if (linkedNode) {
-                                      window.location.hash = `#/map-ftth?nodeId=${linkedNode.id}`;
-                                    } else if (cust.latitude && cust.longitude) {
-                                      window.location.hash = `#/map-ftth?lat=${cust.latitude}&lng=${cust.longitude}`;
-                                    } else {
-                                      window.location.hash = '#/map-ftth';
-                                    }
-                                  }}
-                                  className="p-1.5 text-sky-600 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition-all cursor-pointer"
-                                  title="Buka & Sorot Titik Lokasi Pelanggan di Peta Topologi FTTH"
-                                >
-                                  <MapPin size={14} />
-                                </button>
-                              )}
-                              <button 
-                                onClick={() => openEditModal(cust)} 
-                                className="p-1.5 text-slate-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
-                                title="Edit Customer"
+
+                              <button
+                                onClick={() => openEditModal(cust)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
+                                title="Edit Data Pelanggan"
                               >
                                 <Edit size={14} />
                               </button>
-                              <button 
-                                onClick={() => openBillingModal(cust)}
-                                className="p-1.5 text-[#2563EB] hover:text-indigo-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
-                                title="Detail & Tagihan Pelanggan"
+
+                              <button
+                                onClick={() => promptDeleteCustomer(cust)}
+                                disabled={actionLoadingId === cust.id}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                title="Hapus Pelanggan Permanen"
                               >
-                                <FileText size={14} />
+                                {actionLoadingId === cust.id ? (
+                                  <RefreshCw size={14} className="animate-spin text-rose-500" />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
                               </button>
                             </div>
                           </td>
@@ -1759,6 +1979,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
             </div>
           </div>
         </div>
+          </>
+        )}
       </main>
 
       {/* Modal Tambah / Edit Pelanggan PPPoE (2-Columns Layout Matching Screenshot 2) */}
@@ -2004,7 +2226,19 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                       <label className="block text-xs font-bold text-slate-700 mb-1">Mikrotik Server</label>
                       <select
                         value={selectedRouterId}
-                        onChange={(e) => setSelectedRouterId(e.target.value)}
+                        onChange={(e) => {
+                          const newRouterId = e.target.value;
+                          setSelectedRouterId(newRouterId);
+                          // Reset packageId jika paket saat ini tidak tertaut di router baru
+                          const isStillLinked = routerProfiles.some(
+                            rp => rp.router_id === newRouterId && rp.package_id === packageId
+                          );
+                          if (!isStillLinked) {
+                            setPackageId('');
+                            setExpiredAt('');
+                            setGraceUntil('');
+                          }
+                        }}
                         className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
                       >
                         {routers.map(r => (
@@ -2015,65 +2249,311 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Paket Internet *</label>
-                      <select
-                        value={packageId}
-                        onChange={(e) => handlePackageChange(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-800"
-                      >
-                        {packages.map(pkg => (
-                          <option key={pkg.id} value={pkg.id}>
-                            {pkg.name} (Rp {Number(pkg.price).toLocaleString('id-ID')})
-                          </option>
-                        ))}
-                      </select>
+                      {(() => {
+                        const linkedPackages = packages.filter(pkg =>
+                          routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
+                        );
+                        const hasPackages = linkedPackages.length > 0;
+
+                        return (
+                          <select
+                            value={hasPackages ? packageId : ''}
+                            onChange={(e) => handlePackageChange(e.target.value)}
+                            disabled={!hasPackages}
+                            className={`w-full px-3.5 py-2 border rounded-xl text-xs font-sans font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none transition ${
+                              !hasPackages
+                                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-white border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            {!hasPackages ? (
+                              <option value="">-- Belum ada paket tertaut di router ini --</option>
+                            ) : (
+                              <>
+                                <option value="">-- Silakan Pilih Paket --</option>
+                                {linkedPackages.map(pkg => (
+                                  <option key={pkg.id} value={pkg.id}>
+                                    {pkg.name} (Rp {Number(pkg.price).toLocaleString('id-ID')})
+                                  </option>
+                                ))}
+                              </>
+                            )}
+                          </select>
+                        );
+                      })()}
                     </div>
                   </div>
 
-                  {/* Auto Calculated Date & IP Pool Hint Box */}
+                  {/* Verification of Router Profile Connection & Auto-Calculation Hint */}
                   {(() => {
                     const matchedPkg = packages.find(p => p.id === packageId);
                     const matchedProf = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
-                    return (
-                      <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-2xl text-[11px] text-blue-900 space-y-1">
-                        <div className="font-extrabold flex items-center justify-between">
-                          <span>⚡ Auto-Calculated dari Tanggal Pasang + Paket:</span>
-                          <span className="font-mono text-blue-700">{matchedPkg?.speed_limit || 'Speed Auto'}</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-[10px] font-semibold text-blue-800">
-                          <span>Masa Aktif: +{matchedPkg?.validity_days || 30} Hari</span>
-                          <span>Toleransi: +{(matchedPkg as any)?.grace_period_days || 5} Hari</span>
-                        </div>
-                        {matchedProf && (
-                          <div className="text-[10px] font-bold text-indigo-700 pt-0.5 flex items-center gap-2">
-                            <span>Profile: {matchedProf.name}</span>
-                            {(matchedProf as any).remote_address && <span>• IP Pool: {(matchedProf as any).remote_address}</span>}
-                          </div>
-                        )}
-                      </div>
+                    const selectedRouter = routers.find(r => r.id === selectedRouterId);
+                    const routerName = selectedRouter?.name || 'MikroTik Router';
+                    const linkedPackages = packages.filter(pkg =>
+                      routerProfiles.some(rp => rp.router_id === selectedRouterId && rp.package_id === pkg.id)
                     );
+
+                    if (linkedPackages.length === 0) {
+                      return (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 space-y-1.5 animate-fade-in">
+                          <div className="font-extrabold flex items-center justify-between text-amber-800">
+                            <div className="flex items-center gap-1.5">
+                              <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                              <span>Router Belum Memiliki Paket Tertaut</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-md bg-amber-200 text-amber-900 font-black text-[10px]">
+                              KOSONG
+                            </span>
+                          </div>
+                          <p className="text-[10.5px] text-amber-700 leading-relaxed">
+                            Router <b>{routerName}</b> belum memiliki profile PPP yang ditautkan ke paket internet. Silakan tautkan paket di menu <a href="#/profiles" className="font-bold underline text-amber-950 hover:text-amber-800">Profile & Paket</a>.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    if (!packageId) {
+                      return (
+                        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl text-[11px] text-blue-900 space-y-1">
+                          <div className="font-bold flex items-center justify-between text-blue-800">
+                            <span className="flex items-center gap-1.5">
+                              <AlertCircle size={14} className="text-blue-600 shrink-0" />
+                              <span>Router: {routerName}</span>
+                            </span>
+                            <span className="text-[10px] text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded-md">
+                              {linkedPackages.length} Paket Tersedia
+                            </span>
+                          </div>
+                          <p className="text-[10.5px] text-blue-700">
+                            Silakan pilih salah satu paket internet yang tertaut pada router ini.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    if (matchedProf) {
+                      return (
+                        <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-[11px] text-emerald-900 space-y-2 shadow-2xs animate-fade-in">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-black text-emerald-800">
+                              <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                              <span>Profile MikroTik: <span className="font-mono underline text-emerald-950">{matchedProf.name}</span></span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-200 text-emerald-950 font-black text-[10px]">
+                              TERTAUT & SIAP
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-[10.5px] pt-1.5 border-t border-emerald-200 font-semibold text-emerald-800">
+                            <div>⚡ Rate-Limit: <span className="font-mono font-bold text-emerald-950">{matchedProf.rate_limit || matchedPkg?.speed_limit || 'Default'}</span></div>
+                            <div>🌐 IP Pool: <span className="font-mono font-bold text-emerald-950">{(matchedProf as any).remote_address || 'Default Pool'}</span></div>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] font-semibold text-emerald-700 pt-0.5">
+                            <span>Masa Aktif: +{parseIso8601(matchedPkg?.validity_iso).human}</span>
+                            <span>Toleransi: +{parseIso8601((matchedPkg as any)?.grace_period_iso || 'P5D').human}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return null;
                   })()}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">IP Statis (Optional)</label>
-                      <input
-                        type="text"
-                        placeholder="192.168.98.111"
-                        value={staticIp}
-                        onChange={(e) => setStaticIp(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
-                      />
+                  {/* Pilihan Alokasi IP Remote Address (3 Mode) */}
+                  <div className="p-4 bg-white border border-slate-200/90 rounded-2xl space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                        <Globe size={15} className="text-indigo-600" />
+                        <span>Alokasi IP Remote Address</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-md bg-blue-100 text-blue-900">
+                          LAYANAN PPPOE
+                        </span>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Layanan</label>
-                      <input
-                        type="text"
-                        disabled
-                        value="PPPOE"
-                        className="w-full px-3.5 py-2 bg-slate-200 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-700"
-                      />
+                    {/* 3 Mode Radio Buttons */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIpAllocationMode('profile');
+                          setStaticIp('');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition font-semibold flex flex-col justify-between cursor-pointer ${
+                          ipAllocationMode === 'profile'
+                            ? 'bg-blue-50/90 border-blue-500 text-blue-950 ring-2 ring-blue-500/20 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <input
+                            type="radio"
+                            name="ipMode"
+                            checked={ipAllocationMode === 'profile'}
+                            onChange={() => {}}
+                            className="text-blue-600 cursor-pointer"
+                          />
+                          <span className="text-[11px]">Ikuti Profile</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1">Pool Dinamis MikroTik</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIpAllocationMode('auto');
+                          handleAutoAssignFreeIp();
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition font-semibold flex flex-col justify-between cursor-pointer ${
+                          ipAllocationMode === 'auto'
+                            ? 'bg-emerald-50/90 border-emerald-500 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <input
+                            type="radio"
+                            name="ipMode"
+                            checked={ipAllocationMode === 'auto'}
+                            onChange={() => {}}
+                            className="text-emerald-600 cursor-pointer"
+                          />
+                          <span className="text-[11px]">Otomatis Sistem</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1">Auto-Cari IP Kosong</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIpAllocationMode('manual');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition font-semibold flex flex-col justify-between cursor-pointer ${
+                          ipAllocationMode === 'manual'
+                            ? 'bg-indigo-50/90 border-indigo-500 text-indigo-950 ring-2 ring-indigo-500/20 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <input
+                            type="radio"
+                            name="ipMode"
+                            checked={ipAllocationMode === 'manual'}
+                            onChange={() => {}}
+                            className="text-indigo-600 cursor-pointer"
+                          />
+                          <span className="text-[11px]">Manual Statis</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1">Kustom IP Sendiri</span>
+                      </button>
                     </div>
+
+                    {/* Mode 1 Content: Ikuti Profile (Pool Dinamis) */}
+                    {ipAllocationMode === 'profile' && (() => {
+                      const matchedProf = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
+                      const poolName = (matchedProf as any)?.remote_address || 'Default Pool MikroTik';
+                      return (
+                        <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl text-[11px] text-blue-950 flex items-center justify-between animate-fade-in">
+                          <div className="flex items-center gap-2 font-medium">
+                            <CheckCircle2 size={15} className="text-blue-600 shrink-0" />
+                            <span>IP dialokasikan otomatis oleh MikroTik dari Remote Pool: <span className="font-mono font-black text-blue-900 underline">{poolName}</span></span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded bg-blue-200 text-blue-900 font-black text-[10px] shrink-0">
+                            DINAMIS
+                          </span>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Mode 2 Content: Otomatis Sistem (Auto-Assign Free IP) */}
+                    {ipAllocationMode === 'auto' && (
+                      <div className="space-y-2 animate-fade-in">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type="text"
+                              readOnly
+                              placeholder="Mencari IP kosong..."
+                              value={staticIp}
+                              className="w-full px-3.5 py-2 bg-emerald-50/60 border border-emerald-300 rounded-xl text-xs font-mono font-black text-emerald-950"
+                            />
+                            {staticIp && (
+                              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-emerald-800 bg-emerald-200 px-2 py-0.5 rounded">
+                                ✅ IP BEBAS TERPILIH
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleAutoAssignFreeIp}
+                            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer transition"
+                            title="Cari ulang IP berikutnya yang belum dipakai"
+                          >
+                            <RefreshCw size={13} />
+                            <span>Cari Ulang</span>
+                          </button>
+                        </div>
+                        <p className="text-[10.5px] text-emerald-800 font-semibold leading-relaxed">
+                          ⚡ Sistem otomatis menyaring seluruh database pelanggan di router ini sehingga IP <span className="font-mono font-black text-emerald-950 underline">{staticIp || '-'}</span> dijamin 100% bebas dari risiko bentrok (Anti-IP Conflict).
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Mode 3 Content: Manual Statis */}
+                    {ipAllocationMode === 'manual' && (() => {
+                      const ipConflict = staticIp.trim()
+                        ? customers.find(c =>
+                            c.router_id === selectedRouterId &&
+                            c.static_ip &&
+                            c.static_ip.trim() === staticIp.trim() &&
+                            (!editingCustomer || c.id !== editingCustomer.id)
+                          )
+                        : null;
+
+                      return (
+                        <div className="space-y-2 animate-fade-in">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Contoh: 192.168.10.55"
+                              value={staticIp}
+                              onChange={(e) => setStaticIp(e.target.value)}
+                              className={`flex-1 px-3.5 py-2 bg-white border rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 ${
+                                ipConflict
+                                  ? 'border-rose-400 focus:ring-rose-400 bg-rose-50/40 text-rose-950'
+                                  : 'border-slate-300 focus:ring-indigo-500'
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAutoAssignFreeIp}
+                              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition border border-slate-200"
+                              title="Dapatkan rekomendasi IP kosong dari sistem"
+                            >
+                              <Zap size={13} className="text-amber-500" />
+                              <span>Saran IP</span>
+                            </button>
+                          </div>
+                          {ipConflict ? (
+                            <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-bold text-rose-800 flex items-center gap-1.5">
+                              <AlertTriangle size={14} className="text-rose-600 shrink-0" />
+                              <span>⚠️ IP ini sudah dipakai oleh <b>{ipConflict.name}</b> ({ipConflict.customer_code || 'Pelanggan'})!</span>
+                            </div>
+                          ) : staticIp.trim() ? (
+                            <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                              <CheckCircle2 size={13} className="text-emerald-600 shrink-0" />
+                              <span>✅ IP {staticIp.trim()} tersedia & belum pernah digunakan.</span>
+                            </div>
+                          ) : (
+                            <p className="text-[10.5px] text-slate-500">
+                              Ketik alamat IP kustom yang diinginkan untuk pelanggan ini.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Expiration dates matching Screenshot 2 */}
@@ -2186,24 +2666,40 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 </div>
               </div>
 
-              {/* Submit Button (Matching Screenshot 2: Simpan & Push Mikrotik) */}
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 shrink-0">
-                <button 
-                  type="button" 
-                  onClick={() => { setShowAddModal(false); setShowEditModal(false); setEditingCustomer(null); }} 
-                  className="px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
+              {/* Submit Button & Delete Option */}
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100 shrink-0">
+                <div>
+                  {showEditModal && editingCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => promptDeleteCustomer(editingCustomer)}
+                      className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 hover:border-rose-600 rounded-xl cursor-pointer transition-all flex items-center gap-1.5"
+                      title="Hapus Pelanggan Ini Secara Permanen"
+                    >
+                      <Trash2 size={14} />
+                      <span>Hapus Pelanggan</span>
+                    </button>
+                  )}
+                </div>
 
-                <button 
-                  type="submit" 
-                  disabled={submitLoading} 
-                  className="px-6 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
-                >
-                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>💾 Simpan & Push Mikrotik</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    type="button" 
+                    onClick={() => { setShowAddModal(false); setShowEditModal(false); setEditingCustomer(null); }} 
+                    className="px-5 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
+                  >
+                    Batal
+                  </button>
+
+                  <button 
+                    type="submit" 
+                    disabled={submitLoading} 
+                    className="px-6 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                  >
+                    {submitLoading && <RefreshCw size={14} className="animate-spin" />}
+                    <span>💾 Simpan & Push Mikrotik</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -2535,6 +3031,15 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => { setShowBillingModal(false); openConnectionLogsModal(billingCustomer); }}
+                  className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Activity size={14} />
+                  <span>📜 Log Koneksi PPP</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => window.print()}
                   className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                 >
@@ -2555,6 +3060,304 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           </div>
         </div>
       )}
+
+      {/* Modal Konfirmasi Hapus Pelanggan & Opsi Mikrotik */}
+      {showDeleteModal && customerToDelete && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-md shadow-2xl overflow-hidden animate-slide-up">
+            {/* Header */}
+            <div className="p-5 bg-gradient-to-r from-rose-600 to-red-600 text-white flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-sans font-bold text-base text-white">Konfirmasi Hapus Pelanggan</h3>
+                  <p className="text-xs text-rose-100">Tindakan ini permanen & tidak dapat diulang</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setShowDeleteModal(false); setCustomerToDelete(null); }} 
+                className="text-rose-200 hover:text-white font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Detail Pelanggan yang akan dihapus */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">DATA PELANGGAN:</div>
+                <div className="text-base font-extrabold text-slate-900">{customerToDelete.name}</div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 pt-2 border-t border-slate-200/70">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold">USERNAME / KODE:</span>
+                    <span className="font-mono font-bold text-blue-600">{customerToDelete.pppoe_username || customerToDelete.customer_code || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] font-bold">PAKET INTERNET:</span>
+                    <span className="font-bold text-slate-800">{customerToDelete.package_name || '-'}</span>
+                  </div>
+                  {customerToDelete.router_name && (
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block text-[10px] font-bold">ROUTER SERVER:</span>
+                      <span className="font-bold text-slate-700">{customerToDelete.router_name}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Opsi Checkbox MikroTik */}
+              <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    id="chkDeleteMikrotik"
+                    checked={deleteFromMikrotik}
+                    onChange={(e) => setDeleteFromMikrotik(e.target.checked)}
+                    className="w-5 h-5 rounded border-rose-300 text-rose-600 focus:ring-rose-500 mt-0.5 cursor-pointer accent-rose-600"
+                  />
+                  <div className="flex-1">
+                    <span className="text-xs font-black text-rose-950 block">
+                      Hapus juga akun secret di router MikroTik
+                    </span>
+                    <span className="text-[11px] text-rose-700 leading-relaxed block mt-1">
+                      {deleteFromMikrotik 
+                        ? '✅ Akun secret PPP / Hotspot pada router server MikroTik akan otomatis dicabut & dihapus permanen.'
+                        : '⚠️ Akun secret pada router MikroTik TIDAK akan dihapus (hanya hapus dari database aplikasi).'
+                      }
+                    </span>
+                  </div>
+                </label>
+              </div>
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                <span>Data tagihan di database lokal & jalur FTTH/Port ODP akan otomatis dibersihkan dan dibebaskan.</span>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setShowDeleteModal(false); setCustomerToDelete(null); }}
+                  disabled={deleteLoading}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteLoading}
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2"
+                >
+                  {deleteLoading ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  <span>{deleteLoading ? 'Menghapus...' : 'Ya, Hapus Sekarang'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Riwayat & Log Koneksi PPPoE (log_koneksi / ppp_connection_logs) */}
+      {showLogsModal && logsCustomer && (() => {
+        const filteredLogs = customerLogs.filter((l: any) => {
+          if (!logsFilter.trim()) return true;
+          const q = logsFilter.toLowerCase().trim();
+          return (
+            (l.ip_address && l.ip_address.toLowerCase().includes(q)) ||
+            (l.mac_address && l.mac_address.toLowerCase().includes(q)) ||
+            (l.action && l.action.toLowerCase().includes(q)) ||
+            (l.uptime && l.uptime.toLowerCase().includes(q)) ||
+            (l.session_id && l.session_id.toLowerCase().includes(q))
+          );
+        });
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-4xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shrink-0">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-white/20 text-white flex items-center justify-center border border-white/20">
+                    <Activity size={22} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-sans font-bold text-base text-white">
+                        Riwayat & Log Koneksi MikroTik
+                      </h3>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                        isUserOnline(logsCustomer) 
+                          ? 'bg-emerald-300 text-emerald-950 animate-pulse' 
+                          : 'bg-slate-700/80 text-slate-200'
+                      }`}>
+                        {isUserOnline(logsCustomer) ? '● ONLINE' : '○ OFFLINE'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-100 mt-0.5">
+                      User: <span className="font-mono font-bold text-white">{logsCustomer.pppoe_username || logsCustomer.customer_code}</span> ({logsCustomer.name}) • Router: {logsCustomer.router_name || 'MikroTik'}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => { setShowLogsModal(false); setLogsCustomer(null); }} 
+                  className="text-emerald-100 hover:text-white font-bold text-2xl cursor-pointer"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Sub-header Stats Cards */}
+              <div className="p-5 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL REKAMAN LOG</span>
+                  <span className="text-lg font-black text-slate-900 mt-0.5 block">
+                    {customerLogs.length} <span className="text-xs font-normal text-slate-500">Event</span>
+                  </span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL DOWNLOAD</span>
+                  <span className="text-lg font-black text-emerald-600 mt-0.5 block">
+                    {formatBytes(logsStats?.total_bytes_in || 0)}
+                  </span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">TOTAL UPLOAD</span>
+                  <span className="text-lg font-black text-cyan-600 mt-0.5 block">
+                    {formatBytes(logsStats?.total_bytes_out || 0)}
+                  </span>
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">SESI TERAKHIR</span>
+                  <span className="text-lg font-black text-indigo-600 mt-0.5 block font-mono">
+                    {customerLogs[0]?.uptime || (isUserOnline(logsCustomer) ? 'Aktif Sesi' : '-')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Filter Toolbar */}
+              <div className="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                <div className="relative flex-1 max-w-sm">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari IP, MAC, atau status..."
+                    value={logsFilter}
+                    onChange={(e) => setLogsFilter(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openConnectionLogsModal(logsCustomer)}
+                  disabled={logsLoading}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={logsLoading ? 'animate-spin' : ''} />
+                  <span>Refresh Log</span>
+                </button>
+              </div>
+
+              {/* Modal Body / Table of Logs */}
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
+                {logsLoading ? (
+                  <div className="py-16 text-center text-slate-400 space-y-3">
+                    <RefreshCw size={28} className="animate-spin mx-auto text-emerald-600" />
+                    <p className="text-xs font-bold">Memuat riwayat log koneksi dari database PostgreSQL...</p>
+                  </div>
+                ) : filteredLogs.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 space-y-3">
+                    <Activity size={36} className="mx-auto text-slate-300 stroke-1" />
+                    <p className="text-sm font-bold text-slate-600">Belum Ada Rekaman Log Koneksi</p>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      Log koneksi PPP akan otomatis tercatat di tabel <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">log_koneksi</code> ketika router MikroTik mengeksekusi script On-Up / On-Down saat user login/logout.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="py-3 px-4">WAKTU (WIB)</th>
+                          <th className="py-3 px-4">AKSI / EVENT</th>
+                          <th className="py-3 px-4">IP ADDRESS</th>
+                          <th className="py-3 px-4">MAC / CALLER ID</th>
+                          <th className="py-3 px-4">UPTIME</th>
+                          <th className="py-3 px-4">TRAFIK DATA</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredLogs.map((log: any) => {
+                          const isLogin = log.action === 'login' || log.action === 'up';
+                          return (
+                            <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3 px-4 font-mono font-medium text-slate-600 whitespace-nowrap">
+                                {new Date(log.created_at).toLocaleString('id-ID', {
+                                  dateStyle: 'medium',
+                                  timeStyle: 'medium'
+                                })}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${
+                                  isLogin
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {isLogin ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                                  {isLogin ? 'LOGIN (UP)' : 'LOGOUT (DOWN)'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-slate-800 whitespace-nowrap">
+                                {log.ip_address || '-'}
+                              </td>
+                              <td className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
+                                {log.mac_address || '-'}
+                              </td>
+                              <td className="py-3 px-4 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                                {log.uptime || '-'}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="space-y-0.5 text-[11px]">
+                                  <div className="text-emerald-700 font-semibold flex items-center gap-1">
+                                    <span>↓ In:</span>
+                                    <span className="font-mono">{formatBytes(Number(log.bytes_in || 0))}</span>
+                                  </div>
+                                  <div className="text-cyan-700 font-semibold flex items-center gap-1">
+                                    <span>↑ Out:</span>
+                                    <span className="font-mono">{formatBytes(Number(log.bytes_out || 0))}</span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-slate-100 bg-white flex items-center justify-between gap-3 shrink-0">
+                <span className="text-xs text-slate-400">
+                  Menampilkan {filteredLogs.length} dari {customerLogs.length} rekaman log koneksi
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setShowLogsModal(false); setLogsCustomer(null); }}
+                  className="px-5 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Global Customer Map View Modal */}
       {showGlobalMapModal && (

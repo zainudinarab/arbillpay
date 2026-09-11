@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getAllVouchers, generateRandomCode, deleteBatchVouchers } from '../models/voucherModel.js';
 import { RouterOSAPI } from 'node-routeros';
+import { getFirestore } from '../config/firebase.js';
+import { isoToMikrotikTime } from './mikrotikController.js';
 
 export async function listVouchers(req: Request, res: Response) {
   try {
@@ -31,11 +33,17 @@ export async function generateBatchVouchers(req: Request, res: Response) {
     }
     const router = rRes.rows[0];
 
-    const pRes = await pool.query('SELECT * FROM router_profiles WHERE id = $1', [router_profile_id]);
+    const pRes = await pool.query(`
+      SELECT rp.*, p.uptime_limit, p.validity_iso 
+      FROM router_profiles rp 
+      LEFT JOIN packages p ON rp.package_id = p.id 
+      WHERE rp.id = $1
+    `, [router_profile_id]);
     if (pRes.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Profile Mikrotik tidak ditemukan.' });
     }
     const profile = pRes.rows[0];
+    const formattedUptime = profile.uptime_limit ? isoToMikrotikTime(profile.uptime_limit) : '';
 
     const batchId = `vc-batch-${Date.now().toString(36)}`;
     const createdVouchers: Array<{ id: string; code: string; password: string }> = [];
@@ -74,12 +82,16 @@ export async function generateBatchVouchers(req: Request, res: Response) {
 
       if (livePushSuccess && conn) {
         try {
-          await conn.write('/ip/hotspot/user/add', [
+          const hsUserParams = [
             `=name=${vCode}`,
             `=password=${vPass}`,
             `=profile=${profile.name}`,
             `=comment=${vComment}`
-          ]);
+          ];
+          if (formattedUptime) {
+            hsUserParams.push(`=limit-uptime=${formattedUptime}`);
+          }
+          await conn.write('/ip/hotspot/user/add', hsUserParams);
         } catch (err) {}
       }
 
@@ -123,8 +135,70 @@ export async function removeBatchVouchers(req: Request, res: Response) {
  * 2. Instant On-Demand Profiles (Selalu Ready / Generated On-the-Fly)
  */
 export async function listAvailableVouchers(req: Request, res: Response) {
+  // Helper to fetch from Cloud Firestore
+  const fetchFromFirestore = async () => {
+    const db = getFirestore();
+    if (!db) return null;
+    const [pkgSnap, vcSnap] = await Promise.all([
+      db.collection('packages').get(),
+      db.collection('hotspot_vouchers').get()
+    ]);
+
+    const packages: any[] = [];
+    pkgSnap.forEach((doc: any) => {
+      if (doc.id !== '_init') {
+        const data = doc.data();
+        if (!data.type || data.type === 'hotspot' || data.type === 'hotspot_voucher') {
+          packages.push({ id: doc.id, ...data });
+        }
+      }
+    });
+
+    const activeVouchers: any[] = [];
+    vcSnap.forEach((doc: any) => {
+      if (doc.id !== '_init') {
+        const data = doc.data();
+        if (data.status === 'active' && !data.sold_to) {
+          activeVouchers.push({ id: doc.id, ...data });
+        }
+      }
+    });
+
+    const ondemand = packages.map((p: any) => ({
+      profile_id: p.id,
+      profile_name: p.name,
+      package_name: p.name,
+      price: Number(p.price) || 5000,
+      rate_limit: p.speed_limit || '10 Mbps',
+      validity_days: Number(p.validity_days || p.validity_value) || 1,
+      validity_unit: p.validity_unit || 'day',
+      validity_value: Number(p.validity_value) || 1,
+      quota_mb: Number(p.quota_mb) || 0,
+      router_id: p.router_id || 'rtr-cloud',
+      router_name: p.router_name || 'Cloud Hotspot',
+      stock: 999,
+      mode: 'ondemand'
+    }));
+
+    return {
+      success: true,
+      pregenerated: activeVouchers,
+      ondemand: ondemand,
+      groups: ondemand
+    };
+  };
+
+  if (process.env.DB_DRIVER === 'firebase') {
+    try {
+      const fbResult = await fetchFromFirestore();
+      if (fbResult) return res.json(fbResult);
+    } catch (fbErr: any) {
+      console.warn('[VOUCHERS AVAILABLE] Firebase fallback notice:', fbErr.message);
+    }
+  }
+
   try {
-    // 1. Profil dengan stok voucher pre-generated (Stok Terbatas / Diskon)
+    // 1. Profil dengan stok voucher pre-generated (Wajib terhubung ke Paket Aktif & Profil Aktif)
     const stockResult = await pool.query(`
       SELECT
         rp.id as profile_id,
@@ -132,75 +206,54 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         rp.rate_limit,
         r.id as router_id,
         r.name as router_name,
+        COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
         COALESCE(p.name, rp.name) as package_name,
         COALESCE(p.price, 0)::int as price,
-        COALESCE(p.validity_days, 1)::int as validity_days,
-        COALESCE(p.validity_unit, 'day') as validity_unit,
-        COALESCE(p.validity_value, 1)::int as validity_value,
+        COALESCE(p.validity_iso, 'P1D') as validity_iso,
         COALESCE(p.quota_mb, 0)::int as quota_mb,
         COUNT(v.id)::int as stock,
         'pregenerated' as mode
       FROM router_profiles rp
       LEFT JOIN routers r ON rp.router_id = r.id
-      LEFT JOIN packages p ON rp.package_id = p.id
+      JOIN packages p ON rp.package_id = p.id
       JOIN hotspot_vouchers v ON v.router_profile_id = rp.id AND v.status = 'active' AND v.sold_to IS NULL
-      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, p.name, p.price, p.validity_days, p.validity_unit, p.validity_value, p.quota_mb
+      WHERE rp.package_id IS NOT NULL
+        AND COALESCE(rp.is_active, true) = true
+        AND COALESCE(p.is_active, true) = true
+      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, p.name, p.price, p.validity_iso, p.quota_mb
       ORDER BY COALESCE(p.price, 0) ASC
     `);
 
-    // 2. Ambil router_profiles bertipe 'hotspot' yang SUDAH ADA PAKETNYA (package_id IS NOT NULL)
-    let onDemandResult = await pool.query(`
+    // 2. Ambil router_profiles bertipe 'hotspot' yang SUDAH DIHUBUNGKAN KE PAKET (rp.package_id IS NOT NULL)
+    // Serta wajib: Profil Aktif (is_active = true) dan Paket Aktif (is_active = true)
+    const onDemandResult = await pool.query(`
       SELECT
         rp.id as profile_id,
         rp.name as profile_name,
-        COALESCE(p.name, rp.name) as package_name,
+        p.name as package_name,
         COALESCE(p.price, 5000)::int as price,
         COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
-        COALESCE(p.validity_days, p.validity_value, 1)::int as validity_days,
-        COALESCE(p.validity_unit, 'day') as validity_unit,
-        COALESCE(p.validity_value, 1)::int as validity_value,
+        COALESCE(p.validity_iso, 'P1D') as validity_iso,
         COALESCE(p.quota_mb, 0)::int as quota_mb,
         COALESCE(r.id, 'rtr-pusat-01') as router_id,
         COALESCE(r.name, 'Router Utama') as router_name,
+        COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
         999 as stock,
         'ondemand' as mode
       FROM router_profiles rp
       JOIN packages p ON rp.package_id = p.id
       LEFT JOIN routers r ON rp.router_id = r.id
-      WHERE rp.type = 'hotspot' 
+      WHERE rp.type = 'hotspot'
+        AND rp.package_id IS NOT NULL
+        AND COALESCE(rp.is_active, true) = true
+        AND COALESCE(p.is_active, true) = true
         AND (p.type IS NULL OR p.type = 'hotspot_voucher' OR p.type = 'hotspot')
         AND p.type != 'hotspot_monthly'
         AND p.type != 'pppoe'
       ORDER BY p.price ASC
     `);
-
-    // Fallback: Jika belum ada router_profiles yang di-link ke packages, ambil semua router_profiles bertipe hotspot
-    if (onDemandResult.rows.length === 0) {
-      onDemandResult = await pool.query(`
-        SELECT
-          rp.id as profile_id,
-          rp.name as profile_name,
-          COALESCE(p.name, rp.name) as package_name,
-          COALESCE(p.price, 5000)::int as price,
-          COALESCE(rp.rate_limit, '10 Mbps') as rate_limit,
-          COALESCE(p.validity_days, 1)::int as validity_days,
-          COALESCE(p.validity_unit, 'day') as validity_unit,
-          COALESCE(p.validity_value, 1)::int as validity_value,
-          COALESCE(p.quota_mb, 0)::int as quota_mb,
-          COALESCE(r.id, 'rtr-pusat-01') as router_id,
-          COALESCE(r.name, 'Router Utama') as router_name,
-          999 as stock,
-          'ondemand' as mode
-        FROM router_profiles rp
-        LEFT JOIN routers r ON rp.router_id = r.id
-        LEFT JOIN packages p ON rp.package_id = p.id OR LOWER(p.name) = LOWER(rp.name)
-        WHERE rp.type = 'hotspot'
-          AND (p.type IS NULL OR p.type = 'hotspot_voucher' OR p.type = 'hotspot')
-          AND (p.type IS NULL OR p.type != 'hotspot_monthly')
-          AND (p.type IS NULL OR p.type != 'pppoe')
-        ORDER BY price ASC
-      `);
-    }
 
     // Gabungkan seluruh paket yang memiliki harga valid > 0
     const groupMap = new Map<string, any>();
@@ -228,7 +281,11 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       groups: allGroups.length > 0 ? allGroups : onDemandResult.rows
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    console.warn('[VOUCHERS AVAILABLE] Postgres query error, attempting Cloud Firestore fallback:', err.message);
+    try {
+      const fbResult = await fetchFromFirestore();
+      if (fbResult) return res.json(fbResult);
+    } catch (_) {}
   }
 }
 
@@ -276,13 +333,25 @@ export async function buyVoucher(req: Request, res: Response) {
       }
     }
 
+    let targetProfileName = 'Voucher Hotspot';
+    if (profile_id) {
+      try {
+        const prRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1', [profile_id]);
+        if (prRes.rows.length > 0 && prRes.rows[0].name) {
+          targetProfileName = prRes.rows[0].name;
+        }
+      } catch (_) {}
+    }
+
     // METODE 2: Instant On-Demand Generation (Jika stok pre-generated kosong / mode on-demand)
     if (!isFromPreGenerated) {
       // Fetch profile & router info
       const pRes = await pool.query(`
-        SELECT rp.id, rp.name as profile_name, rp.router_id, r.ip_address, r.api_port, r.username, r.password
+        SELECT rp.id, rp.name as profile_name, rp.router_id, r.ip_address, r.api_port, r.username, r.password,
+               p.uptime_limit, p.validity_iso
         FROM router_profiles rp
         JOIN routers r ON rp.router_id = r.id
+        LEFT JOIN packages p ON rp.package_id = p.id
         WHERE rp.id = $1
       `, [profile_id]);
 
@@ -291,6 +360,7 @@ export async function buyVoucher(req: Request, res: Response) {
       }
 
       const routerProfile = pRes.rows[0];
+      const formattedUptime = routerProfile.uptime_limit ? isoToMikrotikTime(routerProfile.uptime_limit) : '';
       const vId = `vc-instant-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
       voucherCode = generateRandomCode(6, 'lower', 'vc');
       voucherPass = voucherCode;
@@ -310,12 +380,16 @@ export async function buyVoucher(req: Request, res: Response) {
           timeout: 5
         });
         await conn.connect();
-        await conn.write('/ip/hotspot/user/add', [
+        const hsUserParams = [
           `=name=${voucherCode}`,
           `=password=${voucherPass}`,
           `=profile=${routerProfile.profile_name}`,
           `=comment=${vComment}`
-        ]);
+        ];
+        if (formattedUptime) {
+          hsUserParams.push(`=limit-uptime=${formattedUptime}`);
+        }
+        await conn.write('/ip/hotspot/user/add', hsUserParams);
         conn.close();
         livePushSuccess = true;
       } catch (e: any) {
@@ -347,7 +421,7 @@ export async function buyVoucher(req: Request, res: Response) {
     let remainingBalance: number | null = null;
     if (payment_method && payment_method.toLowerCase().includes('arabpay')) {
       try {
-        const packageName = routerProfile?.profile_name || 'Voucher Hotspot';
+        const packageName = targetProfileName || 'Voucher Hotspot';
         const { deductArabPayBalance } = await import('../services/arabpayService.js');
         const deductResult = await deductArabPayBalance({
           userId: arabpay_user_id || buyer_phone || buyer_name,
@@ -395,3 +469,151 @@ export async function buyVoucher(req: Request, res: Response) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
+/**
+ * Helper untuk menambahkan durasi ISO-8601 ke objek Date
+ */
+export function addIsoDurationToDate(startDate: Date, isoStr?: string | null): Date {
+  const result = new Date(startDate.getTime());
+  if (!isoStr || typeof isoStr !== 'string') {
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+  const clean = isoStr.trim().toUpperCase();
+  if (!clean.startsWith('P')) {
+    result.setDate(result.getDate() + 1);
+    return result;
+  }
+
+  const [datePart, timePart = ''] = clean.split('T');
+
+  const years = datePart.match(/(\d+)Y/);
+  if (years) result.setFullYear(result.getFullYear() + parseInt(years[1], 10));
+
+  const months = datePart.match(/(\d+)M/);
+  if (months) result.setMonth(result.getMonth() + parseInt(months[1], 10));
+
+  const weeks = datePart.match(/(\d+)W/);
+  if (weeks) result.setDate(result.getDate() + parseInt(weeks[1], 10) * 7);
+
+  const days = datePart.match(/(\d+)D/);
+  if (days) result.setDate(result.getDate() + parseInt(days[1], 10));
+
+  const hours = timePart.match(/(\d+)H/);
+  if (hours) result.setHours(result.getHours() + parseInt(hours[1], 10));
+
+  const mins = timePart.match(/(\d+)M/);
+  if (mins) result.setMinutes(result.getMinutes() + parseInt(mins[1], 10));
+
+  const secs = timePart.match(/(\d+)S/);
+  if (secs) result.setSeconds(result.getSeconds() + parseInt(secs[1], 10));
+
+  return result;
+}
+
+/**
+ * Webhook On-Login Pertama Kali dari MikroTik RouterOS
+ * MikroTik RouterOS: /tool fetch url="http://<SERVER_IP>:3006/api/vouchers/first-login?code=$user&mac=$mac&ip=$address" mode=http keep-result=no;
+ */
+export async function handleVoucherFirstLogin(req: Request, res: Response) {
+  const code = (req.query.code || req.body.code || '').toString().trim();
+  const mac = (req.query.mac || req.body.mac || '').toString().trim();
+  const ip = (req.query.ip || req.body.ip || '').toString().trim();
+  const routerIdentity = (req.query.router || req.body.router || '').toString().trim();
+
+  if (!code) {
+    return res.status(400).json({
+      success: false,
+      message: 'Parameter "code" (username voucher) wajib disertakan.'
+    });
+  }
+
+  console.log(`[VOUCHER FIRST-LOGIN WEBHOOK] Menerima sinyal aktif voucher: code=${code}, mac=${mac}, ip=${ip}, router=${routerIdentity}`);
+
+  try {
+    // 1. Cari voucher di database beserta konfigurasi paket & validity_iso-nya
+    const vcRes = await pool.query(`
+      SELECT v.*, rp.name as profile_name, rp.package_id, p.name as package_name, p.validity_iso, p.uptime_limit
+      FROM hotspot_vouchers v
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE v.code = $1
+      LIMIT 1
+    `, [code]);
+
+    if (vcRes.rows.length === 0) {
+      console.warn(`[VOUCHER FIRST-LOGIN] Voucher ${code} tidak ditemukan di database Postgres.`);
+      return res.status(404).json({
+        success: false,
+        message: `Voucher dengan kode "${code}" tidak ditemukan di database.`
+      });
+    }
+
+    const voucher = vcRes.rows[0];
+
+    // 2. Jika sudah pernah aktif sebelumnya, kembalikan konfirmasi tanpa menimpa waktu aktif awal
+    if (voucher.first_login_at) {
+      return res.json({
+        success: true,
+        message: `Voucher "${code}" sudah aktif sejak ${voucher.first_login_at}.`,
+        voucher_id: voucher.id,
+        first_login_at: voucher.first_login_at,
+        expired_at: voucher.expired_at,
+        already_active: true
+      });
+    }
+
+    // 3. Hitung masa aktif dan tanggal expired berdasarkan validity_iso paket
+    const now = new Date();
+    const validityIso = voucher.validity_iso || 'P1D'; // Default 1 hari jika tidak diset
+    const expiredAt = addIsoDurationToDate(now, validityIso);
+
+    // 4. Update database PostgreSQL
+    await pool.query(`
+      UPDATE hotspot_vouchers
+      SET status = 'used',
+          first_login_at = $1,
+          mac_address = $2,
+          ip_address = $3,
+          expired_at = $4
+      WHERE id = $5
+    `, [now, mac || null, ip || null, expiredAt, voucher.id]);
+
+    // 5. Update Cloud Firestore jika menggunakan mode Firebase
+    try {
+      const db = getFirestore();
+      if (db) {
+        await db.collection('hotspot_vouchers').doc(voucher.id).set({
+          status: 'used',
+          first_login_at: now.toISOString(),
+          mac_address: mac || null,
+          ip_address: ip || null,
+          expired_at: expiredAt.toISOString()
+        }, { merge: true });
+      }
+    } catch (fbErr: any) {
+      console.warn('[VOUCHER FIRST-LOGIN] Firebase sync notice:', fbErr.message);
+    }
+
+    console.log(`✅ [VOUCHER FIRST-LOGIN] Voucher ${code} BERHASIL DIAKTIFKAN! Aktif: ${now.toISOString()} | Expired: ${expiredAt.toISOString()} | MAC: ${mac || '-'}`);
+
+    return res.json({
+      success: true,
+      message: `⚡ Voucher "${code}" berhasil diaktifkan untuk pertama kali!`,
+      voucher_id: voucher.id,
+      code: code,
+      mac_address: mac || null,
+      ip_address: ip || null,
+      first_login_at: now.toISOString(),
+      expired_at: expiredAt.toISOString(),
+      package_name: voucher.package_name || voucher.profile_name || 'Voucher Hotspot'
+    });
+  } catch (err: any) {
+    console.error(`[VOUCHER FIRST-LOGIN ERROR] Gagal memproses first-login voucher ${code}:`, err.message);
+    return res.status(500).json({
+      success: false,
+      message: `Terjadi kesalahan di server: ${err.message}`
+    });
+  }
+}
+

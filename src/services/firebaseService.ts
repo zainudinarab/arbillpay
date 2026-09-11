@@ -5,8 +5,10 @@ import {
   doc, 
   getDocs, 
   getDoc, 
-  setDoc 
+  setDoc,
+  deleteDoc 
 } from 'firebase/firestore';
+import { getApiUrl } from '../config/api';
 
 // Helper: Convert waypoints [[lat, lng]] to Firestore-friendly [{ lat, lng }] format
 const formatWaypointsForFirestore = (waypoints: any[]) => {
@@ -225,14 +227,18 @@ export const DEFAULT_DEVICE_CATALOG = [
   { id: 'cat-mt-haplite', type: 'ROUTER_WIFI', brand: 'MikroTik', model: 'hAP lite (RB941)', lan_ports: 4, wifi_spec: '2.4GHz (4 FE LAN/WAN)', notes: 'Router Wireless MikroTik Standar' }
 ];
 
-export const saveDeviceCatalogToFirestore = async (catalogList: any[]) => {
+export const saveDeviceCatalogToFirestore = async (catalogList: any[], splittersList?: any[]) => {
   try {
     const catalogRef = doc(db, 'ftth_topology', 'device_catalog');
     const sanitizedList = (catalogList || []).map(item => sanitizeForFirestore(item));
-    await setDoc(catalogRef, {
+    const payload: any = {
       items: sanitizedList,
       updated_at: new Date().toISOString()
-    }, { merge: true });
+    };
+    if (splittersList) {
+      payload.splitters = splittersList.map(s => sanitizeForFirestore(s));
+    }
+    await setDoc(catalogRef, payload, { merge: true });
     return { success: true };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save device catalog:', err);
@@ -244,14 +250,17 @@ export const getDeviceCatalogFromFirestore = async () => {
   try {
     const catalogRef = doc(db, 'ftth_topology', 'device_catalog');
     const docSnap = await getDoc(catalogRef);
-    if (docSnap.exists() && docSnap.data().items && Array.isArray(docSnap.data().items) && docSnap.data().items.length > 0) {
-      return { success: true, catalog: docSnap.data().items };
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const items = Array.isArray(data.items) && data.items.length > 0 ? data.items : DEFAULT_DEVICE_CATALOG;
+      const splitters = Array.isArray(data.splitters) && data.splitters.length > 0 ? data.splitters : [];
+      return { success: true, catalog: items, splitters };
     }
     // Return default catalog if none saved yet
-    return { success: true, catalog: DEFAULT_DEVICE_CATALOG };
+    return { success: true, catalog: DEFAULT_DEVICE_CATALOG, splitters: [] };
   } catch (err: any) {
     console.warn('[FIREBASE FIRESTORE WARN] Using default device catalog:', err?.message || err);
-    return { success: true, catalog: DEFAULT_DEVICE_CATALOG };
+    return { success: true, catalog: DEFAULT_DEVICE_CATALOG, splitters: [] };
   }
 };
 export const saveCustomerToFirestore = async (customer: any) => {
@@ -282,6 +291,18 @@ export const saveCustomerToFirestore = async (customer: any) => {
     // ⚡ Auto-Sync Perangkat & Peta FTTH (Otomatis Hapus Node & Kabel jika Status = Terminated/Cabut!)
     await syncCustomerFtthDeviceNode(fullCustPayload).catch(e => console.warn('[FTTH AUTO-SYNC WARN]', e));
 
+    // ⚡ Auto-Sync PostgreSQL Backend API
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        fetch(`${apiUrl}/api/customers/${formattedCustId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullCustPayload)
+        }).catch(() => null);
+      }
+    } catch (_) {}
+
     return { success: true, id: formattedCustId };
   } catch (err: any) {
     console.error('[FIREBASE FIRESTORE ERROR] Failed to save customer:', err);
@@ -296,6 +317,16 @@ export const deleteCustomerFromFirestore = async (custId: string, customerData?:
 
     // ⚡ Auto-Sync FTTH: Hapus Node & Kabel Optik di Peta, Port ODP kembali BEBAS!
     await syncCustomerFtthDeviceNode(customerData || { id: custId }, true).catch(() => null);
+
+    // ⚡ Auto-Sync PostgreSQL Backend API
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        fetch(`${apiUrl}/api/customers/${custId}`, {
+          method: 'DELETE'
+        }).catch(() => null);
+      }
+    } catch (_) {}
 
     return { success: true };
   } catch (err: any) {
@@ -887,5 +918,56 @@ export const getNotificationGatewaySettingsFromFirestore = async (): Promise<{ s
   } catch (err) {}
   return { success: false };
 };
+
+// --- 10. ROUTERS & MIKROTIK (Serverless Cloud Firestore Storage) ---
+export const saveRouterToFirestore = async (router: any) => {
+  try {
+    const rawId = router.id ? String(router.id) : `rtr-${Date.now()}`;
+    const rtrRef = doc(db, 'routers', rawId);
+    const payload = sanitizeForFirestore({
+      id: rawId,
+      name: router.name || 'MikroTik Router',
+      ip_address: router.ip_address || '',
+      api_port: Number(router.api_port) || 8728,
+      username: router.username || 'admin',
+      password: router.password || '',
+      status: router.status || 'offline',
+      last_synced: router.last_synced || new Date().toISOString(),
+      profile_count: Number(router.profile_count) || 0,
+      created_at: router.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    await setDoc(rtrRef, payload, { merge: true });
+    return { success: true, id: rawId, router: payload };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to save router:', err);
+    throw err;
+  }
+};
+
+export const getRoutersFromFirestore = async (): Promise<{ success: boolean; routers: any[] }> => {
+  try {
+    const coll = collection(db, 'routers');
+    const snapshot = await getDocs(coll);
+    const routers = snapshot.docs.filter(d => d.id !== '_init').map(d => ({ id: d.id, ...d.data() }));
+    routers.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    return { success: true, routers };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to get routers:', err);
+    return { success: false, routers: [] };
+  }
+};
+
+export const deleteRouterFromFirestore = async (id: string) => {
+  try {
+    const rtrRef = doc(db, 'routers', String(id));
+    await deleteDoc(rtrRef);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[FIREBASE FIRESTORE ERROR] Failed to delete router:', err);
+    throw err;
+  }
+};
+
 
 

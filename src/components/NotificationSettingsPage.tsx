@@ -179,7 +179,8 @@ export default function NotificationSettingsPage({
         title="Pengaturan Notifikasi & WA Gateway"
         subtitle="Kelola bot pengiriman WhatsApp otomatis (GoWA, WAHA, WuzAPI, Fonnte) untuk ISP & RT RW Net"
         profile={profile}
-        onLogout={onLogout}
+        t={t}
+        onLogout={onLogout || (() => {})}
       />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 space-y-6">

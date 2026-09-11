@@ -24,10 +24,30 @@ app.use(cookieParser());
 app.use(corsMiddleware);
 
 // Initialize DB schema & patch tables
-initDatabaseSchema();
+initDatabaseSchema().then(async () => {
+  try {
+    const { syncFirestoreCustomersToPostgres } = await import('./server/services/customerSyncService.js');
+    await syncFirestoreCustomersToPostgres();
+  } catch (err: any) {
+    console.warn('[SYNC NOTICE]', err.message);
+  }
+});
 
 // Mount all API endpoints under /api
 app.use('/api', apiRouter);
+
+// Serve static frontend build from dist folder (Single Port Production Mode)
+import path from 'path';
+import fs from 'fs';
+const distPath = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(distPath, 'index.html'));
+    }
+  });
+}
 
 // Run Auto-Billing Scheduler Job every 12 hours automatically
 setInterval(() => {

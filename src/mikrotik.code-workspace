@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "../../mikrotik"
+		},
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../wallet-service"
+		},
+		{
+			"path": "../../wallet-panel-next"
+		},
+		{
+			"path": "../../wa-gateway-service"
+		}
+	],
+	"settings": {}
+}

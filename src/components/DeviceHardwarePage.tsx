@@ -171,7 +171,7 @@ export default function DeviceHardwarePage() {
     return matchesSearch && matchesType && matchesBrand;
   });
 
-  const allBrands = Array.from(new Set(catalog.map(c => c.brand)));
+  const allBrands: string[] = Array.from(new Set(catalog.map(c => c.brand)));
   const onuCount = catalog.filter(c => c.type === 'ONU').length;
   const wifiCount = catalog.filter(c => c.type === 'ROUTER_WIFI').length;
   const otherCount = catalog.filter(c => c.type !== 'ONU' && c.type !== 'ROUTER_WIFI').length;

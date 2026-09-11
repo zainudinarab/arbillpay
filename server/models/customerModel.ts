@@ -1,6 +1,7 @@
 import { pool } from '../config/db.js';
 import { getFirestore } from '../config/firebase.js';
 import crypto from 'crypto';
+import { RouterOSAPI } from 'node-routeros';
 
 const getDriver = () => process.env.DB_DRIVER || 'postgres';
 
@@ -21,6 +22,7 @@ export async function getAllCustomers() {
            c.odp_port, c.sn_onu, c.power_laser, c.teknisi, c.is_synced,
            c.latitude, c.longitude, c.maps_url,
            c.package_id, c.router_id, c.router_profile_id, c.status, c.created_at,
+           c.is_online, c.last_connected_at, c.current_ip,
            p.name as package_name, p.price as package_price, p.type as package_type, p.speed_limit,
            r.name as router_name, r.ip_address as router_ip,
            rp.name as router_profile_name, rp.type as router_profile_type,
@@ -116,7 +118,7 @@ export async function createCustomer(data: any) {
   return { customer: result.rows[0], code };
 }
 
-export async function deleteCustomer(id: string) {
+export async function deleteCustomer(id: string, deleteFromMikrotik: boolean = true) {
   const driver = getDriver();
   if (driver === 'firebase') {
     const db = getFirestore();
@@ -130,6 +132,64 @@ export async function deleteCustomer(id: string) {
     }
   }
 
+  // 1. Fetch customer & router details before deletion to remove secret from MikroTik if present
+  let custRow: any = null;
+  try {
+    const cRes = await pool.query(`
+      SELECT c.pppoe_username, c.connection_type, c.mikrotik_id, 
+             r.ip_address, r.api_port, r.username as r_user, r.password as r_pass
+      FROM customers c
+      LEFT JOIN routers r ON c.router_id = r.id
+      WHERE c.id = $1
+    `, [id]);
+    if (cRes.rows.length > 0) {
+      custRow = cRes.rows[0];
+    }
+  } catch (_) {}
+
+  // 2. Remove secret from MikroTik router if requested
+  if (deleteFromMikrotik && custRow?.ip_address && custRow?.pppoe_username) {
+    try {
+      const conn = new RouterOSAPI({
+        host: custRow.ip_address,
+        port: custRow.api_port || 8728,
+        user: custRow.r_user || 'admin',
+        password: custRow.r_pass || '',
+        timeout: 3
+      });
+      await Promise.race([
+        conn.connect(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Mikrotik timeout')), 3000))
+      ]);
+      const cmd = custRow.connection_type === 'hotspot' ? '/ip/hotspot/user' : '/ppp/secret';
+      const list: any = await conn.write(`${cmd}/print`);
+      if (Array.isArray(list)) {
+        const item = list.find((s: any) => 
+          (custRow.mikrotik_id && s['.id'] === custRow.mikrotik_id) ||
+          (s.name && s.name.trim().toLowerCase() === custRow.pppoe_username.trim().toLowerCase())
+        );
+        if (item && item['.id']) {
+          await conn.write(`${cmd}/remove`, [`=.id=${item['.id']}`]);
+        }
+      }
+      conn.close();
+    } catch (_) {}
+  }
+
+  // 3. Delete invoices associated with customer
+  await pool.query('DELETE FROM invoices WHERE customer_id = $1', [id]).catch(() => {});
+
+  // 4. Delete customer record from PostgreSQL
   const result = await pool.query('DELETE FROM customers WHERE id = $1 RETURNING id, name', [id]);
-  return result.rows[0] || null;
+  const deletedCust = result.rows[0] || null;
+
+  // 5. Also delete from Firestore if Firebase Admin is connected so it doesn't resurrect
+  try {
+    const db = getFirestore();
+    if (db) {
+      await db.collection('customers').doc(id).delete();
+    }
+  } catch (_) {}
+
+  return deletedCust;
 }

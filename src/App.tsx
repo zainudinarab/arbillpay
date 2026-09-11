@@ -63,6 +63,8 @@ import LaravelFtthMapPage from './components/LaravelFtthMapPage';
 import DeviceHardwarePage from './components/DeviceHardwarePage';
 import FtthDevicesPage from './components/FtthDevicesPage';
 import FtthSplitterPage from './components/FtthSplitterPage';
+import IsolirManagementPage from './components/IsolirManagementPage';
+import IsolirNoticePage from './components/IsolirNoticePage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
@@ -1065,6 +1067,12 @@ const safeFormatDate = (val: any): string => {
             onLogout={handleLogout}
           />
         );
+      case 'isolir-system':
+        return (
+          <IsolirManagementPage
+            profile={profile}
+          />
+        );
       case 'genieacs':
         return (
           <GenieAcsManagement
@@ -1433,6 +1441,16 @@ const safeFormatDate = (val: any): string => {
         }}
       />
     );
+  }
+
+  // 0.5. LANDING PAGE ISOLIR PUBLIK (Untuk Pelanggan yang Terisolir / Redirected)
+  const isIsolirRoute = 
+    window.location.hash === '#/isolir' || 
+    window.location.hash.startsWith('#/isolir?') ||
+    window.location.pathname === '/isolir' || 
+    window.location.pathname.startsWith('/isolir?');
+  if (isIsolirRoute) {
+    return <IsolirNoticePage profile={profile} />;
   }
 
   // 1. CUSTOMER PORTAL (Untuk Pengunjung Belum Login ATAU Role Pelanggan)

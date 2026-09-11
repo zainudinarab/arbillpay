@@ -23,7 +23,8 @@ import {
   MapPin,
   Wifi,
   Bell,
-  Cpu
+  Cpu,
+  ShieldAlert
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -92,9 +93,11 @@ export default function Sidebar({
       icon: Server,
       roles: ['owner', 'teknisi'],
       items: [
+        { id: 'packages', label: 'Paket Internet', icon: Router, roles: ['owner', 'teknisi'] },
         { id: 'routers', label: 'Daftar Router', icon: Server, roles: ['owner', 'teknisi'] },
         { id: 'ip-pools', label: 'Address Pool', icon: Network, roles: ['owner', 'teknisi'] },
         { id: 'profiles', label: 'Profile Mikrotik', icon: Zap, roles: ['owner', 'teknisi'] },
+        { id: 'isolir-system', label: 'Sistem Isolir', icon: ShieldAlert, roles: ['owner', 'teknisi'] },
         { id: 'genieacs', label: 'GenieACS OLT', icon: Radio, roles: ['owner', 'teknisi'] },
       ]
     },
@@ -105,7 +108,6 @@ export default function Sidebar({
       roles: ['owner', 'teknisi', 'marketing', 'kasir', 'pelanggan'],
       items: [
         { id: 'pending-submissions', label: 'Pengajuan Customer', icon: Zap, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
-        { id: 'packages', label: 'Paket Internet', icon: Router, roles: ['owner', 'teknisi'] },
         { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'vouchers', label: 'Voucher Hotspot', icon: Ticket, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },

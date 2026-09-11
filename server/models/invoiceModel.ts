@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { getFirestore } from '../config/firebase.js';
 
 export function generateInvoiceNumber() {
   const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -7,38 +8,79 @@ export function generateInvoiceNumber() {
 }
 
 export async function getInvoices(filters: { customer_id?: string; connection_type?: string; status?: string }) {
-  let queryStr = `
-    SELECT i.*, 
-           c.name as customer_name_real, c.customer_code, c.phone_number as customer_phone_real, c.pppoe_username,
-           p.name as current_package_name, p.price as current_package_price
-    FROM invoices i
-    LEFT JOIN customers c ON i.customer_id = c.id
-    LEFT JOIN packages p ON c.package_id = p.id
-  `;
-  const params: any[] = [];
-  const whereClauses: string[] = [];
-
-  if (filters.customer_id) {
-    params.push(filters.customer_id);
-    whereClauses.push(`i.customer_id = $${params.length}`);
-  }
-  if (filters.connection_type) {
-    params.push(filters.connection_type);
-    whereClauses.push(`i.connection_type = $${params.length}`);
-  }
-  if (filters.status) {
-    params.push(filters.status);
-    whereClauses.push(`i.status = $${params.length}`);
-  }
-
-  if (whereClauses.length > 0) {
-    queryStr += ' WHERE ' + whereClauses.join(' AND ');
+  if (process.env.DB_DRIVER === 'firebase') {
+    const db = getFirestore();
+    if (db) {
+      const snap = await db.collection('invoices').get();
+      let list: any[] = [];
+      snap.forEach((doc: any) => {
+        if (doc.id !== '_init') {
+          list.push({ id: doc.id, ...doc.data() });
+        }
+      });
+      if (filters.customer_id) {
+        list = list.filter(i => String(i.customer_id) === String(filters.customer_id));
+      }
+      if (filters.connection_type) {
+        list = list.filter(i => String(i.connection_type) === String(filters.connection_type));
+      }
+      if (filters.status) {
+        list = list.filter(i => String(i.status) === String(filters.status));
+      }
+      list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      return list;
+    }
   }
 
-  queryStr += ' ORDER BY i.created_at DESC';
+  try {
+    let queryStr = `
+      SELECT i.*, 
+             c.name as customer_name_real, c.customer_code, c.phone_number as customer_phone_real, c.pppoe_username,
+             p.name as current_package_name, p.price as current_package_price
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+    `;
+    const params: any[] = [];
+    const whereClauses: string[] = [];
 
-  const result = await pool.query(queryStr, params);
-  return result.rows;
+    if (filters.customer_id) {
+      params.push(filters.customer_id);
+      whereClauses.push(`i.customer_id = $${params.length}`);
+    }
+    if (filters.connection_type) {
+      params.push(filters.connection_type);
+      whereClauses.push(`i.connection_type = $${params.length}`);
+    }
+    if (filters.status) {
+      params.push(filters.status);
+      whereClauses.push(`i.status = $${params.length}`);
+    }
+
+    if (whereClauses.length > 0) {
+      queryStr += ' WHERE ' + whereClauses.join(' AND ');
+    }
+
+    queryStr += ' ORDER BY i.created_at DESC';
+
+    const result = await pool.query(queryStr, params);
+    return result.rows;
+  } catch (err: any) {
+    console.warn('[INVOICES] Postgres query failed, falling back to Cloud Firestore:', err.message);
+    const db = getFirestore();
+    if (db) {
+      const snap = await db.collection('invoices').get();
+      let list: any[] = [];
+      snap.forEach((doc: any) => {
+        if (doc.id !== '_init') {
+          list.push({ id: doc.id, ...doc.data() });
+        }
+      });
+      list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      return list;
+    }
+    throw err;
+  }
 }
 
 export async function runAutoBillingJob(daysBeforeDue: number = 5) {

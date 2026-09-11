@@ -1,4 +1,5 @@
 import { pool } from '../config/db.js';
+import { getFirestore } from '../config/firebase.js';
 
 export function generateRandomCode(length: number, charType: string, prefix: string = '') {
   let chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -14,18 +15,51 @@ export function generateRandomCode(length: number, charType: string, prefix: str
 }
 
 export async function getAllVouchers() {
-  const result = await pool.query(`
-    SELECT v.id, v.batch_id, v.router_id, v.router_profile_id, v.code, v.password, v.status, v.comment, v.created_at,
-           r.name as router_name, r.ip_address as router_ip,
-           rp.name as profile_name, rp.rate_limit,
-           p.name as package_name, p.price as package_price, p.validity_days, p.validity_unit, p.validity_value, p.uptime_limit, p.quota_mb
-    FROM hotspot_vouchers v
-    LEFT JOIN routers r ON v.router_id = r.id
-    LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
-    LEFT JOIN packages p ON rp.package_id = p.id
-    ORDER BY v.created_at DESC, v.code ASC
-  `);
-  return result.rows;
+  if (process.env.DB_DRIVER === 'firebase') {
+    const db = getFirestore();
+    if (db) {
+      const snap = await db.collection('hotspot_vouchers').get();
+      const list: any[] = [];
+      snap.forEach((doc: any) => {
+        if (doc.id !== '_init') {
+          list.push({ id: doc.id, ...doc.data() });
+        }
+      });
+      list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      return list;
+    }
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT v.id, v.batch_id, v.router_id, v.router_profile_id, v.code, v.password, v.status, v.comment, v.created_at,
+             v.first_login_at, v.mac_address, v.ip_address, v.expired_at,
+             r.name as router_name, r.ip_address as router_ip,
+             rp.name as profile_name, rp.rate_limit,
+             p.name as package_name, p.price as package_price, p.validity_iso, p.grace_period_iso, p.uptime_limit, p.quota_mb
+      FROM hotspot_vouchers v
+      LEFT JOIN routers r ON v.router_id = r.id
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      ORDER BY v.created_at DESC, v.code ASC
+    `);
+    return result.rows;
+  } catch (err: any) {
+    console.warn('[VOUCHERS] Postgres query failed, falling back to Cloud Firestore:', err.message);
+    const db = getFirestore();
+    if (db) {
+      const snap = await db.collection('hotspot_vouchers').get();
+      const list: any[] = [];
+      snap.forEach((doc: any) => {
+        if (doc.id !== '_init') {
+          list.push({ id: doc.id, ...doc.data() });
+        }
+      });
+      list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      return list;
+    }
+    throw err;
+  }
 }
 
 export async function deleteBatchVouchers(batchId: string) {

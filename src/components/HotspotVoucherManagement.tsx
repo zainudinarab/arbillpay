@@ -14,10 +14,14 @@ import {
   FileText,
   Calendar,
   DollarSign,
-  X
+  X,
+  Smartphone,
+  Clock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
+import { getApiUrl } from '../config/api';
+import { getVouchersFromFirestore } from '../services/firebaseService';
 
 interface RouterItem {
   id: string;
@@ -54,8 +58,14 @@ interface VoucherItem {
   validity_days?: number;
   validity_unit?: string;
   validity_value?: number;
+  validity_iso?: string;
+  grace_period_iso?: string;
   uptime_limit?: string;
   quota_mb?: number;
+  first_login_at?: string;
+  mac_address?: string;
+  ip_address?: string;
+  expired_at?: string;
 }
 
 interface HotspotVoucherManagementProps {
@@ -429,6 +439,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                         <th className="py-3.5 px-4">Router Mikrotik</th>
                         <th className="py-3.5 px-4">Profile Hotspot</th>
                         <th className="py-3.5 px-4">Tarif & Masa Aktif</th>
+                        <th className="py-3.5 px-4">Status & Sinyal Aktif</th>
                         <th className="py-3.5 px-4">Waktu Buat</th>
                         <th className="py-3.5 px-4 text-right">Aksi</th>
                       </tr>
@@ -456,6 +467,36 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                               </span>
                             ) : (
                               <span className="text-slate-400 font-mono text-[11px]">{v.rate_limit || '-'}</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            {v.first_login_at ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md w-fit">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  Aktif (Dipakai)
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                  <Clock size={10} className="text-slate-400" />
+                                  {new Date(v.first_login_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                </span>
+                                {v.mac_address && (
+                                  <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                                    <Smartphone size={10} className="text-slate-400" />
+                                    {v.mac_address}
+                                  </span>
+                                )}
+                                {v.expired_at && (
+                                  <span className="text-[10px] text-amber-700 font-mono font-medium">
+                                    Exp: {new Date(v.expired_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md w-fit">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                Belum Dipakai
+                              </span>
                             )}
                           </td>
                           <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">

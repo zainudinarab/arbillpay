@@ -2,19 +2,25 @@ import { Router } from 'express';
 import { 
   listCustomers, addCustomer, editCustomer, updateLocation, 
   createUserAccount, payCustomerBill, removeCustomer, 
-  checkPhone, linkPhone, syncCustomerToMikrotik, disconnectCustomerPpp,
+  checkPhone, linkPhone, syncCustomerToMikrotik, syncAllCustomersToMikrotik, disconnectCustomerPpp,
   checkMyStatus
 } from '../controllers/customerController.js';
 
 import { listInvoices } from '../controllers/invoiceController.js';
+import { listPppLogs } from '../controllers/pppEventController.js';
 
 const router = Router();
 
 router.get('/', listCustomers);
 router.post('/', addCustomer);
+router.post('/sync-all-to-mikrotik', syncAllCustomersToMikrotik);
 router.get('/:id/invoices', (req, res) => {
   req.query.customer_id = req.params.id;
   return listInvoices(req, res);
+});
+router.get('/:id/logs', (req, res) => {
+  req.query.customer_id = req.params.id;
+  return listPppLogs(req, res);
 });
 router.put('/:id', editCustomer);
 router.delete('/:id', removeCustomer);

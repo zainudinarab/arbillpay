@@ -3,6 +3,7 @@ import { pool } from '../config/db.js';
 import { getInvoices, generateInvoiceNumber, runAutoBillingJob } from '../models/invoiceModel.js';
 import { createArabPayPaymentOrder } from '../services/arabpayService.js';
 import { sendInvoicePaymentLinkWA } from '../services/whatsappService.js';
+import { addIsoDuration } from '../utils/duration.js';
 
 export async function listInvoices(req: Request, res: Response) {
   const { customer_id, connection_type, status } = req.query;
@@ -28,7 +29,7 @@ export async function createManualInvoice(req: Request, res: Response) {
 
   try {
     const custRes = await pool.query(`
-      SELECT c.*, p.name as package_name, p.price as package_price, p.validity_days
+      SELECT c.*, p.name as package_name, p.price as package_price, p.validity_iso
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE c.id = $1
@@ -220,7 +221,7 @@ export async function payInvoice(req: Request, res: Response) {
 
     if (inv.customer_id) {
       const custRes = await pool.query(`
-        SELECT c.*, p.validity_days, p.grace_period_days 
+        SELECT c.*, p.validity_iso, p.grace_period_iso 
         FROM customers c 
         LEFT JOIN packages p ON c.package_id = p.id 
         WHERE c.id = $1
@@ -228,18 +229,13 @@ export async function payInvoice(req: Request, res: Response) {
 
       if (custRes.rows.length > 0) {
         const c = custRes.rows[0];
-        const vDays = c.validity_days || 30;
-        const gDays = c.grace_period_days || 5;
 
         const baseDate = (c.expired_at && new Date(c.expired_at) > new Date()) 
           ? new Date(c.expired_at) 
           : new Date();
 
-        const newExpDate = new Date(baseDate);
-        newExpDate.setDate(newExpDate.getDate() + vDays);
-
-        const newGraceDate = new Date(newExpDate);
-        newGraceDate.setDate(newGraceDate.getDate() + gDays);
+        const newExpDate = addIsoDuration(baseDate, c.validity_iso || 'P1M', 30);
+        const newGraceDate = addIsoDuration(newExpDate, c.grace_period_iso || 'P5D', 5);
 
         await pool.query(`
           UPDATE customers 
@@ -336,7 +332,7 @@ export async function handleArabPayCallback(req: Request, res: Response) {
     // 2. Extend customer validity & auto-un-suspend
     if (inv.customer_id) {
       const custRes = await pool.query(`
-        SELECT c.*, p.validity_days, p.grace_period_days 
+        SELECT c.*, p.validity_iso, p.grace_period_iso 
         FROM customers c 
         LEFT JOIN packages p ON c.package_id = p.id 
         WHERE c.id = $1
@@ -344,18 +340,13 @@ export async function handleArabPayCallback(req: Request, res: Response) {
 
       if (custRes.rows.length > 0) {
         const c = custRes.rows[0];
-        const vDays = c.validity_days || 30;
-        const gDays = c.grace_period_days || 5;
 
         const baseDate = (c.expired_at && new Date(c.expired_at) > new Date()) 
           ? new Date(c.expired_at) 
           : new Date();
 
-        const newExpDate = new Date(baseDate);
-        newExpDate.setDate(newExpDate.getDate() + vDays);
-
-        const newGraceDate = new Date(newExpDate);
-        newGraceDate.setDate(newGraceDate.getDate() + gDays);
+        const newExpDate = addIsoDuration(baseDate, c.validity_iso || 'P1M', 30);
+        const newGraceDate = addIsoDuration(newExpDate, c.grace_period_iso || 'P5D', 5);
 
         await pool.query(`
           UPDATE customers 

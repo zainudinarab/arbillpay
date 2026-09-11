@@ -12,6 +12,7 @@ import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 import { generateNextCustomerCode } from '../utils';
 import { IndonesianAddressForm } from './IndonesianAddressForm';
+import { parseIso8601 } from '../utils/iso8601';
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
@@ -296,7 +297,7 @@ export default function CustomerPortal({
         try {
           const res = await fetch(`${apiUrl}/api/vouchers/available`);
           const data = await res.json();
-          if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
+          if (data.success && Array.isArray(data.groups)) {
             setVoucherGroups(data.groups);
             setVoucherLoading(false);
             return;
@@ -304,7 +305,7 @@ export default function CustomerPortal({
         } catch (apiErr) { }
       }
 
-      // Direct Firebase Firestore
+      // Direct Firebase Firestore (fallback only if API server unreachable)
       const fbData = await getVouchersFromFirestore();
       if (fbData.success && Array.isArray(fbData.vouchers) && fbData.vouchers.length > 0) {
         const groupsMap: any = {};
@@ -353,7 +354,7 @@ export default function CustomerPortal({
           const res = await fetch(`${apiUrl}/api/packages`);
           const data = await res.json();
           if (data.success && Array.isArray(data.packages)) {
-            const filtered = data.packages.filter((p: any) => p.type === 'hotspot_monthly' || p.type === 'pppoe');
+            const filtered = data.packages.filter((p: any) => (p.type === 'hotspot_monthly' || p.type === 'pppoe') && p.is_active !== false);
             setMonthlyPackages(filtered);
             return;
           }
@@ -1514,8 +1515,9 @@ export default function CustomerPortal({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                 {voucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
-                  const validity = pkg.validity_value || pkg.validity_days || 1;
-                  const unit = pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari';
+                  const parsedV = parseIso8601(pkg.validity_iso);
+                  const validity = parsedV.val || pkg.validity_value || 1;
+                  const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
                   return (
@@ -1559,8 +1561,9 @@ export default function CustomerPortal({
                               <h3 className="font-bold text-lg text-slate-100 leading-tight">
                                 {pkg.package_name || pkg.profile_name}
                               </h3>
-                              <p className="text-xs text-slate-400 mt-1">
-                                Router: {pkg.router_name || 'MikroTik Hotspot'}
+                              <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 font-medium">
+                                <Globe className="w-3.5 h-3.5 text-sky-400" />
+                                <span>ISP: <strong className="text-slate-200">{pkg.dns_name || pkg.isp_name || 'arab.net'}</strong></span>
                               </p>
                             </div>
                           </div>
@@ -1886,14 +1889,24 @@ export default function CustomerPortal({
             {/* Rich Package Detail Box with Computed Dates */}
             {(() => {
               const today = new Date();
-              const validityDays = registerPkg.validity_days || registerPkg.validity_value || 30;
-              const graceDays = registerPkg.grace_period_days || 15;
+              const parsedRegV = parseIso8601(registerPkg.validity_iso);
+              const parsedRegG = parseIso8601(registerPkg.grace_period_iso || 'P15D');
 
               const estActiveUntil = new Date(today);
-              estActiveUntil.setDate(today.getDate() + validityDays);
+              if (parsedRegV.unit === 'month') {
+                estActiveUntil.setMonth(today.getMonth() + (parsedRegV.val || 1));
+              } else if (parsedRegV.unit === 'day') {
+                estActiveUntil.setDate(today.getDate() + (parsedRegV.val || 30));
+              } else {
+                estActiveUntil.setDate(today.getDate() + 30);
+              }
 
               const estGraceUntil = new Date(estActiveUntil);
-              estGraceUntil.setDate(estActiveUntil.getDate() + graceDays);
+              if (parsedRegG.unit === 'day') {
+                estGraceUntil.setDate(estActiveUntil.getDate() + (parsedRegG.val || 15));
+              } else {
+                estGraceUntil.setDate(estActiveUntil.getDate() + 15);
+              }
 
               const formatDateID = (d: Date) => d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -1918,7 +1931,7 @@ export default function CustomerPortal({
                   <div className="grid grid-cols-3 gap-2 p-2.5 bg-slate-900 border border-slate-800 rounded-2xl text-[11px]">
                     <div className="space-y-0.5">
                       <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">Masa Aktif</span>
-                      <span className="text-emerald-400 font-bold block font-mono">+{validityDays} Hari</span>
+                      <span className="text-emerald-400 font-bold block font-mono">+{parsedRegV.unit === 'month' ? `${parsedRegV.val || 1} Bulan` : `${parsedRegV.val || 30} Hari`}</span>
                       <span className="text-[10px] text-slate-400 block">{formatDateID(estActiveUntil)}</span>
                     </div>
                     <div className="space-y-0.5 border-x border-slate-800 px-2 text-center">
@@ -1928,7 +1941,7 @@ export default function CustomerPortal({
                     </div>
                     <div className="space-y-0.5 text-right">
                       <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">Toleransi Isolir</span>
-                      <span className="text-amber-400 font-bold block font-mono">+{graceDays} Hari</span>
+                      <span className="text-amber-400 font-bold block font-mono">+{parsedRegG.val || 15} Hari</span>
                       <span className="text-[10px] text-slate-400 block">{formatDateID(estGraceUntil)}</span>
                     </div>
                   </div>
@@ -2126,7 +2139,9 @@ export default function CustomerPortal({
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-400">Durasi</span>
-                      <span className="text-slate-300 font-medium">{selectedPackage.validity_value ? `${selectedPackage.validity_value} ${selectedPackage.validity_unit === 'day' ? 'Hari' : 'Jam'}` : selectedPackage.duration || '3 Jam'}</span>
+                      <span className="text-slate-300 font-medium">
+                        {selectedPackage.validity_iso ? parseIso8601(selectedPackage.validity_iso).human : selectedPackage.validity_value ? `${selectedPackage.validity_value} ${selectedPackage.validity_unit === 'day' ? 'Hari' : 'Jam'}` : selectedPackage.duration || '3 Jam'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-400">Speed</span>
