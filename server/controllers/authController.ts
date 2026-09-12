@@ -103,19 +103,26 @@ export async function arabpayOAuth(req: Request, res: Response) {
 
     const userRole = (arabpayUserId === ownerUserId || rawEmail.includes('owner') || isFirstUserInDb) ? 'owner' : 'pelanggan';
 
+    const cleanUsername = (rawUsername || '').toLowerCase().trim();
+    const cleanEmail = (rawEmail || '').toLowerCase().trim();
+    const cleanPhone = (rawPhone || '').trim();
+
+    // 1. Cek apakah akun user sudah ada (berdasarkan arabpay_user_id, username, email, atau no HP)
     const existingUser = await pool.query(
       `SELECT id, username, name, email, phone_number, role, arabpay_user_id 
        FROM users 
-       WHERE email = $1 
-          OR (phone_number IS NOT NULL AND phone_number = $2) 
-          OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $3)
+       WHERE (arabpay_user_id IS NOT NULL AND arabpay_user_id = $1)
+          OR (username IS NOT NULL AND LOWER(username) = $2)
+          OR (email IS NOT NULL AND LOWER(email) = $3)
+          OR (phone_number IS NOT NULL AND phone_number = $4)
        ORDER BY created_at ASC LIMIT 1`,
-      [rawEmail, rawPhone, arabpayUserId]
+      [arabpayUserId, cleanUsername, cleanEmail, cleanPhone]
     );
 
     let finalUser = null;
     let isNewUser = false;
 
+    // 2. Jika user SUDAH ADA: Cukup perbarui token ArabPay dan profilnya, jangan buat user baru!
     if (existingUser.rows.length > 0) {
       finalUser = existingUser.rows[0];
       await pool.query(
@@ -123,16 +130,17 @@ export async function arabpayOAuth(req: Request, res: Response) {
          SET phone_number = COALESCE($1, phone_number),
              arabpay_user_id = COALESCE($2, arabpay_user_id),
              arabpay_token = COALESCE($3, arabpay_token),
-             name = COALESCE($5, name),
-             email = COALESCE($6, email),
-             role = CASE WHEN $2 = $7 THEN 'owner' ELSE role END
-         WHERE id = $4`,
-        [rawPhone, arabpayUserId, jwtToken, finalUser.id, rawName, rawEmail, ownerUserId]
+             name = COALESCE($4, name),
+             email = COALESCE($5, email),
+             role = CASE WHEN $2 = $6 OR id = $6 OR role = 'owner' THEN 'owner' ELSE role END
+         WHERE id = $7`,
+        [cleanPhone, arabpayUserId, jwtToken, rawName, cleanEmail, ownerUserId, finalUser.id]
       );
-      if (arabpayUserId === ownerUserId) {
+      if (arabpayUserId === ownerUserId || finalUser.id === ownerUserId || finalUser.role === 'owner') {
         finalUser.role = 'owner';
       }
     } else {
+      // 3. Jika user BELUM ADA: Baru daftarkan sebagai user baru di database PostgreSQL
       isNewUser = true;
       const newUserId = crypto.randomUUID();
       const initialPassword = userRole === 'owner' ? 'admin123' : crypto.randomBytes(16).toString('hex');
@@ -141,8 +149,15 @@ export async function arabpayOAuth(req: Request, res: Response) {
       const result = await pool.query(
         `INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (username) DO UPDATE SET
+           arabpay_token = EXCLUDED.arabpay_token,
+           arabpay_user_id = COALESCE(EXCLUDED.arabpay_user_id, users.arabpay_user_id),
+           name = COALESCE(EXCLUDED.name, users.name),
+           phone_number = COALESCE(EXCLUDED.phone_number, users.phone_number),
+           email = COALESCE(EXCLUDED.email, users.email),
+           role = CASE WHEN EXCLUDED.arabpay_user_id = $10 OR users.role = 'owner' THEN 'owner' ELSE users.role END
          RETURNING id, username, name, email, phone_number, arabpay_user_id, role, created_at`,
-        [newUserId, rawUsername.toLowerCase(), rawName, rawEmail.toLowerCase(), rawPhone, arabpayUserId, jwtToken, userRole, defaultEncryptedPassword]
+        [newUserId, cleanUsername, rawName, cleanEmail, cleanPhone, arabpayUserId, jwtToken, userRole, defaultEncryptedPassword, ownerUserId]
       );
       finalUser = result.rows[0];
     }
@@ -280,9 +295,13 @@ export async function syncUser(req: Request, res: Response) {
     // Cek apakah user sudah ada di database
     const existing = await pool.query(
       `SELECT id, role FROM users 
-       WHERE id = $1 OR email = $2 OR (phone_number IS NOT NULL AND phone_number = $3) OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $4) 
+       WHERE id = $1 
+          OR (username IS NOT NULL AND LOWER(username) = $2)
+          OR (email IS NOT NULL AND LOWER(email) = $3) 
+          OR (phone_number IS NOT NULL AND phone_number = $4) 
+          OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $5) 
        LIMIT 1`,
-      [id || '', cleanEmail, cleanPhone, arabpayId]
+      [id || '', cleanUsername, cleanEmail, cleanPhone, arabpayId]
     );
 
     let targetId = id;
@@ -296,7 +315,7 @@ export async function syncUser(req: Request, res: Response) {
             phone_number = COALESCE($4, phone_number),
             arabpay_user_id = COALESCE($5, arabpay_user_id),
             arabpay_token = COALESCE($6, arabpay_token),
-            role = CASE WHEN $7 = 'owner' THEN 'owner' ELSE role END
+            role = CASE WHEN $7 = 'owner' OR role = 'owner' THEN 'owner' ELSE role END
         WHERE id = $8
       `, [cleanUsername, name, cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, targetId]);
     } else {
@@ -307,14 +326,13 @@ export async function syncUser(req: Request, res: Response) {
       await pool.query(`
         INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash, password)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (id) DO UPDATE SET
-          username = EXCLUDED.username,
+        ON CONFLICT (username) DO UPDATE SET
           name = EXCLUDED.name,
           email = EXCLUDED.email,
           phone_number = COALESCE(EXCLUDED.phone_number, users.phone_number),
           arabpay_user_id = COALESCE(EXCLUDED.arabpay_user_id, users.arabpay_user_id),
           arabpay_token = COALESCE(EXCLUDED.arabpay_token, users.arabpay_token),
-          role = CASE WHEN EXCLUDED.role = 'owner' THEN 'owner' ELSE users.role END
+          role = CASE WHEN EXCLUDED.role = 'owner' OR users.role = 'owner' THEN 'owner' ELSE users.role END
       `, [targetId, cleanUsername, name || 'User', cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, defaultHash, defaultPass]);
     }
 
