@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { 
   Network, 
@@ -101,7 +102,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
   const fetchData = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const [resP, resR] = await Promise.all([
         fetch(`${apiUrl}/api/ip-pools`),
         fetch(`${apiUrl}/api/routers`)
@@ -222,7 +223,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/ip-pools`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -272,7 +273,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/ip-pools/${editingPool.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +308,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/ip-pools/${deletingPoolTarget.id}`, {
         method: 'DELETE'
       });
@@ -332,7 +333,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/${routerId}/sync-ip-pools`, {
         method: 'POST'
       });
@@ -356,7 +357,7 @@ export default function IpPoolManagement({ profile, t, onLogout }: IpPoolManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/ip-pools/${poolId}/push-to-mikrotik`, {
         method: 'POST'
       });

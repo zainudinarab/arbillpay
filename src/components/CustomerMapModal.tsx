@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { MapPin, Navigation, Save, X, ExternalLink, Search } from 'lucide-react';
 import L from 'leaflet';
@@ -173,7 +174,7 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
 
       // 1. Optional API Call (silently catch network errors if backend offline)
       try {
-        const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+        const apiUrl = getApiUrl();
         await fetch(`${apiUrl}/api/customers/${customer.id}/location`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },

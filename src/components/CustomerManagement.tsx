@@ -1186,7 +1186,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
       const newCustomerPayload = {
@@ -1408,7 +1408,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         status: status as any
       };
 
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1443,7 +1443,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/${importRouterId}/import-ppp-secrets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1485,7 +1485,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         status: 'active'
       };
 
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       if (apiUrl) {
         await fetch(`${apiUrl}/api/customers/${cust.id}`, {
           method: 'PUT',

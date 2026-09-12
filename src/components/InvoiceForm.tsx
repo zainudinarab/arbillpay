@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState } from 'react';
 import { 
   Plus, 
@@ -37,7 +38,7 @@ export default function InvoiceForm({
   React.useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+        const apiUrl = getApiUrl();
         const res = await fetch(`${apiUrl}/api/customers`);
         const data = await res.json();
         if (data.success && Array.isArray(data.customers)) {

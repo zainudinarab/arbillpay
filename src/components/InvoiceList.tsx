@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState } from 'react';
 import { 
   Search, 
@@ -78,7 +79,7 @@ export default function InvoiceList({
     setAutoBillingLoading(true);
     setAutoBillingResult(null);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/invoices/auto-generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

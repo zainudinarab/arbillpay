@@ -118,7 +118,7 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const fetchPackages = async () => {
     setLoading(true);
     try {
-      const apiUrl = getApiUrl() || (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl() || getApiUrl();
       let fetched = false;
 
       if (apiUrl) {

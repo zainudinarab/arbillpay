@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Navigation, Search, Filter, RefreshCw, X, ExternalLink, Globe, ShieldCheck, AlertCircle, Plus, Trash2, Radio, Network, Layers, Settings, Link2 } from 'lucide-react';
 import L from 'leaflet';
@@ -158,7 +159,7 @@ export default function MapViewPage({ profile, t, onLogout, customers = [] }: Ma
 
   // Fetch FTTH Map Topology 100% from Backend Database on Mount
   useEffect(() => {
-    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+    const apiUrl = getApiUrl();
     fetch(`${apiUrl}/api/ftth/map`)
       .then(r => r.json())
       .then(data => {
@@ -206,7 +207,7 @@ export default function MapViewPage({ profile, t, onLogout, customers = [] }: Ma
   useEffect(() => {
     if (customers.length === 0) {
       setLoading(true);
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       fetch(`${apiUrl}/api/customers`)
         .then(r => r.json())
         .then(data => {

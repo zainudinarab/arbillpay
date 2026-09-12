@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -296,7 +297,7 @@ const DEFAULT_SPLITTER_CATALOG = [
           setLines(fsData.lines);
         } else {
           // Fallback to local server if Firestore is initially empty
-          fetch('http://localhost:3006/api/ftth/map')
+          fetch(`${getApiUrl()}/api/ftth/map`)
             .then(res => res.json())
             .then(data => {
               if (data.success && data.data) {
@@ -318,7 +319,7 @@ const DEFAULT_SPLITTER_CATALOG = [
       })
       .catch(() => null);
 
-    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+    const apiUrl = getApiUrl();
     fetch(`${apiUrl}/api/customers`)
       .then(res => res.json())
       .then(data => {
@@ -329,7 +330,7 @@ const DEFAULT_SPLITTER_CATALOG = [
       .catch(() => null);
 
     const fetchActiveUsers = () => {
-      fetch('http://localhost:3006/api/routers/ppp-active-users')
+      fetch(`${getApiUrl()}/api/routers/ppp-active-users`)
         .then(res => res.json())
         .then(data => {
           if (data.success && Array.isArray(data.onlineUsernames)) {
@@ -671,7 +672,7 @@ const DEFAULT_SPLITTER_CATALOG = [
       // 2. Synchronize customer GPS location in local database if available
       payloadNodes.forEach((n: any) => {
         if ((n.type === 'ONU' || n.type === 'ROUTER_WIFI') && n.customerId && n.lat && n.lng) {
-          fetch(`http://localhost:3006/api/customers/${n.customerId}/location`, {
+          fetch(`${getApiUrl()}/api/customers/${n.customerId}/location`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -684,7 +685,7 @@ const DEFAULT_SPLITTER_CATALOG = [
       });
 
       // 3. Fallback save to local server if running locally
-      fetch('http://localhost:3006/api/ftth/map/save', {
+      fetch(`${getApiUrl()}/api/ftth/map/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodes: payloadNodes, lines: payloadLines })

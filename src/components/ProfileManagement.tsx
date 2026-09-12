@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { 
   Zap, 
@@ -159,7 +160,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
   const fetchData = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const [resProf, resPkg, resRtr, resPool, resCust] = await Promise.all([
         fetch(`${apiUrl}/api/router-profiles`),
         fetch(`${apiUrl}/api/packages`),
@@ -268,7 +269,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     const finalLocalAddress = localAddressMode === 'manual' ? localAddressVal.trim() : localAddressVal;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/router-profiles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,7 +339,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     const finalLocalAddress = localAddressMode === 'manual' ? localAddressVal.trim() : localAddressVal;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/router-profiles/${editingProfile.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -375,7 +376,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     setDeleteLoading(true);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/router-profiles/${deletingProfile.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -401,7 +402,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     const newActive = !currentActive;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/router-profiles/${prof.id}/toggle-status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -427,7 +428,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/router-profiles/${prof.id}/push-to-mikrotik`, {
         method: 'POST'
       });

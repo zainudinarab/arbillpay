@@ -203,7 +203,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/vouchers/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,7 +241,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     if (!confirm('Apakah Anda yakin ingin menghapus seluruh voucher dalam batch ini?')) return;
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/vouchers/batch/${batchId}`, {
         method: 'DELETE'
       });

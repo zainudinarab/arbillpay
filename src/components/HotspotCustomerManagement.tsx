@@ -100,7 +100,7 @@ export default function HotspotCustomerManagement({
 
   const fetchCustomerInvoices = async (cust: Customer) => {
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/invoices?customer_id=${cust.id}`);
       const data = await parseJsonResponse(res);
       if (data.success && Array.isArray(data.invoices)) {
@@ -118,7 +118,7 @@ export default function HotspotCustomerManagement({
   const handlePayInvoiceById = async (invId: string) => {
     setPayLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/invoices/${invId}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -384,7 +384,7 @@ export default function HotspotCustomerManagement({
     try {
       const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -440,7 +440,7 @@ export default function HotspotCustomerManagement({
     try {
       const matchedProfile = routerProfiles.find(rp => rp.router_id === selectedRouterId && rp.package_id === packageId);
 
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/customers/${editingCustomer.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -510,7 +510,7 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/${importRouterId}/import-hotspot-users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -540,7 +540,7 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/customers/${c.id}/sync-to-mikrotik`, {
         method: 'POST'
       });
@@ -573,7 +573,7 @@ export default function HotspotCustomerManagement({
     let successCount = 0;
     let failCount = 0;
 
-    const apiUrl = getApiUrl() || 'http://localhost:3006';
+    const apiUrl = getApiUrl();
     for (const c of hotspotList) {
       try {
         const res = await fetch(`${apiUrl}/api/customers/${c.id}/sync-to-mikrotik`, {
@@ -602,7 +602,7 @@ export default function HotspotCustomerManagement({
     setToastMsg(null);
 
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/customers/${c.id}/disconnect-ppp`, {
         method: 'POST'
       });
@@ -628,7 +628,7 @@ export default function HotspotCustomerManagement({
     setInvoiceLoading(true);
     setToastMsg(null);
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/invoices/create-batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -651,7 +651,7 @@ export default function HotspotCustomerManagement({
     setActionLoadingId(c.id);
     setToastMsg(null);
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/invoices/create-manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2094,7 +2094,7 @@ export default function HotspotCustomerManagement({
                                 type="button"
                                 onClick={async () => {
                                   try {
-                                    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+                                    const apiUrl = getApiUrl();
                                     const res = await fetch(`${apiUrl}/api/invoices/${inv.id}/send-wa`, { method: 'POST' });
                                     const data = await parseJsonResponse(res);
                                     setToastMsg({ type: data.success ? 'success' : 'error', text: data.message });

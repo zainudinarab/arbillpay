@@ -102,7 +102,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setToastMsg(null);
 
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,7 +191,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setTestConnResult(null);
 
     try {
-      const apiUrl = getApiUrl() || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -393,7 +393,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setSyncingId(`${rtr.id}-${syncType}`);
     setToastMsg(null);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -419,7 +419,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const fetchRouterProfiles = async (routerId: string) => {
     setProfilesLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/routers/${routerId}/profiles`);
       const data = await res.json();
       if (data.success && Array.isArray(data.profiles)) {

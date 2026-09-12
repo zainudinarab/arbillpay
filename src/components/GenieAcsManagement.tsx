@@ -1,3 +1,4 @@
+import { getApiUrl } from '../config/api';
 import React, { useState, useEffect } from 'react';
 import { 
   Radio, 
@@ -69,7 +70,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   const fetchData = async () => {
     setLoading(true);
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const [sRes, dRes, cRes] = await Promise.all([
         fetch(`${apiUrl}/api/genieacs/settings`).catch(() => null),
         fetch(`${apiUrl}/api/genieacs/devices`).catch(() => null),
@@ -118,7 +119,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/genieacs/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -152,7 +153,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/genieacs/sync-customers`, {
         method: 'POST'
       });
@@ -179,7 +180,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(deviceId)}/reboot`, {
         method: 'POST'
       });
@@ -212,7 +213,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     setToastMsg(null);
 
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3006';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForWifi.id)}/wifi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
