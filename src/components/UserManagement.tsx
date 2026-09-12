@@ -31,6 +31,10 @@ const normalizePhone = (phone?: string): string => {
   return cleaned;
 };
 
+const isPostgresDriver = (): boolean => {
+  return (((import.meta as any).env?.VITE_DB_DRIVER || 'postgres').toLowerCase() === 'postgres');
+};
+
 interface UserItem {
   id: string;
   username: string;
@@ -71,46 +75,73 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   const fetchUsers = async () => {
     setLoading(true);
     let loadedUsers: UserItem[] = [];
+    const isPostgres = isPostgresDriver();
+    const apiUrl = getApiUrl();
+    let fetchedFromApi = false;
 
     try {
-      const apiUrl = getApiUrl();
       if (apiUrl) {
         const res = await fetch(`${apiUrl}/api/users`).catch(() => null);
         if (res && res.ok) {
           const data = await res.json().catch(() => null);
           if (data && data.success && Array.isArray(data.users)) {
             loadedUsers = data.users;
+            fetchedFromApi = true;
           }
         }
       }
     } catch (err) { }
 
-    // Always fetch and merge from Firebase Cloud Firestore for pure serverless deployment
+    // Jika driver diset ke postgres dan API berhasil mengambil data, HANYA gunakan PostgreSQL!
+    // Hanya fallback / merge dari Firestore jika BUKAN mode postgres atau API backend offline
+    if (!isPostgres || !fetchedFromApi) {
+      try {
+        const fbUsers = await getUsersFromFirestore();
+        if (fbUsers.success && Array.isArray(fbUsers.users)) {
+          const existingIds = new Set(loadedUsers.map(u => String(u.id)));
+          fbUsers.users.forEach((fu: any) => {
+            if (!existingIds.has(String(fu.id))) {
+              loadedUsers.push({
+                id: fu.id,
+                username: fu.username || fu.email || `user_${fu.id.slice(-4)}`,
+                name: fu.name || fu.username || 'User',
+                email: fu.email || 'user@hotspot.local',
+                phone_number: fu.phone_number || fu.phone || '',
+                arabpay_user_id: fu.arabpay_user_id || fu.user_id || fu.arabpay_id || (fu.id && fu.id.length >= 15 ? fu.id : (fu.phone_number ? `AP-${fu.phone_number}` : '')),
+                role: fu.role || 'pelanggan',
+                created_at: fu.created_at || fu.updated_at || new Date().toISOString()
+              });
+            }
+          });
+        }
+      } catch (fbErr) {
+        console.warn('Firestore user fetch warning:', fbErr);
+      }
+    }
+
+    // Fetch customer subscriptions and map them to their parent User via normalized WhatsApp number
     try {
-      const fbUsers = await getUsersFromFirestore();
-      if (fbUsers.success && Array.isArray(fbUsers.users)) {
-        const existingIds = new Set(loadedUsers.map(u => String(u.id)));
-        fbUsers.users.forEach((fu: any) => {
-          if (!existingIds.has(String(fu.id))) {
-            loadedUsers.push({
-              id: fu.id,
-              username: fu.username || fu.email || `user_${fu.id.slice(-4)}`,
-              name: fu.name || fu.username || 'User',
-              email: fu.email || 'user@hotspot.local',
-              phone_number: fu.phone_number || fu.phone || '',
-              arabpay_user_id: fu.arabpay_user_id || fu.user_id || fu.arabpay_id || (fu.id && fu.id.length >= 15 ? fu.id : (fu.phone_number ? `AP-${fu.phone_number}` : '')),
-              role: fu.role || 'pelanggan',
-              created_at: fu.created_at || fu.updated_at || new Date().toISOString()
-            });
+      let custs: any[] = [];
+      if (apiUrl) {
+        const cRes = await fetch(`${apiUrl}/api/customers`).catch(() => null);
+        if (cRes && cRes.ok) {
+          const cData = await cRes.json().catch(() => null);
+          if (cData && cData.success && Array.isArray(cData.customers)) {
+            custs = cData.customers;
           }
-        });
+        }
       }
 
-      // Fetch customer subscriptions and map them to their parent User via normalized WhatsApp number
-      const fbCust = await getCustomersFromFirestore();
-      if (fbCust.success && Array.isArray(fbCust.customers)) {
+      if (custs.length === 0 && (!isPostgres || !fetchedFromApi)) {
+        const fbCust = await getCustomersFromFirestore();
+        if (fbCust.success && Array.isArray(fbCust.customers)) {
+          custs = fbCust.customers;
+        }
+      }
+
+      if (custs.length > 0) {
         const subMap: Record<string, any[]> = {};
-        fbCust.customers.forEach((cust: any) => {
+        custs.forEach((cust: any) => {
           const normP = normalizePhone(cust.phone_number || cust.phone);
           if (normP) {
             if (!subMap[normP]) subMap[normP] = [];
@@ -127,8 +158,8 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         });
         setUserSubscriptionsMap(subMap);
       }
-    } catch (fbErr) {
-      console.warn('Firestore user fetch warning:', fbErr);
+    } catch (cErr) {
+      console.warn('Customer subscriptions fetch warning:', cErr);
     }
 
     setUsers(loadedUsers);
@@ -162,7 +193,19 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         arabpay_user_id: arabpayId
       };
 
-      await saveUserToFirestore(updatedUser);
+      const apiUrl = getApiUrl();
+      const isPostgres = isPostgresDriver();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/users/${u.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ arabpay_user_id: arabpayId })
+        }).catch(() => null);
+      }
+
+      if (!isPostgres) {
+        await saveUserToFirestore(updatedUser);
+      }
 
       setUsers(prev => prev.map(item => item.id === u.id ? updatedUser : item));
       setToastMsg({ type: 'success', text: `ID ArabPay (${arabpayId}) untuk "${u.name}" berhasil disinkronkan & diperbarui!` });
@@ -171,7 +214,18 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       // Fallback: assign AP-phone ID if direct S2S fails
       const fallbackId = `AP-${u.phone_number}`;
       const updatedUser = { ...u, arabpay_user_id: fallbackId };
-      await saveUserToFirestore(updatedUser);
+      const apiUrl = getApiUrl();
+      const isPostgres = isPostgresDriver();
+      if (apiUrl) {
+        await fetch(`${apiUrl}/api/users/${u.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ arabpay_user_id: fallbackId })
+        }).catch(() => null);
+      }
+      if (!isPostgres) {
+        await saveUserToFirestore(updatedUser);
+      }
       setUsers(prev => prev.map(item => item.id === u.id ? updatedUser : item));
       setToastMsg({ type: 'success', text: `ID ArabPay (${fallbackId}) berhasil ditetapkan untuk "${u.name}"` });
     }
@@ -216,6 +270,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       };
 
       const apiUrl = getApiUrl();
+      const isPostgres = isPostgresDriver();
       if (apiUrl) {
         await fetch(`${apiUrl}/api/users`, {
           method: 'POST',
@@ -224,8 +279,10 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         }).catch(() => null);
       }
 
-      // Always save to Firebase Cloud Firestore
-      await saveUserToFirestore(newUserObj);
+      // Save to Firebase Cloud Firestore only if NOT pure postgres mode
+      if (!isPostgres) {
+        await saveUserToFirestore(newUserObj);
+      }
 
       setToastMsg({ type: 'success', text: `User "${newUserObj.name}" (Role: ${newUserObj.role.toUpperCase()}) berhasil ditambahkan!` });
       setShowAddModal(false);
@@ -275,6 +332,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
     try {
       const apiUrl = getApiUrl();
+      const isPostgres = isPostgresDriver();
       if (apiUrl) {
         await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
           method: 'PUT',
@@ -290,8 +348,10 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         }).catch(() => null);
       }
 
-      // Always update Cloud Firestore database
-      await saveUserToFirestore(updatedUserObj).catch(() => null);
+      // Update Cloud Firestore database only if not postgres mode
+      if (!isPostgres) {
+        await saveUserToFirestore(updatedUserObj).catch(() => null);
+      }
 
       // Update local state instantly
       setUsers(prev => prev.map(u => u.id === editingUser.id ? updatedUserObj : u));

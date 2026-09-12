@@ -31,21 +31,17 @@ export async function addUser(req: Request, res: Response) {
 
 export async function editUser(req: Request, res: Response) {
   const { id } = req.params;
-  const { name, username, email, phone_number, role, password } = req.body;
-
-  if (!name || !email) {
-    return res.status(400).json({ success: false, message: 'Nama dan Email wajib diisi.' });
-  }
+  const { name, username, email, phone_number, role, password, arabpay_user_id } = req.body;
 
   try {
-    const user = await updateUser(id, { name, username, email, phone_number, role, password });
+    const user = await updateUser(id, { name, username, email, phone_number, role, password, arabpay_user_id });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
     }
 
     res.json({
       success: true,
-      message: `User "${user.name}" berhasil diperbarui! Role: ${user.role.toUpperCase()}`,
+      message: `User "${user.name}" berhasil diperbarui! Role: ${user.role ? user.role.toUpperCase() : ''}`,
       user
     });
   } catch (err: any) {

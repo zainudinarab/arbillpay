@@ -57,7 +57,7 @@ export async function createUser(data: { username: string; name: string; email: 
   return result.rows[0];
 }
 
-export async function updateUser(id: string, data: { name: string; username?: string; email: string; phone_number?: string; role?: string; password?: string }) {
+export async function updateUser(id: string, data: { name?: string; username?: string; email?: string; phone_number?: string; role?: string; password?: string; arabpay_user_id?: string }) {
   const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
   const driver = getDriver();
 
@@ -68,13 +68,13 @@ export async function updateUser(id: string, data: { name: string; username?: st
       const doc = await docRef.get();
       if (!doc.exists) return null;
 
-      const updateData: any = {
-        name: data.name.trim(),
-        email: data.email.trim().toLowerCase(),
-        phone_number: data.phone_number || null,
-        role: data.role || 'pelanggan'
-      };
+      const updateData: any = {};
+      if (data.name) updateData.name = data.name.trim();
+      if (data.email) updateData.email = data.email.trim().toLowerCase();
+      if (data.phone_number !== undefined) updateData.phone_number = data.phone_number;
+      if (data.role) updateData.role = data.role;
       if (data.username) updateData.username = data.username.trim().toLowerCase();
+      if (data.arabpay_user_id) updateData.arabpay_user_id = data.arabpay_user_id.trim();
       if (data.password && data.password.trim().length >= 4) {
         updateData.password_hash = await bcrypt.hash(data.password.trim(), 10);
       }
@@ -86,17 +86,22 @@ export async function updateUser(id: string, data: { name: string; username?: st
     }
   }
 
-  const targetUserCheck = await pool.query('SELECT role, arabpay_user_id FROM users WHERE id = $1 OR arabpay_user_id = $1', [id]);
-  
-  let finalRole = data.role || 'pelanggan';
-  if (targetUserCheck.rows.length > 0) {
-    const existingRow = targetUserCheck.rows[0];
-    if (existingRow.role === 'owner' || existingRow.arabpay_user_id === ownerUserId) {
-      finalRole = 'owner';
-    }
+  const targetUserCheck = await pool.query('SELECT name, email, phone_number, role, arabpay_user_id FROM users WHERE id = $1 OR arabpay_user_id = $1', [id]);
+  if (targetUserCheck.rows.length === 0) {
+    return null;
+  }
+  const existingRow = targetUserCheck.rows[0];
+
+  let finalRole = data.role || existingRow.role || 'pelanggan';
+  if (existingRow.role === 'owner' || existingRow.arabpay_user_id === ownerUserId) {
+    finalRole = 'owner';
   }
 
-  const params: any[] = [data.name.trim(), data.email.trim().toLowerCase(), data.phone_number || null, finalRole, id];
+  const newName = data.name ? data.name.trim() : existingRow.name;
+  const newEmail = data.email ? data.email.trim().toLowerCase() : existingRow.email;
+  const newPhone = data.phone_number !== undefined ? data.phone_number : existingRow.phone_number;
+
+  const params: any[] = [newName, newEmail, newPhone, finalRole, id];
 
   let queryStr = `
     UPDATE users 
@@ -108,6 +113,11 @@ export async function updateUser(id: string, data: { name: string; username?: st
   if (data.username && data.username.trim()) {
     params.push(data.username.trim().toLowerCase());
     queryStr += `, username = $${params.length}`;
+  }
+
+  if (data.arabpay_user_id) {
+    params.push(data.arabpay_user_id.trim());
+    queryStr += `, arabpay_user_id = $${params.length}`;
   }
 
   if (data.password && data.password.trim().length >= 4) {
