@@ -1094,17 +1094,48 @@ export default function CustomerPortal({
       const newBalance = Math.max(0, currentBal - price);
       onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
 
-      const randomVoucherCode = 'NET-' + Math.floor(100000 + Math.random() * 900000);
-      const randomVoucherPass = Math.floor(100000 + Math.random() * 900000).toString();
-      const invoiceNum = 'INV-' + Date.now().toString(36).toUpperCase();
+      // Register or claim voucher on Mikrotik RouterOS via Backend API
+      let finalVoucherCode = 'NET-' + Math.floor(100000 + Math.random() * 900000);
+      let finalVoucherPass = Math.floor(100000 + Math.random() * 900000).toString();
+      let invoiceNum = 'INV-' + Date.now().toString(36).toUpperCase();
+
+      try {
+        const apiUrl = getApiUrl();
+        if (apiUrl && selectedPackage) {
+          const buyRes = await fetch(`${apiUrl}/api/vouchers/buy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              profile_id: selectedPackage.profile_id || selectedPackage.id,
+              mode: selectedPackage.mode || 'auto',
+              buyer_name: currentUser?.name || 'Pelanggan Hotspot',
+              buyer_phone: currentUser?.phone_number || '',
+              arabpay_user_id: currentUser?.arabpay_user_id || currentUser?.id,
+              payment_method: 'ArabPay E-Wallet',
+              amount: price,
+              skip_arabpay_deduction: true
+            })
+          });
+          const buyData = await buyRes.json().catch(() => null);
+          if (buyData && buyData.success && buyData.voucher) {
+            finalVoucherCode = buyData.voucher.code;
+            finalVoucherPass = buyData.voucher.password || buyData.voucher.code;
+            if (buyData.invoice_number) {
+              invoiceNum = buyData.invoice_number;
+            }
+          }
+        }
+      } catch (apiBuyErr) {
+        console.warn('Backend voucher buy live Mikrotik notice:', apiBuyErr);
+      }
 
       const historyItem = {
         id: 'TX-' + Date.now().toString(36).toUpperCase(),
         date: new Date().toLocaleString('id-ID'),
         packageName: selectedPackage.package_name || selectedPackage.name,
         price: price,
-        username: randomVoucherCode,
-        password: randomVoucherPass,
+        username: finalVoucherCode,
+        password: finalVoucherPass,
         status: 'SUCCESS',
         paymentChannel: 'ArabPay E-Wallet'
       };
@@ -1115,11 +1146,12 @@ export default function CustomerPortal({
       savePurchasedVoucherToFirestore(historyItem, targetUId);
 
       setVoucherResult({
-        code: randomVoucherCode,
-        password: randomVoucherPass,
+        code: finalVoucherCode,
+        password: finalVoucherPass,
         invoice: invoiceNum
       });
       setPaymentStep('success');
+      fetchAvailableVouchers();
 
       // Fetch live balance from ArabPay server to ensure 100% sync
       setTimeout(() => {

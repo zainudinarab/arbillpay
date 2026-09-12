@@ -294,7 +294,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
  * Body: { profile_id, mode ('pregenerated' | 'ondemand'), buyer_name, buyer_phone, payment_method, amount }
  */
 export async function buyVoucher(req: Request, res: Response) {
-  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount } = req.body;
+  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount, skip_arabpay_deduction } = req.body;
 
   if (!profile_id) {
     return res.status(400).json({ success: false, message: 'Profile voucher wajib dipilih.' });
@@ -311,7 +311,8 @@ export async function buyVoucher(req: Request, res: Response) {
       const vRes = await pool.query(`
         SELECT id, code, password, batch_id, comment
         FROM hotspot_vouchers
-        WHERE router_profile_id = $1 AND status = 'active' AND sold_to IS NULL
+        WHERE (router_profile_id = $1 OR router_profile_id IN (SELECT id FROM router_profiles WHERE package_id = $1))
+          AND status = 'active' AND sold_to IS NULL
         ORDER BY created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
@@ -336,7 +337,7 @@ export async function buyVoucher(req: Request, res: Response) {
     let targetProfileName = 'Voucher Hotspot';
     if (profile_id) {
       try {
-        const prRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1', [profile_id]);
+        const prRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1 OR package_id = $1 LIMIT 1', [profile_id]);
         if (prRes.rows.length > 0 && prRes.rows[0].name) {
           targetProfileName = prRes.rows[0].name;
         }
@@ -345,14 +346,15 @@ export async function buyVoucher(req: Request, res: Response) {
 
     // METODE 2: Instant On-Demand Generation (Jika stok pre-generated kosong / mode on-demand)
     if (!isFromPreGenerated) {
-      // Fetch profile & router info
+      // Fetch profile & router info (matching either router_profile id or package_id)
       const pRes = await pool.query(`
         SELECT rp.id, rp.name as profile_name, rp.router_id, r.ip_address, r.api_port, r.username, r.password,
                p.uptime_limit, p.validity_iso
         FROM router_profiles rp
         JOIN routers r ON rp.router_id = r.id
         LEFT JOIN packages p ON rp.package_id = p.id
-        WHERE rp.id = $1
+        WHERE rp.id = $1 OR rp.package_id = $1
+        LIMIT 1
       `, [profile_id]);
 
       if (pRes.rows.length === 0) {
@@ -417,9 +419,9 @@ export async function buyVoucher(req: Request, res: Response) {
     const now = new Date();
     const invoiceNumber = `INV-VC-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${Date.now().toString(36).toUpperCase()}`;
 
-    // 1. Live ArabPay E-Wallet Balance Deduction via S2S API
+    // 1. Live ArabPay E-Wallet Balance Deduction via S2S API (hanya jika belum dipotong di frontend)
     let remainingBalance: number | null = null;
-    if (payment_method && payment_method.toLowerCase().includes('arabpay')) {
+    if (!skip_arabpay_deduction && payment_method && payment_method.toLowerCase().includes('arabpay')) {
       try {
         const packageName = targetProfileName || 'Voucher Hotspot';
         const { deductArabPayBalance } = await import('../services/arabpayService.js');
