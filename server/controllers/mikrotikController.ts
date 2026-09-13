@@ -663,23 +663,27 @@ export function generateHotspotProfileOnLogin(profileData: {
     onlogin = '';
   }
 
-  // Global monitoring script (cshglobal)
+  // Global monitoring script (cshglobal) - Aman: Wajib mengabaikan voucher baru yang diawali vc- / up-
   const cshglobal =
     `:local dateint do={:local days [:pick $d 8 10];:local month [:pick $d 5 7];:local year [:pick $d 0 4]; :return [:tonum ("$year$month$days")];};` +
     `:local timeint do={:local hours [:pick $t 0 2]; :local minutes [:pick $t 3 5]; :return ($hours * 60 + $minutes);};` +
     `:local convertToV7 do={:local monthr {"jan";"feb";"mar";"apr";"may";"jun";"jul";"aug";"sep";"oct";"nov";"dec"}; :local dd [:pick $date 4 6];:local yy [:tonum [:pick $date 7 11]]; :local mm [:find $monthr [:pick $date 0 3]]; :local mn ($mm + 1); :if ($mn < 10) do={ :set mn ("0" . $mn);}; :local newdate "$yy-$mn-$dd"; :return $newdate;};` +
     `:local date [/system clock get date];:local time [/system clock get time];:if ([:len [:find $date "/"]] > 0) do={ :set date [$convertToV7 date=$date]; };` +
     `:local today [$dateint d=$date];:local curtime [$timeint t=$time];:local tyear [:pick $date 0 4];:local lyear ($tyear - 1);` +
-    `:local totlogin7 [/ip hotspot user print count-only where comment~"$tyear-[0-9]{2}-[0-9]{2}" || comment~"$lyear-[0-9]{2}-[0-9]{2}" || comment~"[a-z]{3}/[0-9]{2}/$tyear" || comment~"[a-z]{3}/[0-9]{2}/$lyear"];` +
-    `:foreach i in [/ip hotspot user find where comment~"$tyear-[0-9]{2}-[0-9]{2}" || comment~"$lyear-[0-9]{2}-[0-9]{2}" || comment~"[a-z]{3}/[0-9]{2}/$tyear" || comment~"[a-z]{3}/[0-9]{2}/$lyear"] do={` +
-    `:local comment [/ip hotspot user get $i comment];:local limit [/ip hotspot user get $i limit-uptime];:local name [/ip hotspot user get $i name];` +
+    `:local totlogin7 [/ip hotspot user print count-only where (comment~"^$tyear-[0-9]{2}-[0-9]{2}" || comment~"^$lyear-[0-9]{2}-[0-9]{2}" || comment~"^[a-z]{3}/[0-9]{2}/$tyear" || comment~"^[a-z]{3}/[0-9]{2}/$lyear")];` +
+    `:foreach i in [/ip hotspot user find where (comment~"$tyear-[0-9]{2}-[0-9]{2}" || comment~"$lyear-[0-9]{2}-[0-9]{2}" || comment~"[a-z]{3}/[0-9]{2}/$tyear" || comment~"[a-z]{3}/[0-9]{2}/$lyear")] do={` +
+    `:local comment [/ip hotspot user get $i comment];` +
+    `:local ucode [:pick $comment 0 3];` +
+    `:local ucode2 [:pick $comment 0 2];` +
+    `:if ($ucode != "vc-" and $ucode2 != "vc" and $ucode2 != "up" and $comment != "") do={` +
+    `:local limit [/ip hotspot user get $i limit-uptime];:local name [/ip hotspot user get $i name];` +
     `:if ([:pick $comment 3] = "/" and [:pick $comment 6] = "/") do={ :local datev7 [$convertToV7 date=$comment]; :set comment ($datev7 . [:pick $comment 11 [:len $comment]]) ; };` +
     `:local gettime [:pick $comment 11 19];:local expd [$dateint d=$comment];:local expt [$timeint t=$gettime];` +
     `if ($limit != "00:00:01") do={` +
     `:if (($expd < $today and $expt < $curtime) or ($expd < $today and $expt > $curtime) or ($expd = $today and $expt < $curtime)) do={` +
     `:if ([:pick $comment 20] = "N") do={[/ip hotspot user set limit-uptime=1s $i ]; [ /ip hotspot active remove [find where user=$name] ];} ` +
     `else={ [ /ip hotspot user remove $i ]; [ /ip hotspot active remove [find where user=$name] ]; }` +
-    `}};:delay 0.2;};/log warning "checking for expired7 $totlogin7 users...";`;
+    `}}};:delay 0.2;};/log warning "checking for expired7 $totlogin7 users...";`;
 
   return { onlogin, cshglobal };
 }
