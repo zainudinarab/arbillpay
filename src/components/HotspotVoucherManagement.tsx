@@ -219,7 +219,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
           count: parseInt(count) || 10,
           code_length: parseInt(codeLength) || 6,
           code_prefix: codePrefix.trim(),
-          char_type: charType
+          char_type: charType,
+          admin_id: profile?.id || 'admin'
         })
       });
 
@@ -285,20 +286,42 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     return Object.values(groups).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [vouchers]);
 
+  // Helper parse comment voucher: vc-YYYY-MM-DD 23:59:59-N|<penanda>|<id>|<profil>
+  const parseVoucherComment = (comment?: string) => {
+    if (!comment) return null;
+    const parts = comment.split('|');
+    if (parts.length >= 2) {
+      const rawDate = parts[0]?.trim();
+      const source = parts[1]?.toLowerCase() === 'mandiri' ? 'mandiri' : (parts[1]?.toLowerCase() === 'admin' ? 'admin' : null);
+      const creatorId = parts[2]?.trim() || null;
+      const profileName = parts[3]?.trim() || null;
+      return { rawDate, source, creatorId, profileName };
+    }
+    return null;
+  };
+
   // Filter Vouchers
   const filteredVouchers = useMemo(() => {
     return vouchers.filter(v => {
       const q = searchTerm.toLowerCase();
+      const commentMeta = parseVoucherComment(v.comment);
       const matchesSearch = v.code.toLowerCase().includes(q) ||
                             (v.router_name && v.router_name.toLowerCase().includes(q)) ||
                             (v.profile_name && v.profile_name.toLowerCase().includes(q)) ||
                             (v.sold_to && v.sold_to.toLowerCase().includes(q)) ||
                             (v.invoice_number && v.invoice_number.toLowerCase().includes(q)) ||
-                            (v.mac_address && v.mac_address.toLowerCase().includes(q));
+                            (v.mac_address && v.mac_address.toLowerCase().includes(q)) ||
+                            (v.comment && v.comment.toLowerCase().includes(q)) ||
+                            (commentMeta?.creatorId && commentMeta.creatorId.toLowerCase().includes(q));
 
       const matchesRouter = filterRouter === 'all' || v.router_name === filterRouter;
 
-      const isCustomer = v.batch_id === 'vc-instant-ondemand' || Boolean(v.sold_to) || Boolean(v.invoice_id);
+      const isCustomer = commentMeta?.source === 'mandiri' ||
+                         v.comment?.includes('|mandiri|') ||
+                         v.batch_id === 'vc-instant-ondemand' ||
+                         Boolean(v.sold_to) ||
+                         Boolean(v.invoice_id);
+
       const matchesSource = filterSource === 'all' ||
                             (filterSource === 'customer' && isCustomer) ||
                             (filterSource === 'admin' && !isCustomer);
@@ -496,7 +519,12 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700 font-sans">
                       {paginatedVouchers.map((v, idx) => {
-                        const isCustomerBought = v.batch_id === 'vc-instant-ondemand' || Boolean(v.sold_to) || Boolean(v.invoice_id);
+                        const commentMeta = parseVoucherComment(v.comment);
+                        const isCustomerBought = commentMeta?.source === 'mandiri' ||
+                                                 v.comment?.includes('|mandiri|') ||
+                                                 v.batch_id === 'vc-instant-ondemand' ||
+                                                 Boolean(v.sold_to) ||
+                                                 Boolean(v.invoice_id);
                         const isUsed = Boolean(v.first_login_at) || v.status === 'used';
                         const isSoldNotUsed = (v.status === 'sold' || isCustomerBought) && !isUsed;
 
@@ -525,14 +553,17 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                                     <Smartphone size={11} className="text-sky-600" />
                                     Beli Mandiri
                                   </span>
-                                  {v.sold_to && (
-                                    <span className="text-[11px] font-mono font-bold text-slate-800">
-                                      {v.sold_to}
-                                    </span>
-                                  )}
+                                  <span className="text-[11px] font-mono font-bold text-slate-800">
+                                    User: {commentMeta?.creatorId || v.sold_to || 'Pelanggan'}
+                                  </span>
                                   {v.invoice_number && (
                                     <span className="text-[9px] font-mono text-slate-400">
                                       #{v.invoice_number}
+                                    </span>
+                                  )}
+                                  {v.comment && (
+                                    <span className="text-[9px] font-mono text-slate-400 truncate max-w-[190px]" title={v.comment}>
+                                      💬 {v.comment}
                                     </span>
                                   )}
                                 </div>
@@ -542,9 +573,17 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                                     <Layers size={11} className="text-indigo-600" />
                                     Generate Admin
                                   </span>
+                                  <span className="text-[11px] font-mono font-bold text-slate-800">
+                                    Admin: {commentMeta?.creatorId || 'admin'}
+                                  </span>
                                   <span className="text-[9px] font-mono text-slate-400">
                                     {v.batch_id || 'Batch'}
                                   </span>
+                                  {v.comment && (
+                                    <span className="text-[9px] font-mono text-slate-400 truncate max-w-[190px]" title={v.comment}>
+                                      💬 {v.comment}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </td>

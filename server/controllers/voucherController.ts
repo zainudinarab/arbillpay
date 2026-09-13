@@ -15,8 +15,33 @@ export async function listVouchers(req: Request, res: Response) {
   }
 }
 
+/**
+ * Helper pembentuk format comment voucher MikroTik & database
+ * Format wajib: vc-YYYY-MM-DD 23:59:59-N|<penanda>|<id>|<nama_profil>
+ * Contoh Mandiri: vc-2026-09-13 23:59:59-N|mandiri|019f74af9fcdWDgDxM8g|Paket 1 hari
+ * Contoh Admin:   vc-2026-09-13 23:59:59-N|admin|adm-super|Paket 1 hari
+ */
+export function buildVoucherComment(options: {
+  source: 'admin' | 'mandiri';
+  creatorId?: string | null;
+  profileName?: string | null;
+  customDate?: Date;
+}): string {
+  const date = options.customDate || new Date();
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}-${mm}-${dd}`;
+
+  const sourceTag = options.source === 'mandiri' ? 'mandiri' : 'admin';
+  const idTag = (options.creatorId || (options.source === 'mandiri' ? 'user' : 'admin')).toString().replace(/\|/g, '').trim();
+  const profileTag = (options.profileName || 'Hotspot').toString().replace(/\|/g, '').trim();
+
+  return `vc-${dateStr} 23:59:59-N|${sourceTag}|${idTag}|${profileTag}`;
+}
+
 export async function generateBatchVouchers(req: Request, res: Response) {
-  const { router_id, router_profile_id, count, code_length, code_prefix, char_type } = req.body;
+  const { router_id, router_profile_id, count, code_length, code_prefix, char_type, admin_id } = req.body;
 
   if (!router_id || !router_profile_id || !count) {
     return res.status(400).json({ success: false, message: 'Router, Profile Hotspot, dan Jumlah Voucher wajib diisi.' });
@@ -67,14 +92,17 @@ export async function generateBatchVouchers(req: Request, res: Response) {
       livePushNote = ` (Catatan Router: ${e.message})`;
     }
 
-    const now = new Date();
-    const batchDate = `${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}.${String(now.getFullYear()).slice(-2)}`;
+    const creatorAdminId = admin_id || (req as any).user?.id || (req as any).user?.username || 'admin';
+    const vComment = buildVoucherComment({
+      source: 'admin',
+      creatorId: creatorAdminId,
+      profileName: profile.name
+    });
 
     for (let i = 0; i < numCount; i++) {
       const vId = `vc-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
       const vCode = generateRandomCode(len, cType, prefix);
       const vPass = vCode;
-      const vComment = `vc-${vCode}-${batchDate}-arbil|${profile.name}`;
 
       await pool.query(`
         INSERT INTO hotspot_vouchers (id, batch_id, router_id, router_profile_id, code, password, status, comment)
@@ -315,6 +343,16 @@ export async function buyVoucher(req: Request, res: Response) {
     const now = new Date();
     const invoiceNumber = `INV-VC-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${Date.now().toString(36).toUpperCase()}`;
 
+    let targetProfileName = 'Voucher Hotspot';
+    if (profile_id) {
+      try {
+        const prRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1 OR package_id = $1 LIMIT 1', [profile_id]);
+        if (prRes.rows.length > 0 && prRes.rows[0].name) {
+          targetProfileName = prRes.rows[0].name;
+        }
+      } catch (_) {}
+    }
+
     // METODE 1: Coba ambil dari stok Pre-Generated dulu (Pre-generated Stock / Diskon)
     if (mode !== 'ondemand') {
       const vRes = await pool.query(`
@@ -335,23 +373,46 @@ export async function buyVoucher(req: Request, res: Response) {
         batchId = preVoucher.batch_id || 'vc-batch';
         isFromPreGenerated = true;
 
-        // Mark pre-generated voucher as sold and link invoice
+        const customerUserId = arabpay_user_id || buyer_phone || buyer_name || 'user';
+        const updatedComment = buildVoucherComment({
+          source: 'mandiri',
+          creatorId: customerUserId,
+          profileName: targetProfileName
+        });
+
+        // Mark pre-generated voucher as sold and link invoice with updated comment
         await pool.query(`
           UPDATE hotspot_vouchers
-          SET status = 'sold', sold_to = $1, sold_at = NOW(), invoice_id = $2, invoice_number = $3
-          WHERE id = $4
-        `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', invoiceId, invoiceNumber, preVoucher.id]);
-      }
-    }
+          SET status = 'sold', sold_to = $1, sold_at = NOW(), invoice_id = $2, invoice_number = $3, comment = $4
+          WHERE id = $5
+        `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', invoiceId, invoiceNumber, updatedComment, preVoucher.id]);
 
-    let targetProfileName = 'Voucher Hotspot';
-    if (profile_id) {
-      try {
-        const prRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1 OR package_id = $1 LIMIT 1', [profile_id]);
-        if (prRes.rows.length > 0 && prRes.rows[0].name) {
-          targetProfileName = prRes.rows[0].name;
-        }
-      } catch (_) {}
+        // Coba sinkronisasi komentar update ke router MikroTik jika online
+        try {
+          const rRes = await pool.query(`
+            SELECT r.ip_address, r.api_port, r.username, r.password
+            FROM hotspot_vouchers hv
+            JOIN routers r ON hv.router_id = r.id
+            WHERE hv.id = $1
+          `, [preVoucher.id]);
+          if (rRes.rows.length > 0) {
+            const rInfo = rRes.rows[0];
+            const rConn = new RouterOSAPI({
+              host: rInfo.ip_address,
+              port: rInfo.api_port || 8728,
+              user: rInfo.username || 'admin',
+              password: rInfo.password || '',
+              timeout: 3
+            });
+            await rConn.connect();
+            const hsUsers = await rConn.write('/ip/hotspot/user/print', [`?name=${voucherCode}`]);
+            if (hsUsers && hsUsers.length > 0) {
+              await rConn.write('/ip/hotspot/user/set', [`=.id=${hsUsers[0]['.id']}`, `=comment=${updatedComment}`]);
+            }
+            rConn.close();
+          }
+        } catch (_) {}
+      }
     }
 
     // METODE 2: Instant On-Demand Generation (Jika stok pre-generated kosong / mode on-demand)
@@ -378,8 +439,12 @@ export async function buyVoucher(req: Request, res: Response) {
       voucherCode = generateRandomCode(6, 'lower', 'vc');
       voucherPass = voucherCode;
 
-      const nowStr = new Date().toISOString().split('T')[0];
-      const vComment = `vc-${voucherCode}-${nowStr}-instant|${routerProfile.profile_name}`;
+      const customerUserId = arabpay_user_id || buyer_phone || buyer_name || 'user';
+      const vComment = buildVoucherComment({
+        source: 'mandiri',
+        creatorId: customerUserId,
+        profileName: routerProfile.profile_name
+      });
 
       // Push Live to Mikrotik Router via RouterOS API
       let conn: any = null;
