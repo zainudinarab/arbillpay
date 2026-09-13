@@ -70,6 +70,9 @@ interface VoucherItem {
   sold_at?: string;
   invoice_id?: string;
   invoice_number?: string;
+  is_synced?: boolean;
+  last_synced_at?: string;
+  sync_error?: string;
 }
 
 interface HotspotVoucherManagementProps {
@@ -94,6 +97,9 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [filterRouter, setFilterRouter] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<'all' | 'admin' | 'customer'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'used' | 'sold' | 'available'>('all');
+  const [filterSync, setFilterSync] = useState<'all' | 'synced' | 'unsynced'>('all');
+  const [syncing, setSyncing] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [printBatchId, setPrintBatchId] = useState<string>('all');
@@ -264,6 +270,55 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     }
   };
 
+  const handleSyncAllActiveVouchers = async () => {
+    setSyncing(true);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/vouchers/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          router_id: filterRouter !== 'all' ? filterRouter : undefined
+        })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menyinkronkan voucher.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal sinkronisasi: ${err.message}` });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSyncSingleVoucher = async (voucherId: string) => {
+    setSyncingId(voucherId);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/vouchers/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voucher_id: voucherId })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menyinkronkan voucher.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal sinkronisasi: ${err.message}` });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   // Group vouchers by batch_id for Tab 2
   const batchSummaries = useMemo(() => {
     const groups: { [batchId: string]: { batch_id: string; created_at: string; router_name: string; profile_name: string; package_price: number; count: number } } = {};
@@ -335,14 +390,18 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                             (filterStatus === 'sold' && isSold) ||
                             (filterStatus === 'available' && isAvailable);
 
-      return matchesSearch && matchesRouter && matchesSource && matchesStatus;
+      const matchesSync = filterSync === 'all' ||
+                          (filterSync === 'synced' && Boolean(v.is_synced)) ||
+                          (filterSync === 'unsynced' && !v.is_synced);
+
+      return matchesSearch && matchesRouter && matchesSource && matchesStatus && matchesSync;
     });
-  }, [vouchers, searchTerm, filterRouter, filterSource, filterStatus]);
+  }, [vouchers, searchTerm, filterRouter, filterSource, filterStatus, filterSync]);
 
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterRouter, filterSource, filterStatus]);
+  }, [searchTerm, filterRouter, filterSource, filterStatus, filterSync]);
 
   const totalItems = filteredVouchers.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -420,6 +479,16 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
             </button>
 
             <button
+              onClick={handleSyncAllActiveVouchers}
+              disabled={syncing}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-emerald-200 flex items-center gap-2 transition-all cursor-pointer"
+              title="Sinkronkan seluruh voucher aktif yang belum masuk ke MikroTik"
+            >
+              <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+              <span>{syncing ? 'Menyinkronkan...' : '🔄 Sinkronkan ke MikroTik'}</span>
+            </button>
+
+            <button
               onClick={() => { setPrintBatchId('all'); setShowPrintModal(true); }}
               className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-2xl flex items-center gap-2 transition-all cursor-pointer shadow-sm"
             >
@@ -477,6 +546,17 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                   <option value="available">⚪ Stok Tersedia</option>
                 </select>
 
+                {/* Filter Sinkronisasi MikroTik */}
+                <select
+                  value={filterSync}
+                  onChange={(e: any) => setFilterSync(e.target.value)}
+                  className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Semua Sinkron</option>
+                  <option value="synced">🟢 Tersinkron MikroTik</option>
+                  <option value="unsynced">🔴 Belum Masuk MikroTik</option>
+                </select>
+
                 {/* Filter Router */}
                 <select
                   value={filterRouter}
@@ -513,6 +593,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                         <th className="py-3.5 px-4">Router & Profile</th>
                         <th className="py-3.5 px-4">Tarif & Paket</th>
                         <th className="py-3.5 px-4">Status & Sinyal Aktif</th>
+                        <th className="py-3.5 px-4">Sinkron MikroTik</th>
                         <th className="py-3.5 px-4">Waktu Buat</th>
                         <th className="py-3.5 px-4 text-right">Aksi</th>
                       </tr>
@@ -656,6 +737,42 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                                   <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
                                   Stok Tersedia
                                 </span>
+                              )}
+                            </td>
+
+                            {/* Status MikroTik */}
+                            <td className="py-3 px-4">
+                              {v.is_synced ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md w-fit">
+                                    <CheckCircle2 size={11} className="text-emerald-600" />
+                                    Tersinkron
+                                  </span>
+                                  {v.last_synced_at && (
+                                    <span className="text-[9px] font-mono text-slate-400">
+                                      {new Date(v.last_synced_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-1">
+                                  <span
+                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md w-fit"
+                                    title={v.sync_error || 'Belum masuk ke router MikroTik'}
+                                  >
+                                    <AlertCircle size={11} className="text-rose-600" />
+                                    Belum Masuk
+                                  </span>
+                                  <button
+                                    onClick={() => handleSyncSingleVoucher(v.id)}
+                                    disabled={syncingId === v.id}
+                                    className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1 cursor-pointer w-fit"
+                                    title="Kirim ulang voucher ini ke router MikroTik"
+                                  >
+                                    <RefreshCw size={9} className={syncingId === v.id ? 'animate-spin' : ''} />
+                                    <span>Sync Ulang</span>
+                                  </button>
+                                </div>
                               )}
                             </td>
 

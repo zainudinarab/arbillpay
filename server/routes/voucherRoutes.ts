@@ -6,7 +6,8 @@ import {
   listAvailableVouchers,
   buyVoucher,
   listMyPurchasedVouchers,
-  handleVoucherFirstLogin
+  handleVoucherFirstLogin,
+  syncVouchersToMikrotik
 } from '../controllers/voucherController.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.get('/available', listAvailableVouchers);
 router.get('/my-vouchers', listMyPurchasedVouchers);
 router.post('/buy', buyVoucher);
 router.post('/generate', generateBatchVouchers);
+router.post('/sync', syncVouchersToMikrotik);
 router.delete('/batch/:batch_id', removeBatchVouchers);
 
 export default router;

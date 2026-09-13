@@ -130,6 +130,9 @@ export async function initDatabaseSchema() {
         code VARCHAR(64) NOT NULL,
         password VARCHAR(64) NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'active',
+        is_synced BOOLEAN DEFAULT false,
+        last_synced_at TIMESTAMP WITH TIME ZONE,
+        sync_error TEXT,
         first_login_at TIMESTAMP WITH TIME ZONE,
         mac_address VARCHAR(64),
         ip_address VARCHAR(64),
@@ -363,6 +366,9 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS router_profile_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP WITH TIME ZONE,
+      ADD COLUMN IF NOT EXISTS sync_error TEXT,
       ADD COLUMN IF NOT EXISTS sold_to VARCHAR(255),
       ADD COLUMN IF NOT EXISTS sold_at TIMESTAMP WITH TIME ZONE;
     `).catch((err) => console.warn('Patch hotspot_vouchers notice:', err.message));
@@ -420,6 +426,7 @@ export async function initDatabaseSchema() {
       -- Hotspot Vouchers Indexing
       CREATE INDEX IF NOT EXISTS idx_vouchers_code ON hotspot_vouchers(code);
       CREATE INDEX IF NOT EXISTS idx_vouchers_status ON hotspot_vouchers(status);
+      CREATE INDEX IF NOT EXISTS idx_vouchers_is_synced ON hotspot_vouchers(is_synced);
       CREATE INDEX IF NOT EXISTS idx_vouchers_batch ON hotspot_vouchers(batch_id);
       CREATE INDEX IF NOT EXISTS idx_vouchers_router ON hotspot_vouchers(router_id);
       CREATE INDEX IF NOT EXISTS idx_vouchers_profile ON hotspot_vouchers(router_profile_id);

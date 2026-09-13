@@ -104,10 +104,8 @@ export async function generateBatchVouchers(req: Request, res: Response) {
       const vCode = generateRandomCode(len, cType, prefix);
       const vPass = vCode;
 
-      await pool.query(`
-        INSERT INTO hotspot_vouchers (id, batch_id, router_id, router_profile_id, code, password, status, comment)
-        VALUES ($1, $2, $3, $4, $5, $6, 'active', $7)
-      `, [vId, batchId, router_id, router_profile_id, vCode, vPass, vComment]);
+      let itemSynced = false;
+      let itemError: string | null = null;
 
       if (livePushSuccess && conn) {
         try {
@@ -121,8 +119,19 @@ export async function generateBatchVouchers(req: Request, res: Response) {
             hsUserParams.push(`=limit-uptime=${formattedUptime}`);
           }
           await conn.write('/ip/hotspot/user/add', hsUserParams);
-        } catch (err) {}
+          itemSynced = true;
+        } catch (err: any) {
+          itemError = err.message;
+        }
+      } else {
+        itemError = livePushNote ? livePushNote.replace(/^ \(Catatan Router: /, '').replace(/\)$/, '') : 'Router MikroTik offline';
       }
+
+      await pool.query(`
+        INSERT INTO hotspot_vouchers (
+          id, batch_id, router_id, router_profile_id, code, password, status, comment, is_synced, last_synced_at, sync_error
+        ) VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10)
+      `, [vId, batchId, router_id, router_profile_id, vCode, vPass, vComment, itemSynced, itemSynced ? new Date() : null, itemError]);
 
       createdVouchers.push({ id: vId, code: vCode, password: vPass });
     }
@@ -387,7 +396,8 @@ export async function buyVoucher(req: Request, res: Response) {
           WHERE id = $5
         `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', invoiceId, invoiceNumber, updatedComment, preVoucher.id]);
 
-        // Coba sinkronisasi komentar update ke router MikroTik jika online
+        let preSynced = false;
+        let preSyncErr = null;
         try {
           const rRes = await pool.query(`
             SELECT r.ip_address, r.api_port, r.username, r.password
@@ -402,16 +412,35 @@ export async function buyVoucher(req: Request, res: Response) {
               port: rInfo.api_port || 8728,
               user: rInfo.username || 'admin',
               password: rInfo.password || '',
-              timeout: 3
+              timeout: 4
             });
             await rConn.connect();
             const hsUsers = await rConn.write('/ip/hotspot/user/print', [`?name=${voucherCode}`]);
             if (hsUsers && hsUsers.length > 0) {
               await rConn.write('/ip/hotspot/user/set', [`=.id=${hsUsers[0]['.id']}`, `=comment=${updatedComment}`]);
+              preSynced = true;
+            } else {
+              await rConn.write('/ip/hotspot/user/add', [
+                `=name=${voucherCode}`,
+                `=password=${voucherPass}`,
+                `=profile=${targetProfileName}`,
+                `=comment=${updatedComment}`
+              ]);
+              preSynced = true;
             }
             rConn.close();
           }
-        } catch (_) {}
+        } catch (e: any) {
+          preSyncErr = e.message;
+        }
+
+        // Mark pre-generated voucher as sold and link invoice with updated comment & sync status
+        await pool.query(`
+          UPDATE hotspot_vouchers
+          SET status = 'sold', sold_to = $1, sold_at = NOW(), invoice_id = $2, invoice_number = $3, comment = $4,
+              is_synced = $5, last_synced_at = NOW(), sync_error = $6
+          WHERE id = $7
+        `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', invoiceId, invoiceNumber, updatedComment, preSynced, preSyncErr, preVoucher.id]);
       }
     }
 
@@ -478,9 +507,9 @@ export async function buyVoucher(req: Request, res: Response) {
       // Record newly generated on-demand voucher directly into DB as sold and link invoice
       await pool.query(`
         INSERT INTO hotspot_vouchers (
-          id, batch_id, router_id, router_profile_id, code, password, status, comment, sold_to, sold_at, invoice_id, invoice_number, created_at
+          id, batch_id, router_id, router_profile_id, code, password, status, comment, sold_to, sold_at, invoice_id, invoice_number, is_synced, last_synced_at, sync_error, created_at
         ) VALUES (
-          $1, 'vc-instant-ondemand', $2, $3, $4, $5, 'sold', $6, $7, NOW(), $8, $9, NOW()
+          $1, 'vc-instant-ondemand', $2, $3, $4, $5, 'sold', $6, $7, NOW(), $8, $9, $10, $11, $12, NOW()
         )
       `, [
         vId,
@@ -491,7 +520,10 @@ export async function buyVoucher(req: Request, res: Response) {
         vComment,
         buyer_phone || buyer_name || arabpay_user_id || 'pelanggan',
         invoiceId,
-        invoiceNumber
+        invoiceNumber,
+        livePushSuccess,
+        livePushSuccess ? new Date() : null,
+        livePushSuccess ? null : (livePushError || 'Koneksi ke MikroTik gagal')
       ]);
     }
 
@@ -784,4 +816,166 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Sinkronisasi Ulang Voucher Aktif ke Router MikroTik
+ * Hanya voucher aktif:
+ * - Belum terpakai (status = 'active')
+ * - Terjual belum login (status = 'sold')
+ * - Sudah terpakai namun belum expired (status = 'used' AND (expired_at IS NULL OR expired_at > NOW()))
+ * Memastikan tidak menyinkronkan voucher yang sudah kedaluwarsa.
+ */
+export async function syncVouchersToMikrotik(req: Request, res: Response) {
+  const { voucher_id, router_id } = req.body;
+
+  try {
+    let query = `
+      SELECT v.id, v.code, v.password, v.comment, v.status, v.is_synced, v.expired_at,
+             r.id as router_id, r.name as router_name, r.ip_address, r.api_port, r.username, r.password as router_password,
+             COALESCE(rp.name, 'default') as profile_name, p.uptime_limit
+      FROM hotspot_vouchers v
+      JOIN routers r ON v.router_id = r.id
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE (
+        v.status = 'active'
+        OR v.status = 'sold'
+        OR (v.status = 'used' AND (v.expired_at IS NULL OR v.expired_at > NOW()))
+      )
+      AND (v.expired_at IS NULL OR v.expired_at > NOW())
+    `;
+    const params: any[] = [];
+
+    if (voucher_id) {
+      params.push(voucher_id);
+      query += ` AND v.id = $${params.length}`;
+    } else if (router_id) {
+      params.push(router_id);
+      query += ` AND v.router_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY v.created_at DESC`;
+
+    const vRes = await pool.query(query, params);
+    const vouchersToSync = vRes.rows;
+
+    if (vouchersToSync.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Tidak ada voucher aktif yang perlu disinkronkan ke MikroTik.',
+        synced_count: 0,
+        failed_count: 0
+      });
+    }
+
+    // Kelompokkan voucher per router agar hemat koneksi API
+    const routerGroups = new Map<string, any[]>();
+    vouchersToSync.forEach((v: any) => {
+      const rId = v.router_id;
+      if (!routerGroups.has(rId)) {
+        routerGroups.set(rId, []);
+      }
+      routerGroups.get(rId)!.push(v);
+    });
+
+    let totalSynced = 0;
+    let totalFailed = 0;
+    const results: any[] = [];
+
+    for (const [rId, items] of routerGroups.entries()) {
+      const routerInfo = items[0];
+      let conn: any = null;
+
+      try {
+        conn = new RouterOSAPI({
+          host: routerInfo.ip_address,
+          port: routerInfo.api_port || 8728,
+          user: routerInfo.username || 'admin',
+          password: routerInfo.router_password || '',
+          timeout: 8
+        });
+        await conn.connect();
+
+        // Ambil daftar user yang sudah ada di router MikroTik
+        const existingUsers = await conn.write('/ip/hotspot/user/print');
+        const userMap = new Map<string, any>();
+        if (Array.isArray(existingUsers)) {
+          existingUsers.forEach((u: any) => {
+            if (u.name) userMap.set(u.name, u);
+          });
+        }
+
+        for (const item of items) {
+          try {
+            const formattedUptime = item.uptime_limit ? isoToMikrotikTime(item.uptime_limit) : '';
+            const existingUser = userMap.get(item.code);
+
+            if (!existingUser) {
+              // User belum ada di MikroTik -> Buat baru (/ip/hotspot/user/add)
+              const addParams = [
+                `=name=${item.code}`,
+                `=password=${item.password}`,
+                `=profile=${item.profile_name}`,
+                `=comment=${item.comment || ''}`
+              ];
+              if (formattedUptime) {
+                addParams.push(`=limit-uptime=${formattedUptime}`);
+              }
+              await conn.write('/ip/hotspot/user/add', addParams);
+            } else {
+              // User sudah ada -> Update comment & profile (/ip/hotspot/user/set)
+              await conn.write('/ip/hotspot/user/set', [
+                `=.id=${existingUser['.id']}`,
+                `=profile=${item.profile_name}`,
+                `=comment=${item.comment || ''}`
+              ]);
+            }
+
+            // Update database menjadi is_synced = true
+            await pool.query(`
+              UPDATE hotspot_vouchers
+              SET is_synced = true, last_synced_at = NOW(), sync_error = NULL
+              WHERE id = $1
+            `, [item.id]);
+
+            totalSynced++;
+            results.push({ id: item.id, code: item.code, success: true });
+          } catch (itemErr: any) {
+            totalFailed++;
+            await pool.query(`
+              UPDATE hotspot_vouchers
+              SET is_synced = false, sync_error = $1
+              WHERE id = $2
+            `, [itemErr.message, item.id]);
+            results.push({ id: item.id, code: item.code, success: false, error: itemErr.message });
+          }
+        }
+
+        conn.close();
+      } catch (routerErr: any) {
+        if (conn) try { conn.close(); } catch (_) {}
+        for (const item of items) {
+          totalFailed++;
+          await pool.query(`
+            UPDATE hotspot_vouchers
+            SET is_synced = false, sync_error = $1
+            WHERE id = $2
+          `, [`Router tidak terjangkau: ${routerErr.message}`, item.id]);
+          results.push({ id: item.id, code: item.code, success: false, error: routerErr.message });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `⚡ Proses sinkronisasi selesai: ${totalSynced} voucher aktif berhasil terhubung ke MikroTik${totalFailed > 0 ? `, ${totalFailed} gagal` : ''}.`,
+      synced_count: totalSynced,
+      failed_count: totalFailed,
+      details: results
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal proses sinkronisasi: ${err.message}` });
+  }
+}
+
 

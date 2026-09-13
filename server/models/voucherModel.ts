@@ -33,6 +33,7 @@ export async function getAllVouchers() {
   try {
     const result = await pool.query(`
       SELECT v.id, v.batch_id, v.router_id, v.router_profile_id, v.code, v.password, v.status, v.comment, v.created_at,
+             v.is_synced, v.last_synced_at, v.sync_error,
              v.sold_to, v.sold_at, v.invoice_id, v.invoice_number,
              v.first_login_at, v.mac_address, v.ip_address, v.expired_at,
              r.name as router_name, r.ip_address as router_ip,
