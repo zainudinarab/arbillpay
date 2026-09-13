@@ -2651,6 +2651,7 @@ export async function setupWalledGarden(req: Request, res: Response) {
  */
 export async function removeWalledGarden(req: Request, res: Response) {
   const { id } = req.params;
+  const { host } = req.body;
 
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
@@ -2669,20 +2670,20 @@ export async function removeWalledGarden(req: Request, res: Response) {
     await conn.connect();
 
     let removedCount = 0;
+    const targetHost = host ? String(host).trim().toLowerCase() : null;
 
     // Remove from /ip/hotspot/walled-garden
     try {
       const domains: any = await conn.write('/ip/hotspot/walled-garden/print');
       if (Array.isArray(domains)) {
         for (const d of domains) {
-          const host = d['dst-host'] || '';
-          const comment = d['comment'] || '';
-          if (
-            host.includes('arbill') ||
-            host.includes('arabpay') ||
-            comment.toLowerCase().includes('arbill') ||
-            comment.toLowerCase().includes('arabpay')
-          ) {
+          const dHost = (d['dst-host'] || '').toLowerCase();
+          const comment = (d['comment'] || '').toLowerCase();
+          const shouldRemove = targetHost
+            ? dHost === targetHost || (targetHost.replace(/\*/g, '') && dHost.includes(targetHost.replace(/\*/g, '')))
+            : (dHost.includes('arbill') || dHost.includes('arabpay') || comment.includes('arbill') || comment.includes('arabpay'));
+
+          if (shouldRemove) {
             await conn.write('/ip/hotspot/walled-garden/remove', [`=.id=${d['.id']}`]);
             removedCount++;
           }
@@ -2695,14 +2696,13 @@ export async function removeWalledGarden(req: Request, res: Response) {
       const ips: any = await conn.write('/ip/hotspot/walled-garden/ip/print');
       if (Array.isArray(ips)) {
         for (const ip of ips) {
-          const host = ip['dst-host'] || ip['dst-address'] || '';
-          const comment = ip['comment'] || '';
-          if (
-            host.includes('arbill') ||
-            host.includes('arabpay') ||
-            comment.toLowerCase().includes('arbill') ||
-            comment.toLowerCase().includes('arabpay')
-          ) {
+          const ipHost = (ip['dst-host'] || ip['dst-address'] || '').toLowerCase();
+          const comment = (ip['comment'] || '').toLowerCase();
+          const shouldRemove = targetHost
+            ? ipHost === targetHost || (targetHost.replace(/\*/g, '') && ipHost.includes(targetHost.replace(/\*/g, '')))
+            : (ipHost.includes('arbill') || ipHost.includes('arabpay') || comment.includes('arbill') || comment.includes('arabpay'));
+
+          if (shouldRemove) {
             await conn.write('/ip/hotspot/walled-garden/ip/remove', [`=.id=${ip['.id']}`]);
             removedCount++;
           }
@@ -2714,11 +2714,14 @@ export async function removeWalledGarden(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `Berhasil menghapus ${removedCount} rule Walled Garden di MikroTik "${router.name}".`
+      message: targetHost 
+        ? `Berhasil mencabut rule bypass untuk "${host}" di MikroTik "${router.name}".`
+        : `Berhasil menghapus ${removedCount} rule Walled Garden di MikroTik "${router.name}".`
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal menghapus Walled Garden: ${err.message}` });
   }
 }
+
 
 

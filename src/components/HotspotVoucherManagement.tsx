@@ -134,9 +134,16 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [showWalledGardenModal, setShowWalledGardenModal] = useState(false);
   const [wgRouterId, setWgRouterId] = useState<string>('');
   const [wgLoading, setWgLoading] = useState(false);
-  const [wgStatus, setWgStatus] = useState<{ is_configured: boolean; entries: any[]; default_hosts: string[] } | null>(null);
+  const [wgStatus, setWgStatus] = useState<{ 
+    is_configured: boolean; 
+    entries: any[]; 
+    default_hosts: string[];
+    env_billing_host?: string;
+    env_wallet_url?: string;
+  } | null>(null);
   const [wgActionLoading, setWgActionLoading] = useState(false);
   const [customHost, setCustomHost] = useState('');
+  const [activeSingleHost, setActiveSingleHost] = useState<string | null>(null);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -443,6 +450,56 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
       setToastMsg({ type: 'error', text: `Gagal: ${err.message}` });
     } finally {
       setWgActionLoading(false);
+    }
+  };
+
+  const isPoinActive = (pattern: string) => {
+    if (!wgStatus?.entries) return false;
+    const cleanP = pattern.replace(/\*/g, '').toLowerCase();
+    return wgStatus.entries.some(e => {
+      const h = (e.dst_host || '').toLowerCase();
+      return h === pattern.toLowerCase() || (cleanP && h.includes(cleanP));
+    });
+  };
+
+  const handleToggleSingleHost = async (pattern: string, currentlyActive: boolean) => {
+    if (!wgRouterId) return;
+    setActiveSingleHost(pattern);
+    try {
+      const apiUrl = getApiUrl();
+      if (currentlyActive) {
+        // Cabut / Unsync
+        const res = await fetch(`${apiUrl}/api/routers/${wgRouterId}/remove-walled-garden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host: pattern })
+        });
+        const data = await parseJsonResponse(res);
+        if (data.success) {
+          setToastMsg({ type: 'success', text: data.message });
+          await fetchWalledGardenStatus(wgRouterId);
+        } else {
+          setToastMsg({ type: 'error', text: data.message || 'Gagal mencabut rule.' });
+        }
+      } else {
+        // Pasang / Sync
+        const res = await fetch(`${apiUrl}/api/routers/${wgRouterId}/setup-walled-garden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hosts: [pattern] })
+        });
+        const data = await parseJsonResponse(res);
+        if (data.success) {
+          setToastMsg({ type: 'success', text: data.message });
+          await fetchWalledGardenStatus(wgRouterId);
+        } else {
+          setToastMsg({ type: 'error', text: data.message || 'Gagal memasang rule.' });
+        }
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal: ${err.message}` });
+    } finally {
+      setActiveSingleHost(null);
     }
   };
 
@@ -1457,7 +1514,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                                 <th className="pb-1.5">Kode Voucher</th>
                                 <th className="pb-1.5">Profil Paket</th>
                                 <th className="pb-1.5">Harga</th>
-                                <th className="pb-1.5 pr-2">Status</th>
+                                <th className="pb-1.5">Status</th>
+                                <th className="pb-1.5 pr-2 text-right">Aksi</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-medium">
@@ -1467,13 +1525,27 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                                   <td className="py-1.5 font-mono font-bold text-slate-900">{mv.code}</td>
                                   <td className="py-1.5 text-indigo-600 font-semibold">{mv.profile_name}</td>
                                   <td className="py-1.5 text-slate-700 font-mono">Rp {mv.package_price.toLocaleString('id-ID')}</td>
-                                  <td className="py-1.5 pr-2">
+                                  <td className="py-1.5">
                                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
                                       mv.status === 'active' ? 'bg-amber-100 text-amber-800' :
                                       mv.status === 'sold' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700'
                                     }`}>
                                       {mv.status}
                                     </span>
+                                  </td>
+                                  <td className="py-1.5 pr-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await handleSyncSingleVoucher(mv.id);
+                                        await inspectMikrotikLive(syncTargetRouterId);
+                                      }}
+                                      disabled={syncingId === mv.id}
+                                      className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-bold rounded-lg cursor-pointer disabled:opacity-50 transition-all"
+                                      title="Sinkronkan hanya voucher ini ke MikroTik"
+                                    >
+                                      {syncingId === mv.id ? '...' : '+ Sync'}
+                                    </button>
                                   </td>
                                 </tr>
                               ))}
@@ -1640,43 +1712,140 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                 </div>
               )}
 
-              {/* Bypassed Targets Preview */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700">
-                  Daftar Domain & Port yang Di-Bypass (Dinamis dari .env):
-                </label>
-                <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70 text-xs">
-                  <div className="flex items-start gap-2.5">
-                    <Globe size={16} className="text-indigo-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">
-                        {wgStatus?.env_billing_host ? `*${wgStatus.env_billing_host}*` : '*arbill*'}
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        Portal Web Billing Hotspot & Kasir POS (<code className="text-indigo-600 font-semibold">{wgStatus?.env_billing_host || 'arbill.arabpay.my.id'}</code> dari <span className="font-mono text-[10px] text-slate-600 font-bold">BILLING_SERVER_HOST</span>)
-                      </p>
-                    </div>
-                  </div>
+              {/* Bypassed Targets Preview & Per-Point Controls */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Daftar Rule & Status Per Poin:
+                  </label>
+                  <span className="text-[10.5px] text-slate-400">
+                    Bisa pasang / cabut satuan atau sekaligus
+                  </span>
+                </div>
 
-                  <div className="flex items-start gap-2.5 pt-2 border-t border-slate-200/60">
-                    <CreditCard size={16} className="text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">
-                        {wgStatus?.env_wallet_url ? `*${wgStatus.env_wallet_url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}*` : '*arabpay.my.id*'}
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        Platform E-Wallet ArabPay, Oauth SSO Login, & API Gateway (<code className="text-emerald-600 font-semibold">{wgStatus?.env_wallet_url || 'https://arabpay.my.id'}</code> dari <span className="font-mono text-[10px] text-slate-600 font-bold">ARABPAY_PANEL_URL</span>)
-                      </p>
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  {/* Poin 1: Arbill Billing */}
+                  {(() => {
+                    const pattern = wgStatus?.env_billing_host ? `*${wgStatus.env_billing_host}*` : '*arbill*';
+                    const active = isPoinActive(pattern) || isPoinActive('*arbill*');
+                    const isLoading = activeSingleHost === pattern || activeSingleHost === '*arbill*';
+                    return (
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                        active ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <Globe size={16} className={active ? 'text-emerald-600 shrink-0 mt-0.5' : 'text-slate-400 shrink-0 mt-0.5'} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 font-mono text-xs truncate">{pattern}</span>
+                              <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ${
+                                active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}>
+                                {active ? 'Aktif' : 'Belum'}
+                              </span>
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 truncate">
+                              Portal Web Billing & Kasir POS (<code className="text-indigo-600 font-medium">{wgStatus?.env_billing_host || 'arbill.arabpay.my.id'}</code>)
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSingleHost(pattern, active)}
+                          disabled={isLoading || wgActionLoading || wgLoading}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0 disabled:opacity-50 ${
+                            active 
+                              ? 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50' 
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                          }`}
+                        >
+                          {isLoading ? '...' : (active ? 'Cabut' : '+ Sinkron')}
+                        </button>
+                      </div>
+                    );
+                  })()}
 
-                  <div className="flex items-start gap-2.5 pt-2 border-t border-slate-200/60">
-                    <Zap size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arabpay*</span>
-                      <p className="text-[11px] text-slate-500">Wildcard seluruh ekosistem transaksi dompet digital & QRIS</p>
-                    </div>
-                  </div>
+                  {/* Poin 2: ArabPay E-Wallet & SSO */}
+                  {(() => {
+                    const pattern = wgStatus?.env_wallet_url ? `*${wgStatus.env_wallet_url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}*` : '*arabpay.my.id*';
+                    const active = isPoinActive(pattern) || isPoinActive('*arabpay.my.id*');
+                    const isLoading = activeSingleHost === pattern || activeSingleHost === '*arabpay.my.id*';
+                    return (
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                        active ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <CreditCard size={16} className={active ? 'text-emerald-600 shrink-0 mt-0.5' : 'text-slate-400 shrink-0 mt-0.5'} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 font-mono text-xs truncate">{pattern}</span>
+                              <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ${
+                                active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}>
+                                {active ? 'Aktif' : 'Belum'}
+                              </span>
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 truncate">
+                              Platform E-Wallet ArabPay, OAuth SSO, & Saldo (<code className="text-emerald-600 font-medium">{wgStatus?.env_wallet_url || 'https://arabpay.my.id'}</code>)
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSingleHost(pattern, active)}
+                          disabled={isLoading || wgActionLoading || wgLoading}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0 disabled:opacity-50 ${
+                            active 
+                              ? 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50' 
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                          }`}
+                        >
+                          {isLoading ? '...' : (active ? 'Cabut' : '+ Sinkron')}
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Poin 3: Wildcard *arabpay* */}
+                  {(() => {
+                    const pattern = '*arabpay*';
+                    const active = isPoinActive(pattern);
+                    const isLoading = activeSingleHost === pattern;
+                    return (
+                      <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 transition-all ${
+                        active ? 'bg-emerald-50/40 border-emerald-200' : 'bg-slate-50 border-slate-200/80'
+                      }`}>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <Zap size={16} className={active ? 'text-amber-600 shrink-0 mt-0.5' : 'text-slate-400 shrink-0 mt-0.5'} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 font-mono text-xs">{pattern}</span>
+                              <span className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full ${
+                                active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}>
+                                {active ? 'Aktif' : 'Belum'}
+                              </span>
+                            </div>
+                            <p className="text-[10.5px] text-slate-500 truncate">
+                              Wildcard seluruh ekosistem transaksi dompet digital & QRIS Gateway
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSingleHost(pattern, active)}
+                          disabled={isLoading || wgActionLoading || wgLoading}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer shrink-0 disabled:opacity-50 ${
+                            active 
+                              ? 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50' 
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                          }`}
+                        >
+                          {isLoading ? '...' : (active ? 'Cabut' : '+ Sinkron')}
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
