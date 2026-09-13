@@ -372,6 +372,7 @@ export async function buyVoucher(req: Request, res: Response) {
 
       // Push Live to Mikrotik Router via RouterOS API
       let livePushSuccess = false;
+      let livePushError = '';
       let conn: any = null;
       try {
         conn = new RouterOSAPI({
@@ -395,6 +396,7 @@ export async function buyVoucher(req: Request, res: Response) {
         conn.close();
         livePushSuccess = true;
       } catch (e: any) {
+        livePushError = e.message;
         console.warn(`[Voucher Buy] Failed to push on-demand voucher to Mikrotik ${routerProfile.ip_address}:`, e.message);
         if (conn) try { conn.close(); } catch (_) {}
       }
@@ -458,11 +460,13 @@ export async function buyVoucher(req: Request, res: Response) {
 
     res.json({
       success: true,
-      message: `✅ Voucher berhasil ${isFromPreGenerated ? 'diambil dari stok' : 'dibuat instan'}! Gunakan kode di bawah untuk login ke WiFi Hotspot.`,
+      message: `✅ Voucher berhasil ${isFromPreGenerated ? 'diambil dari stok' : 'dibuat instan'}! Gunakan kode di bawah untuk login ke WiFi Hotspot.${!isFromPreGenerated && !livePushSuccess ? ` (Perhatian MikroTik: ${livePushError})` : ''}`,
       voucher: {
         code: voucherCode,
         password: voucherPass
       },
+      mikrotik_synced: isFromPreGenerated ? true : livePushSuccess,
+      mikrotik_error: livePushError || undefined,
       method: isFromPreGenerated ? 'Stok Terbatas (Diskon)' : 'Instant On-Demand',
       invoice_number: invoiceNumber,
       remaining_balance: remainingBalance
