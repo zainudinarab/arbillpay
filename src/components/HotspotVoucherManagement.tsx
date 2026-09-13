@@ -1643,22 +1643,30 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
               {/* Bypassed Targets Preview */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-700">
-                  Daftar Domain & Port yang Di-Bypass:
+                  Daftar Domain & Port yang Di-Bypass (Dinamis dari .env):
                 </label>
                 <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70 text-xs">
                   <div className="flex items-start gap-2.5">
                     <Globe size={16} className="text-indigo-600 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arbill*</span>
-                      <p className="text-[11px] text-slate-500">Portal Web Billing Hotspot & Kasir POS (<code className="text-slate-700">arbill.arabpay.my.id</code>)</p>
+                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">
+                        {wgStatus?.env_billing_host ? `*${wgStatus.env_billing_host}*` : '*arbill*'}
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Portal Web Billing Hotspot & Kasir POS (<code className="text-indigo-600 font-semibold">{wgStatus?.env_billing_host || 'arbill.arabpay.my.id'}</code> dari <span className="font-mono text-[10px] text-slate-600 font-bold">BILLING_SERVER_HOST</span>)
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex items-start gap-2.5 pt-2 border-t border-slate-200/60">
                     <CreditCard size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                     <div>
-                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arabpay.my.id*</span>
-                      <p className="text-[11px] text-slate-500">Platform E-Wallet ArabPay, Oauth SSO Login, & API Gateway</p>
+                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">
+                        {wgStatus?.env_wallet_url ? `*${wgStatus.env_wallet_url.replace(/^https?:\/\//i, '').replace(/\/.*$/, '')}*` : '*arabpay.my.id*'}
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Platform E-Wallet ArabPay, Oauth SSO Login, & API Gateway (<code className="text-emerald-600 font-semibold">{wgStatus?.env_wallet_url || 'https://arabpay.my.id'}</code> dari <span className="font-mono text-[10px] text-slate-600 font-bold">ARABPAY_PANEL_URL</span>)
+                      </p>
                     </div>
                   </div>
 

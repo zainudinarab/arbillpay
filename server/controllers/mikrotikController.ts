@@ -2411,6 +2411,39 @@ export async function getIsolatedCustomers(req: Request, res: Response) {
 }
 
 /**
+ * Helper untuk mengambil daftar host bypass Walled Garden secara dinamis dari .env
+ */
+export function getDefaultBypassHosts(): string[] {
+  const hosts = new Set<string>();
+
+  // 1. Ambil dari BILLING_SERVER_HOST di .env
+  const rawBillingHost = (process.env.BILLING_SERVER_HOST || 'arbill.arabpay.my.id').trim();
+  const cleanBilling = rawBillingHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim();
+  if (cleanBilling) {
+    hosts.add(`*${cleanBilling}*`);
+    const parts = cleanBilling.split('.');
+    if (parts.length >= 2) {
+      hosts.add(`*${parts.slice(-2).join('.')}*`);
+    }
+  }
+
+  // 2. Ambil dari ARABPAY_PANEL_URL di .env
+  const rawWalletUrl = (process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id').trim();
+  const cleanWallet = rawWalletUrl.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim();
+  if (cleanWallet) {
+    hosts.add(`*${cleanWallet}*`);
+    hosts.add('*arabpay*');
+  }
+
+  // Tambahan default safety
+  hosts.add('*arbill*');
+  hosts.add('*arabpay.my.id*');
+  hosts.add('*arabpay*');
+
+  return Array.from(hosts);
+}
+
+/**
  * Mendapatkan Status Walled Garden (Bypass Hotspot) di Router MikroTik
  */
 export async function getWalledGardenStatus(req: Request, res: Response) {
@@ -2448,18 +2481,17 @@ export async function getWalledGardenStatus(req: Request, res: Response) {
     conn.close();
 
     // Periksa apakah bypass arbill / arabpay sudah ada
+    const checkTargets = getDefaultBypassHosts();
     const activeEntries: any[] = [];
-    const checkTargets = ['*arbill*', '*arabpay.my.id*', '*arabpay*'];
 
     wgDomainList.forEach(d => {
       const host = d['dst-host'] || '';
       const comment = d['comment'] || '';
-      if (
-        host.includes('arbill') ||
-        host.includes('arabpay') ||
-        comment.toLowerCase().includes('arbill') ||
-        comment.toLowerCase().includes('arabpay')
-      ) {
+      const isMatch = checkTargets.some(target => {
+        const cleanTarget = target.replace(/\*/g, '').toLowerCase();
+        return cleanTarget && (host.toLowerCase().includes(cleanTarget) || comment.toLowerCase().includes(cleanTarget));
+      });
+      if (isMatch) {
         activeEntries.push({
           id: d['.id'],
           type: 'domain',
@@ -2473,12 +2505,11 @@ export async function getWalledGardenStatus(req: Request, res: Response) {
     wgIpList.forEach(ip => {
       const host = ip['dst-host'] || ip['dst-address'] || '';
       const comment = ip['comment'] || '';
-      if (
-        host.includes('arbill') ||
-        host.includes('arabpay') ||
-        comment.toLowerCase().includes('arbill') ||
-        comment.toLowerCase().includes('arabpay')
-      ) {
+      const isMatch = checkTargets.some(target => {
+        const cleanTarget = target.replace(/\*/g, '').toLowerCase();
+        return cleanTarget && (host.toLowerCase().includes(cleanTarget) || comment.toLowerCase().includes(cleanTarget));
+      });
+      if (isMatch) {
         activeEntries.push({
           id: ip['.id'],
           type: 'ip',
@@ -2497,7 +2528,9 @@ export async function getWalledGardenStatus(req: Request, res: Response) {
       router_name: router.name,
       is_configured: isConfigured,
       entries: activeEntries,
-      default_hosts: checkTargets
+      default_hosts: checkTargets,
+      env_billing_host: process.env.BILLING_SERVER_HOST || 'arbill.arabpay.my.id',
+      env_wallet_url: process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id'
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal membaca status Walled Garden: ${err.message}` });
@@ -2510,7 +2543,8 @@ export async function getWalledGardenStatus(req: Request, res: Response) {
  */
 export async function setupWalledGarden(req: Request, res: Response) {
   const { id } = req.params;
-  const { hosts = ['*arbill*', '*arabpay.my.id*', '*arabpay*'], custom_ip } = req.body;
+  const defaultHosts = getDefaultBypassHosts();
+  const { hosts = defaultHosts, custom_ip } = req.body;
 
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
