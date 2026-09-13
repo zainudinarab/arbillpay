@@ -412,6 +412,8 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
       CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
       CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);
+      CREATE INDEX IF NOT EXISTS idx_invoices_voucher_id ON invoices(voucher_id);
+      CREATE INDEX IF NOT EXISTS idx_invoices_customer_phone ON invoices(customer_phone);
 
       -- Hotspot Vouchers Indexing
       CREATE INDEX IF NOT EXISTS idx_vouchers_code ON hotspot_vouchers(code);
@@ -419,6 +421,8 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_vouchers_batch ON hotspot_vouchers(batch_id);
       CREATE INDEX IF NOT EXISTS idx_vouchers_router ON hotspot_vouchers(router_id);
       CREATE INDEX IF NOT EXISTS idx_vouchers_profile ON hotspot_vouchers(router_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_vouchers_invoice_id ON hotspot_vouchers(invoice_id);
+      CREATE INDEX IF NOT EXISTS idx_vouchers_sold_to ON hotspot_vouchers(sold_to);
 
       -- Users Indexing
       CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
