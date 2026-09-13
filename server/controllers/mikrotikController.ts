@@ -1904,6 +1904,7 @@ export async function getIsolirStatus(req: Request, res: Response) {
     let natList: any[] = [];
     let schedList: any[] = [];
     let activeList: any[] = [];
+    let wgList: any[] = [];
 
     try {
       const conn = new RouterOSAPI({
@@ -1921,6 +1922,10 @@ export async function getIsolirStatus(req: Request, res: Response) {
       const nats: any = await conn.write('/ip/firewall/nat/print');
       const scheds: any = await conn.write('/system/scheduler/print');
       const activePpp: any = await conn.write('/ppp/active/print');
+      try {
+        const wg = await conn.write('/ip/hotspot/walled-garden/print');
+        if (Array.isArray(wg)) wgList = wg;
+      } catch (_) {}
 
       conn.close();
 
@@ -1942,6 +1947,16 @@ export async function getIsolirStatus(req: Request, res: Response) {
     const filterMatch = filterList.some((f: any) => f.comment?.includes('ARBILL-ISOLIR') || f['src-address-list'] === 'ISOLIR-USERS');
     const natMatch = natList.some((n: any) => n.comment?.includes('ARBILL-ISOLIR') || n['src-address-list'] === 'ISOLIR-USERS');
     const schedMatch = schedList.some((s: any) => s.name === 'monitor-ppp-arbil');
+
+    const defaultBypass = getDefaultBypassHosts();
+    const wgMatch = wgList.some((w: any) => {
+      const h = (w['dst-host'] || '').toLowerCase();
+      const c = (w['comment'] || '').toLowerCase();
+      return defaultBypass.some(dp => {
+        const clean = dp.replace(/\*/g, '').toLowerCase();
+        return clean && (h.includes(clean) || c.includes(clean));
+      });
+    });
 
     // Live active users in isolir profile
     const liveIsolatedUsers = activeList.filter((a: any) => 
@@ -1971,6 +1986,7 @@ export async function getIsolirStatus(req: Request, res: Response) {
         filter: filterMatch,
         nat: natMatch,
         scheduler: schedMatch,
+        walled_garden: wgMatch,
         is_ready: !!(poolMatch && profMatch && filterMatch && natMatch && schedMatch)
       },
       isolated_stats: {
@@ -2236,6 +2252,499 @@ export async function setupIsolirOnMikrotik(req: Request, res: Response) {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal setup sistem isolir: ${err.message}` });
+  }
+}
+
+/**
+ * Sinkronisasi atau Unsinkronisasi Komponen Isolir MikroTik Per-Poin atau Sekaligus:
+ * component: 'pool' | 'profile' | 'filter' | 'nat' | 'scheduler' | 'walled_garden' | 'all'
+ * action: 'sync' | 'unsync'
+ */
+export async function syncIsolirComponent(req: Request, res: Response) {
+  const { id } = req.params;
+  const {
+    component,
+    action = 'sync',
+    pool_name = 'pool-isolir',
+    pool_range = '10.100.100.2-10.100.100.254',
+    gateway_ip = '10.100.100.1',
+    profile_name = 'ppoe-expired',
+    rate_limit = '128k/128k',
+    dns_servers = '10.100.100.1,8.8.8.8',
+    server_host,
+    server_port
+  } = req.body;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+    const rawHost = (server_host && String(server_host).trim()) || process.env.BILLING_SERVER_HOST || 'arbill.arabpay.my.id';
+    const cleanHost = rawHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].trim();
+    const serverPort = (server_port && String(server_port).trim()) || process.env.PORT || '3006';
+    const isDomain = !/^(\d{1,3}\.){3}\d{1,3}$/.test(cleanHost);
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 12
+    });
+    await conn.connect();
+
+    const notes: string[] = [];
+
+    // 1. IP POOL
+    const doSyncPool = async () => {
+      const pools: any = await conn.write('/ip/pool/print');
+      const matchPool = Array.isArray(pools) ? pools.find((p: any) => p.name === pool_name) : null;
+      if (matchPool && matchPool['.id']) {
+        await conn.write('/ip/pool/set', [`=.id=${matchPool['.id']}`, `=ranges=${pool_range}`]);
+        notes.push(`IP Pool "${pool_name}" (${pool_range}) diperbarui`);
+      } else {
+        await conn.write('/ip/pool/add', [`=name=${pool_name}`, `=ranges=${pool_range}`, `=comment=Pool Khusus Pelanggan Terisolir - Arbill`]);
+        notes.push(`IP Pool "${pool_name}" (${pool_range}) berhasil dibuat`);
+      }
+    };
+
+    const doUnsyncPool = async () => {
+      const pools: any = await conn.write('/ip/pool/print');
+      const matchPools = Array.isArray(pools) ? pools.filter((p: any) => p.name === pool_name || p.name === 'pool-isolir') : [];
+      for (const p of matchPools) {
+        if (p['.id']) {
+          try {
+            await conn.write('/ip/pool/remove', [`=.id=${p['.id']}`]);
+            notes.push(`IP Pool "${p.name}" berhasil dicabut dari router`);
+          } catch (err: any) {
+            notes.push(`Gagal mencabut IP Pool "${p.name}": ${err.message}. Pastikan tidak sedang digunakan oleh PPP Profile.`);
+          }
+        }
+      }
+      if (matchPools.length === 0) notes.push(`IP Pool "${pool_name}" tidak ditemukan di router.`);
+    };
+
+    // 2. PPP PROFILE
+    const doSyncProfile = async () => {
+      const profiles: any = await conn.write('/ppp/profile/print');
+      const matchProf = Array.isArray(profiles) ? profiles.find((p: any) => p.name === profile_name) : null;
+      const profArgs = [
+        `=name=${profile_name}`,
+        `=local-address=${gateway_ip}`,
+        `=remote-address=${pool_name}`,
+        `=rate-limit=${rate_limit}`,
+        `=address-list=ISOLIR-USERS`,
+        `=dns-server=${dns_servers}`,
+        `=comment=Profile Khusus Pelanggan Terisolir - Arbill`
+      ];
+      if (matchProf && matchProf['.id']) {
+        await conn.write('/ppp/profile/set', [`=.id=${matchProf['.id']}`, ...profArgs]);
+        notes.push(`PPP Profile "${profile_name}" diperbarui`);
+      } else {
+        await conn.write('/ppp/profile/add', profArgs);
+        notes.push(`PPP Profile "${profile_name}" berhasil dibuat`);
+      }
+      const checkDbProf = await pool.query('SELECT id FROM router_profiles WHERE router_id = $1 AND name = $2', [id, profile_name]);
+      if (checkDbProf.rows.length === 0) {
+        await pool.query(`
+          INSERT INTO router_profiles (id, router_id, name, type, rate_limit, local_address, remote_address)
+          VALUES ($1, $2, $3, 'pppoe', $4, $5, $6)
+        `, [`rp-${crypto.randomUUID().substring(0, 8)}`, id, profile_name, rate_limit, gateway_ip, pool_name]);
+      }
+    };
+
+    const doUnsyncProfile = async () => {
+      const profiles: any = await conn.write('/ppp/profile/print');
+      const matchProfs = Array.isArray(profiles) ? profiles.filter((p: any) => p.name === profile_name || p.name === 'ppoe-expired') : [];
+      for (const pr of matchProfs) {
+        if (pr['.id']) {
+          try {
+            await conn.write('/ppp/profile/remove', [`=.id=${pr['.id']}`]);
+            notes.push(`PPP Profile "${pr.name}" berhasil dicabut dari router`);
+          } catch (err: any) {
+            notes.push(`Gagal mencabut PPP Profile "${pr.name}": ${err.message}. Pastikan tidak sedang digunakan oleh User PPP.`);
+          }
+        }
+      }
+      if (matchProfs.length === 0) notes.push(`PPP Profile "${profile_name}" tidak ditemukan di router.`);
+    };
+
+    // 3. FILTER RULE
+    const doSyncFilter = async () => {
+      try {
+        const addrLists: any = await conn.write('/ip/firewall/address-list/print');
+        const addrList = Array.isArray(addrLists) ? addrLists : [];
+        const matchAddr = addrList.find((a: any) => a.list === 'ARBILL-BILLING-HOST' && a.address === cleanHost);
+        if (!matchAddr) {
+          await conn.write('/ip/firewall/address-list/add', [
+            `=list=ARBILL-BILLING-HOST`,
+            `=address=${cleanHost}`,
+            `=comment=Server Billing Arbill (${isDomain ? 'Cloudflare Domain' : 'Direct IP'})`
+          ]);
+          notes.push(`Address-List "ARBILL-BILLING-HOST" (${cleanHost}) ditambahkan`);
+        }
+      } catch (addrErr: any) {
+        notes.push(`Address-List info: ${addrErr.message}`);
+      }
+
+      const filters: any = await conn.write('/ip/firewall/filter/print');
+      const filterList = Array.isArray(filters) ? filters : [];
+      const ensureFilterRule = async (comment: string, args: string[]) => {
+        const match = filterList.find((f: any) => f.comment === comment);
+        if (!match) {
+          await conn.write('/ip/firewall/filter/add', [`=comment=${comment}`, ...args]);
+          notes.push(`Filter: "${comment}" ditambahkan`);
+        } else {
+          notes.push(`Filter: "${comment}" sudah aktif`);
+        }
+      };
+
+      await ensureFilterRule('ARBILL-ISOLIR-ALLOW-DNS-UDP', [
+        '=chain=forward',
+        '=src-address-list=ISOLIR-USERS',
+        '=protocol=udp',
+        '=dst-port=53',
+        '=action=accept',
+        '=place-before=0'
+      ]);
+      await ensureFilterRule('ARBILL-ISOLIR-ALLOW-DNS-TCP', [
+        '=chain=forward',
+        '=src-address-list=ISOLIR-USERS',
+        '=protocol=tcp',
+        '=dst-port=53',
+        '=action=accept',
+        '=place-before=1'
+      ]);
+      await ensureFilterRule('ARBILL-ISOLIR-ALLOW-BILLING', [
+        '=chain=forward',
+        '=src-address-list=ISOLIR-USERS',
+        '=dst-address-list=ARBILL-BILLING-HOST',
+        '=action=accept',
+        '=place-before=2'
+      ]);
+      await ensureFilterRule('ARBILL-ISOLIR-DROP-INTERNET', [
+        '=chain=forward',
+        '=src-address-list=ISOLIR-USERS',
+        '=action=drop',
+        '=place-before=3'
+      ]);
+    };
+
+    const doUnsyncFilter = async () => {
+      const filters: any = await conn.write('/ip/firewall/filter/print');
+      const filterList = Array.isArray(filters) ? filters : [];
+      let removedCount = 0;
+      for (const f of filterList) {
+        if (f.comment?.includes('ARBILL-ISOLIR') || f['src-address-list'] === 'ISOLIR-USERS') {
+          try {
+            await conn.write('/ip/firewall/filter/remove', [`=.id=${f['.id']}`]);
+            removedCount++;
+          } catch (_) {}
+        }
+      }
+      notes.push(`Mencabut ${removedCount} rule Firewall Filter isolir.`);
+
+      try {
+        const addrLists: any = await conn.write('/ip/firewall/address-list/print');
+        const addrList = Array.isArray(addrLists) ? addrLists : [];
+        for (const a of addrList) {
+          if (a.list === 'ARBILL-BILLING-HOST') {
+            try {
+              await conn.write('/ip/firewall/address-list/remove', [`=.id=${a['.id']}`]);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    };
+
+    // 4. NAT REDIRECT
+    const doSyncNat = async () => {
+      const nats: any = await conn.write('/ip/firewall/nat/print');
+      const natList = Array.isArray(nats) ? nats : [];
+      const natComment = 'ARBILL-ISOLIR-REDIRECT-HTTP';
+      const matchNat = natList.find((n: any) => n.comment === natComment);
+
+      if (isDomain) {
+        try {
+          await conn.write('/ip/proxy/set', ['=enabled=yes', '=port=8080']);
+          notes.push('Web Proxy MikroTik diaktifkan (port 8080)');
+
+          const proxyAccess: any = await conn.write('/ip/proxy/access/print');
+          const paList = Array.isArray(proxyAccess) ? proxyAccess : [];
+          const matchPa = paList.find((p: any) => p.comment === 'ARBILL-ISOLIR-REDIRECT');
+          const redirectUrl = `https://${cleanHost}/#/isolir`;
+          if (matchPa && matchPa['.id']) {
+            await conn.write('/ip/proxy/access/set', [
+              `=.id=${matchPa['.id']}`,
+              '=action=deny',
+              `=redirect-to=${redirectUrl}`,
+              '=comment=ARBILL-ISOLIR-REDIRECT'
+            ]);
+            notes.push(`Web Proxy Access Redirect (${redirectUrl}) diperbarui`);
+          } else {
+            await conn.write('/ip/proxy/access/add', [
+              '=action=deny',
+              `=redirect-to=${redirectUrl}`,
+              '=comment=ARBILL-ISOLIR-REDIRECT'
+            ]);
+            notes.push(`Web Proxy Access Redirect (${redirectUrl}) dibuat baru`);
+          }
+        } catch (proxyErr: any) {
+          notes.push(`Web Proxy info: ${proxyErr.message}`);
+        }
+
+        const natArgs = [
+          '=chain=dstnat',
+          '=src-address-list=ISOLIR-USERS',
+          '=protocol=tcp',
+          '=dst-port=80',
+          '=action=redirect',
+          '=to-ports=8080',
+          `=comment=${natComment}`,
+          '=place-before=0'
+        ];
+        if (matchNat && matchNat['.id']) {
+          await conn.write('/ip/firewall/nat/set', [`=.id=${matchNat['.id']}`, ...natArgs]);
+          notes.push('NAT: Redirect Port 80 -> Proxy 8080 diperbarui');
+        } else {
+          await conn.write('/ip/firewall/nat/add', natArgs);
+          notes.push('NAT: Redirect Port 80 -> Proxy 8080 ditambahkan');
+        }
+      } else {
+        const natArgs = [
+          '=chain=dstnat',
+          '=src-address-list=ISOLIR-USERS',
+          '=protocol=tcp',
+          '=dst-port=80',
+          '=action=dst-nat',
+          `=to-addresses=${cleanHost}`,
+          `=to-ports=${serverPort}`,
+          `=comment=${natComment}`,
+          '=place-before=0'
+        ];
+        if (matchNat && matchNat['.id']) {
+          await conn.write('/ip/firewall/nat/set', [`=.id=${matchNat['.id']}`, ...natArgs]);
+          notes.push(`NAT: DST-NAT Port 80 -> ${cleanHost}:${serverPort} diperbarui`);
+        } else {
+          await conn.write('/ip/firewall/nat/add', natArgs);
+          notes.push(`NAT: DST-NAT Port 80 -> ${cleanHost}:${serverPort} ditambahkan`);
+        }
+      }
+    };
+
+    const doUnsyncNat = async () => {
+      const nats: any = await conn.write('/ip/firewall/nat/print');
+      const natList = Array.isArray(nats) ? nats : [];
+      let removedNat = 0;
+      for (const n of natList) {
+        if (n.comment?.includes('ARBILL-ISOLIR')) {
+          try {
+            await conn.write('/ip/firewall/nat/remove', [`=.id=${n['.id']}`]);
+            removedNat++;
+          } catch (_) {}
+        }
+      }
+      notes.push(`Mencabut ${removedNat} rule NAT Redirect isolir.`);
+
+      try {
+        const proxyAccess: any = await conn.write('/ip/proxy/access/print');
+        const paList = Array.isArray(proxyAccess) ? proxyAccess : [];
+        for (const pa of paList) {
+          if (pa.comment?.includes('ARBILL-ISOLIR')) {
+            try {
+              await conn.write('/ip/proxy/access/remove', [`=.id=${pa['.id']}`]);
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    };
+
+    // 5. SCHEDULER
+    const doSyncScheduler = async () => {
+      const schedNotes = await ensureMikrotikScheduler(conn, 'pppoe');
+      notes.push(schedNotes);
+    };
+
+    const doUnsyncScheduler = async () => {
+      const scheds: any = await conn.write('/system/scheduler/print');
+      const schedList = Array.isArray(scheds) ? schedList : [];
+      let removedSched = 0;
+      for (const s of schedList) {
+        if (s.name === 'monitor-ppp-arbil') {
+          try {
+            await conn.write('/system/scheduler/remove', [`=.id=${s['.id']}`]);
+            removedSched++;
+          } catch (_) {}
+        }
+      }
+      notes.push(`Mencabut ${removedSched} Scheduler "monitor-ppp-arbil".`);
+    };
+
+    // 6. WALLED GARDEN (BYPASS BILLING & WALLET)
+    const doSyncWalledGarden = async () => {
+      const defaultHosts = getDefaultBypassHosts();
+      let currentDomains: any[] = [];
+      try {
+        const d = await conn.write('/ip/hotspot/walled-garden/print');
+        if (Array.isArray(d)) currentDomains = d;
+      } catch (_) {}
+
+      for (const h of defaultHosts) {
+        const cleanH = String(h).trim();
+        if (!cleanH) continue;
+        const exists = currentDomains.some(d => (d['dst-host'] || '').trim().toLowerCase() === cleanH.toLowerCase());
+        if (!exists) {
+          try {
+            await conn.write('/ip/hotspot/walled-garden/add', [
+              `=dst-host=${cleanH}`,
+              `=action=allow`,
+              `=comment=Bypass Billing & Wallet ArabPay`
+            ]);
+            notes.push(`Walled Garden domain "${cleanH}" ditambahkan`);
+          } catch (_) {}
+        }
+      }
+      notes.push('Walled Garden Hotspot berhasil disinkronkan.');
+    };
+
+    const doUnsyncWalledGarden = async () => {
+      const defaultHosts = getDefaultBypassHosts();
+      let currentDomains: any[] = [];
+      try {
+        const d = await conn.write('/ip/hotspot/walled-garden/print');
+        if (Array.isArray(d)) currentDomains = d;
+      } catch (_) {}
+
+      let removedWg = 0;
+      for (const d of currentDomains) {
+        const host = (d['dst-host'] || '').toLowerCase();
+        const comment = (d['comment'] || '').toLowerCase();
+        const isMatch = defaultHosts.some(dh => {
+          const clean = dh.replace(/\*/g, '').toLowerCase();
+          return clean && (host.includes(clean) || comment.includes(clean));
+        });
+        if (isMatch && d['.id']) {
+          try {
+            await conn.write('/ip/hotspot/walled-garden/remove', [`=.id=${d['.id']}`]);
+            removedWg++;
+          } catch (_) {}
+        }
+      }
+
+      let currentIps: any[] = [];
+      try {
+        const ips = await conn.write('/ip/hotspot/walled-garden/ip/print');
+        if (Array.isArray(ips)) currentIps = ips;
+      } catch (_) {}
+      for (const ip of currentIps) {
+        const host = (ip['dst-host'] || ip['dst-address'] || '').toLowerCase();
+        const comment = (ip['comment'] || '').toLowerCase();
+        const isMatch = defaultHosts.some(dh => {
+          const clean = dh.replace(/\*/g, '').toLowerCase();
+          return clean && (host.includes(clean) || comment.includes(clean));
+        });
+        if (isMatch && ip['.id']) {
+          try {
+            await conn.write('/ip/hotspot/walled-garden/ip/remove', [`=.id=${ip['.id']}`]);
+            removedWg++;
+          } catch (_) {}
+        }
+      }
+      notes.push(`Mencabut ${removedWg} rule Walled Garden.`);
+    };
+
+    // Eksekusi berdasarkan aksi
+    if (action === 'unsync') {
+      switch (component) {
+        case 'pool':
+          await doUnsyncPool();
+          break;
+        case 'profile':
+          await doUnsyncProfile();
+          break;
+        case 'filter':
+          await doUnsyncFilter();
+          break;
+        case 'nat':
+          await doUnsyncNat();
+          break;
+        case 'scheduler':
+          await doUnsyncScheduler();
+          break;
+        case 'walled_garden':
+          await doUnsyncWalledGarden();
+          break;
+        case 'all':
+          // Unsync berurutan dari filter -> nat -> scheduler -> profile -> pool -> walled garden
+          await doUnsyncFilter();
+          await doUnsyncNat();
+          await doUnsyncScheduler();
+          await doUnsyncProfile();
+          await doUnsyncPool();
+          await doUnsyncWalledGarden();
+          break;
+        default:
+          conn.close();
+          return res.status(400).json({ success: false, message: `Komponen "${component}" tidak valid.` });
+      }
+    } else {
+      // action === 'sync'
+      switch (component) {
+        case 'pool':
+          await doSyncPool();
+          break;
+        case 'profile':
+          await doSyncProfile();
+          break;
+        case 'filter':
+          await doSyncFilter();
+          break;
+        case 'nat':
+          await doSyncNat();
+          break;
+        case 'scheduler':
+          await doSyncScheduler();
+          break;
+        case 'walled_garden':
+          await doSyncWalledGarden();
+          break;
+        case 'all':
+          await doSyncPool();
+          await doSyncProfile();
+          await doSyncFilter();
+          await doSyncNat();
+          await doSyncScheduler();
+          await doSyncWalledGarden();
+          break;
+        default:
+          conn.close();
+          return res.status(400).json({ success: false, message: `Komponen "${component}" tidak valid.` });
+      }
+    }
+
+    conn.close();
+
+    // Invalidate Redis cache
+    try {
+      await redisDel(`mikrotik:isolir_status:${id}`);
+      await redisDel(`mikrotik:isolated_customers:${id}`);
+      await redisDel('mikrotik:active_users:all');
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: action === 'unsync'
+        ? `Berhasil mencabut komponen "${component}" dari Router "${router.name}"`
+        : `Berhasil mensinkronkan komponen "${component}" ke Router "${router.name}"`,
+      details: notes
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: `Gagal proses komponen "${component}": ${err.message}`
+    });
   }
 }
 

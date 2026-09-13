@@ -20,7 +20,8 @@ import {
   Clock,
   Radio,
   WifiOff,
-  UserCheck
+  UserCheck,
+  Trash2
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -160,22 +161,65 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
     }
   };
 
-  const [wgSetupLoading, setWgSetupLoading] = useState(false);
-  const handleQuickSetupWalledGarden = async () => {
+  // Operating state per component: e.g. 'pool-sync', 'pool-unsync', 'all-unsync'
+  const [operatingComponent, setOperatingComponent] = useState<string | null>(null);
+  const [componentResult, setComponentResult] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    details?: string[];
+  } | null>(null);
+
+  const handleToggleComponent = async (component: string, action: 'sync' | 'unsync') => {
     if (!selectedRouterId) return;
-    setWgSetupLoading(true);
+    if (action === 'unsync') {
+      const confirmLabel = component === 'all'
+        ? 'PERINGATAN: Apakah Anda yakin ingin MENCABUT SEMUA rule dan konfigurasi sistem isolir dari router ini?'
+        : `Apakah Anda yakin ingin mencabut komponen "${component.toUpperCase()}" dari router ini?`;
+      if (!window.confirm(confirmLabel)) return;
+    }
+
+    const opKey = `${component}-${action}`;
+    setOperatingComponent(opKey);
+    setComponentResult(null);
+
     try {
-      const res = await fetch(`/api/routers/${selectedRouterId}/setup-walled-garden`, {
+      const res = await fetch(`/api/routers/${selectedRouterId}/sync-isolir-component`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hosts: ['*arbill*', '*arabpay.my.id*', '*arabpay*'] })
+        body: JSON.stringify({
+          component,
+          action,
+          pool_name: 'pool-isolir',
+          pool_range: poolRange,
+          gateway_ip: gatewayIp,
+          profile_name: profileName,
+          rate_limit: rateLimit,
+          server_host: serverHost,
+          server_port: serverPort
+        })
       });
       const data = await res.json();
       if (data.success) {
-        setIsolirStatus(prev => prev ? { ...prev, walled_garden: true } : prev);
+        setComponentResult({
+          type: 'success',
+          message: data.message,
+          details: data.details
+        });
+        await fetchIsolirStatus(selectedRouterId);
+        fetchIsolirScript(selectedRouterId);
+      } else {
+        setComponentResult({
+          type: 'error',
+          message: data.message || 'Gagal memproses komponen isolir.'
+        });
       }
-    } catch (_) {} finally {
-      setWgSetupLoading(false);
+    } catch (err: any) {
+      setComponentResult({
+        type: 'error',
+        message: 'Gagal menghubungi server: ' + err.message
+      });
+    } finally {
+      setOperatingComponent(null);
     }
   };
 
@@ -335,6 +379,21 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
             1-Klik Pasang ke Router
           </button>
 
+          <button
+            type="button"
+            onClick={() => handleToggleComponent('all', 'unsync')}
+            disabled={operatingComponent !== null}
+            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            title="Cabut seluruh konfigurasi dan rule sistem isolir dari MikroTik"
+          >
+            {operatingComponent === 'all-unsync' ? (
+              <RefreshCw size={14} className="animate-spin text-rose-600" />
+            ) : (
+              <WifiOff size={14} />
+            )}
+            Cabut Semua
+          </button>
+
           <a
             href="/#/isolir"
             target="_blank"
@@ -442,128 +501,404 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
             </div>
           )}
 
+          {/* Action Result Notification Banner */}
+          {componentResult && (
+            <div className={`p-4 rounded-2xl border flex items-start justify-between gap-3 shadow-sm ${
+              componentResult.type === 'success'
+                ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50/90 border-rose-200 text-rose-900'
+            }`}>
+              <div className="text-xs space-y-1">
+                <p className="font-bold text-sm flex items-center gap-2">
+                  {componentResult.type === 'success' ? (
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle size={18} className="text-rose-600 shrink-0" />
+                  )}
+                  {componentResult.message}
+                </p>
+                {componentResult.details && componentResult.details.length > 0 && (
+                  <ul className="list-disc pl-5 space-y-0.5 text-slate-700 font-mono text-[11px] mt-1">
+                    {componentResult.details.map((d, i) => (
+                      <li key={i}>{d}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setComponentResult(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 font-bold text-xs"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Component Check Cards Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
             {/* 1. IP Pool */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.pool ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">1. IP Pool</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">1. IP Pool</span>
+                  {isolirStatus?.pool ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-mono font-bold text-slate-800 text-sm truncate" title={isolirStatus?.pool_details?.name || 'pool-isolir'}>
+                  {isolirStatus?.pool_details?.name || 'pool-isolir'}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1 font-mono truncate" title={isolirStatus?.pool_details?.ranges || poolRange}>
+                  {isolirStatus?.pool_details?.ranges || poolRange}
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.pool ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('pool', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'pool-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('pool', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui IP Pool di Router"
+                    >
+                      {operatingComponent === 'pool-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('pool', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'pool-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-mono font-bold text-slate-800 text-sm">
-                {isolirStatus?.pool_details?.name || 'pool-isolir'}
-              </p>
-              <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                {isolirStatus?.pool_details?.ranges || '10.100.100.2-10.100.100.254'}
-              </p>
             </div>
 
             {/* 2. PPP Profile */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.profile ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">2. PPP Profile</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">2. PPP Profile</span>
+                  {isolirStatus?.profile ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-mono font-bold text-slate-800 text-sm truncate" title={isolirStatus?.profile_details?.name || profileName}>
+                  {isolirStatus?.profile_details?.name || profileName}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                  Limit: <span className="font-mono font-semibold">{isolirStatus?.profile_details?.rate_limit || rateLimit}</span>
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.profile ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('profile', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'profile-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('profile', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui PPP Profile di Router"
+                    >
+                      {operatingComponent === 'profile-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('profile', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'profile-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-mono font-bold text-slate-800 text-sm">
-                {isolirStatus?.profile_details?.name || 'ppoe-expired'}
-              </p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Limit: <span className="font-mono font-semibold">{isolirStatus?.profile_details?.rate_limit || '128k/128k'}</span>
-              </p>
             </div>
 
             {/* 3. Firewall Filter */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.filter ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">3. Filter Rule</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">3. Filter Rule</span>
+                  {isolirStatus?.filter ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-800 text-sm">Blokir Internet</p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                  Buka DNS & Server, blokir lain
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.filter ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('filter', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'filter-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('filter', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui Rule Filter di Router"
+                    >
+                      {operatingComponent === 'filter-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('filter', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'filter-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-bold text-slate-800 text-sm">Blokir Internet</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Buka DNS & Server, blokir traffic lain
-              </p>
             </div>
 
             {/* 4. Firewall NAT */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.nat ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">4. NAT Redirect</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">4. NAT Redirect</span>
+                  {isolirStatus?.nat ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-800 text-sm">DST-NAT Port 80</p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                  Forward HTTP ke landing page Arbill
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.nat ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('nat', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'nat-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('nat', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui NAT Redirect di Router"
+                    >
+                      {operatingComponent === 'nat-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('nat', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'nat-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-bold text-slate-800 text-sm">DST-NAT Port 80</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Forward HTTP ke landing page Arbill
-              </p>
             </div>
 
             {/* 5. Scheduler */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.scheduler ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">5. Scheduler</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">5. Scheduler</span>
+                  {isolirStatus?.scheduler ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-mono font-bold text-slate-800 text-sm truncate">monitor-ppp-arbil</p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate">
+                  Cek otomatis tiap 10 menit
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.scheduler ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('scheduler', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'scheduler-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('scheduler', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui Scheduler di Router"
+                    >
+                      {operatingComponent === 'scheduler-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-100 text-rose-700">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('scheduler', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'scheduler-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-mono font-bold text-slate-800 text-sm">monitor-ppp-arbil</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Cek otomatis tiap 10 menit
-              </p>
             </div>
 
             {/* 6. Hotspot Walled Garden */}
-            <div className={`p-4 rounded-2xl border transition-all ${
+            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
               isolirStatus?.walled_garden ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
             }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">6. Walled Garden</span>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">6. Walled Garden</span>
+                  {isolirStatus?.walled_garden ? (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      TERPASANG
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">BELUM ADA</span>
+                  )}
+                </div>
+                <p className="font-bold text-slate-800 text-sm">Bypass Hotspot</p>
+                <p className="text-[11px] text-slate-500 mt-1 truncate" title="*arbill*, *arabpay.my.id*">
+                  Arbill & E-Wallet ArabPay
+                </p>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 {isolirStatus?.walled_garden ? (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('walled_garden', 'unsync')}
+                      disabled={operatingComponent !== null}
+                      className="flex-1 py-1.5 px-2 rounded-lg text-[10px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 text-center"
+                    >
+                      {operatingComponent === 'walled_garden-unsync' ? 'Mencabut...' : 'Cabut'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleComponent('walled_garden', 'sync')}
+                      disabled={operatingComponent !== null}
+                      className="py-1.5 px-2 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                      title="Perbarui Walled Garden di Router"
+                    >
+                      {operatingComponent === 'walled_garden-sync' ? '...' : 'Update'}
+                    </button>
+                  </>
                 ) : (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">BELUM ADA</span>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleComponent('walled_garden', 'sync')}
+                    disabled={operatingComponent !== null}
+                    className="w-full py-1.5 px-2 rounded-lg text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+                  >
+                    {operatingComponent === 'walled_garden-sync' ? (
+                      <RefreshCw size={11} className="animate-spin" />
+                    ) : (
+                      '+ Sinkronkan'
+                    )}
+                  </button>
                 )}
               </div>
-              <p className="font-bold text-slate-800 text-sm">Bypass Hotspot</p>
-              <p className="text-[11px] text-slate-500 mt-1 truncate" title="*arbill*, *arabpay.my.id*">
-                Arbill & E-Wallet ArabPay
-              </p>
-              {!isolirStatus?.walled_garden && (
-                <button
-                  type="button"
-                  onClick={handleQuickSetupWalledGarden}
-                  disabled={wgSetupLoading}
-                  className="mt-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer disabled:opacity-50"
-                >
-                  {wgSetupLoading ? 'Memasang...' : '+ Pasang Walled Garden'}
-                </button>
-              )}
             </div>
           </div>
 

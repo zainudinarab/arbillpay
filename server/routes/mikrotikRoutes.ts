@@ -4,7 +4,7 @@ import {
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, importPppSecrets, importHotspotUsers,
-  getIsolirStatus, setupIsolirOnMikrotik, getIsolirScript, getIsolatedCustomers,
+  getIsolirStatus, setupIsolirOnMikrotik, syncIsolirComponent, getIsolirScript, getIsolatedCustomers,
   getWalledGardenStatus, setupWalledGarden, removeWalledGarden
 } from '../controllers/mikrotikController.js';
 
@@ -44,6 +44,7 @@ router.post('/routers/:id/import-hotspot-users', importHotspotUsers);
 // Sistem Isolir MikroTik
 router.get('/routers/:id/isolir-status', getIsolirStatus);
 router.post('/routers/:id/setup-isolir', setupIsolirOnMikrotik);
+router.post('/routers/:id/sync-isolir-component', syncIsolirComponent);
 router.get('/routers/:id/isolir-script', getIsolirScript);
 router.get('/routers/:id/isolated-customers', getIsolatedCustomers);
 
