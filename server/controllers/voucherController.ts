@@ -453,10 +453,10 @@ export async function buyVoucher(req: Request, res: Response) {
     // 2. Simpan invoice transaksi keuangan ke tabel invoices dengan relasi langsung ke voucher
     await pool.query(`
       INSERT INTO invoices (
-        id, invoice_number, customer_id, customer_name, client_name, customer_phone, client_phone, 
+        id, invoice_number, customer_id, customer_name, customer_phone, 
         connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, voucher_id, voucher_code, created_at
       ) VALUES (
-        $1, $2, $3, $4, $4, $5, $5, 
+        $1, $2, $3, $4, $5, 
         'hotspot_voucher', $6, $7, $7, 'paid', CURRENT_DATE, CURRENT_DATE, $8, $9, NOW(), $10, $11, NOW()
       )
     `, [
@@ -530,7 +530,6 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       WHERE (
         (v.sold_to IS NOT NULL AND (v.sold_to = $1 OR v.sold_to = $2 OR ($2 <> '' AND v.sold_to LIKE '%' || $2 || '%')))
         OR (i.customer_phone IS NOT NULL AND ($2 <> '' AND (i.customer_phone = $2 OR i.customer_phone LIKE '%' || $2 || '%')))
-        OR (i.client_phone IS NOT NULL AND ($2 <> '' AND (i.client_phone = $2 OR i.client_phone LIKE '%' || $2 || '%')))
         OR (i.customer_id IS NOT NULL AND $1 <> '' AND i.customer_id = $1)
       )
       ORDER BY COALESCE(v.sold_at, v.created_at) DESC

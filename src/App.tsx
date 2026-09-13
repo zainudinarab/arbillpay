@@ -647,7 +647,7 @@ const safeFormatDate = (val: any): string => {
               invoiceNumber: inv.invoice_number || inv.invoiceNumber || inv.id,
               client: {
                 id: inv.customer_id || inv.id,
-                name: inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan',
+                name: inv.customer_name_real || inv.customer_name || inv.client?.name || 'Pelanggan',
                 email: inv.customer_email || inv.client?.email || 'client@example.com',
                 company: inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member'),
                 address: inv.notes || '',
@@ -704,7 +704,7 @@ const safeFormatDate = (val: any): string => {
             const custId = String(inv.customer_id || inv.client?.id || inv.id);
             const matchedCust = customerMap.get(custId) || {};
 
-            const custName = matchedCust.name || inv.customer_name_real || inv.customer_name || inv.client_name || inv.client?.name || 'Pelanggan';
+            const custName = matchedCust.name || inv.customer_name_real || inv.customer_name || inv.client?.name || 'Pelanggan';
             const custPhone = matchedCust.phone_number || inv.customer_phone_real || inv.customer_phone || inv.client?.phone || '';
             const pkgName = matchedCust.package_name || inv.package_name || inv.current_package_name || (inv.pppoe_username ? `PPPoE: ${inv.pppoe_username}` : 'Internet Member');
 

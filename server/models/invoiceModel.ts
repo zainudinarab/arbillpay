@@ -23,7 +23,7 @@ export async function getInvoices(filters: { customer_id?: string; phone?: strin
       }
       if (filters.phone) {
         const cleanPhone = String(filters.phone).replace(/[^0-9]/g, '');
-        list = list.filter(i => (i.customer_phone && String(i.customer_phone).includes(cleanPhone)) || (i.client_phone && String(i.client_phone).includes(cleanPhone)));
+        list = list.filter(i => (i.customer_phone && String(i.customer_phone).includes(cleanPhone)));
       }
       if (filters.connection_type) {
         list = list.filter(i => String(i.connection_type) === String(filters.connection_type));
@@ -56,7 +56,7 @@ export async function getInvoices(filters: { customer_id?: string; phone?: strin
       const cleanPhone = String(filters.phone).replace(/[^0-9]/g, '');
       if (cleanPhone) {
         params.push(cleanPhone);
-        whereClauses.push(`(i.customer_phone LIKE '%' || $${params.length} || '%' OR i.client_phone LIKE '%' || $${params.length} || '%' OR c.phone_number LIKE '%' || $${params.length} || '%')`);
+        whereClauses.push(`(i.customer_phone LIKE '%' || $${params.length} || '%' OR c.phone_number LIKE '%' || $${params.length} || '%')`);
       }
     }
     if (filters.connection_type) {
@@ -131,9 +131,9 @@ export async function runAutoBillingJob(daysBeforeDue: number = 5) {
 
         await pool.query(`
           INSERT INTO invoices (
-            id, invoice_number, customer_id, customer_name, client_name, customer_phone, 
+            id, invoice_number, customer_id, customer_name, customer_phone, 
             connection_type, package_name, amount, total, status, issue_date, due_date, notes
-          ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
         `, [
           invId, invNum, c.id, c.name, c.phone_number || null, 
           c.connection_type || 'pppoe', c.package_name, amount, dueDate, `Auto-Billing System H-${daysBeforeDue}`

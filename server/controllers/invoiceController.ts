@@ -97,9 +97,9 @@ export async function createManualInvoice(req: Request, res: Response) {
 
     const result = await pool.query(`
       INSERT INTO invoices (
-        id, invoice_number, customer_id, customer_name, client_name, customer_phone, 
+        id, invoice_number, customer_id, customer_name, customer_phone, 
         connection_type, package_name, amount, total, status, issue_date, due_date, notes
-      ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
       RETURNING *
     `, [
       invId, invNum, c.id, c.name, c.phone_number || null, 
@@ -162,9 +162,9 @@ export async function createBatchInvoices(req: Request, res: Response) {
 
         const invRes = await pool.query(`
           INSERT INTO invoices (
-            id, invoice_number, customer_id, customer_name, client_name, customer_phone, 
+            id, invoice_number, customer_id, customer_name, customer_phone, 
             connection_type, package_name, amount, total, status, issue_date, due_date, notes
-          ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, 'pending', CURRENT_DATE, $9, $10)
           RETURNING *
         `, [
           invId, invNum, c.id, c.name, c.phone_number || null, 
@@ -281,7 +281,7 @@ export async function createArabPayInvoiceOrder(req: Request, res: Response) {
       invoiceId: inv.id,
       invoiceNumber: inv.invoice_number,
       amount: Number(inv.total || inv.amount || 0),
-      customerName: inv.customer_name || inv.client_name || 'Pelanggan',
+      customerName: inv.customer_name || 'Pelanggan',
       customerPhone: inv.customer_phone || undefined,
       notes: inv.notes || `Tagihan ${inv.package_name || 'Internet'} (${inv.invoice_number})`
     });
@@ -385,13 +385,13 @@ export async function sendInvoiceWhatsApp(req: Request, res: Response) {
       invoiceId: inv.id,
       invoiceNumber: inv.invoice_number,
       amount: Number(inv.total || inv.amount || 0),
-      customerName: inv.customer_name || inv.client_name || 'Pelanggan',
+      customerName: inv.customer_name || 'Pelanggan',
       customerPhone: phone,
       notes: inv.notes || `Tagihan ${inv.package_name || 'Internet'} (${inv.invoice_number})`
     });
 
     const waResult = await sendInvoicePaymentLinkWA({
-      customerName: inv.customer_name || inv.client_name || 'Pelanggan',
+      customerName: inv.customer_name || 'Pelanggan',
       phone: phone,
       invoiceNumber: inv.invoice_number,
       amount: Number(inv.total || inv.amount || 0),

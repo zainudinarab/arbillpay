@@ -153,9 +153,7 @@ export async function initDatabaseSchema() {
         voucher_id VARCHAR(64),
         voucher_code VARCHAR(64),
         customer_name VARCHAR(255),
-        client_name VARCHAR(255),
         customer_phone VARCHAR(64),
-        client_phone VARCHAR(64),
         connection_type VARCHAR(32) NOT NULL DEFAULT 'pppoe',
         package_name VARCHAR(255),
         amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
@@ -335,9 +333,7 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS voucher_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64),
       ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS client_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(64),
-      ADD COLUMN IF NOT EXISTS client_phone VARCHAR(64),
       ADD COLUMN IF NOT EXISTS connection_type VARCHAR(32) DEFAULT 'pppoe',
       ADD COLUMN IF NOT EXISTS package_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS amount NUMERIC(12, 2) DEFAULT 0,
@@ -348,6 +344,12 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP WITH TIME ZONE,
       ADD COLUMN IF NOT EXISTS payment_method VARCHAR(64),
       ADD COLUMN IF NOT EXISTS notes TEXT;
+
+      -- Backfill and Drop legacy duplicate columns (client_name, client_phone)
+      UPDATE invoices SET customer_name = client_name WHERE (customer_name IS NULL OR customer_name = '') AND client_name IS NOT NULL;
+      UPDATE invoices SET customer_phone = client_phone WHERE (customer_phone IS NULL OR customer_phone = '') AND client_phone IS NOT NULL;
+      ALTER TABLE invoices DROP COLUMN IF EXISTS client_name;
+      ALTER TABLE invoices DROP COLUMN IF EXISTS client_phone;
 
       ALTER TABLE invoices ALTER COLUMN issue_date DROP NOT NULL;
       ALTER TABLE invoices ALTER COLUMN issue_date SET DEFAULT CURRENT_DATE;
