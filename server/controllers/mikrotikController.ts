@@ -2410,3 +2410,281 @@ export async function getIsolatedCustomers(req: Request, res: Response) {
   }
 }
 
+/**
+ * Mendapatkan Status Walled Garden (Bypass Hotspot) di Router MikroTik
+ */
+export async function getWalledGardenStatus(req: Request, res: Response) {
+  const { id } = req.params;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 8
+    });
+    await conn.connect();
+
+    let wgDomainList: any[] = [];
+    let wgIpList: any[] = [];
+
+    try {
+      const domains = await conn.write('/ip/hotspot/walled-garden/print');
+      if (Array.isArray(domains)) wgDomainList = domains;
+    } catch (_) {}
+
+    try {
+      const ips = await conn.write('/ip/hotspot/walled-garden/ip/print');
+      if (Array.isArray(ips)) wgIpList = ips;
+    } catch (_) {}
+
+    conn.close();
+
+    // Periksa apakah bypass arbill / arabpay sudah ada
+    const activeEntries: any[] = [];
+    const checkTargets = ['*arbill*', '*arabpay.my.id*', '*arabpay*'];
+
+    wgDomainList.forEach(d => {
+      const host = d['dst-host'] || '';
+      const comment = d['comment'] || '';
+      if (
+        host.includes('arbill') ||
+        host.includes('arabpay') ||
+        comment.toLowerCase().includes('arbill') ||
+        comment.toLowerCase().includes('arabpay')
+      ) {
+        activeEntries.push({
+          id: d['.id'],
+          type: 'domain',
+          dst_host: host,
+          action: d.action || 'allow',
+          comment: comment
+        });
+      }
+    });
+
+    wgIpList.forEach(ip => {
+      const host = ip['dst-host'] || ip['dst-address'] || '';
+      const comment = ip['comment'] || '';
+      if (
+        host.includes('arbill') ||
+        host.includes('arabpay') ||
+        comment.toLowerCase().includes('arbill') ||
+        comment.toLowerCase().includes('arabpay')
+      ) {
+        activeEntries.push({
+          id: ip['.id'],
+          type: 'ip',
+          dst_host: host,
+          action: ip.action || 'accept',
+          comment: comment
+        });
+      }
+    });
+
+    const isConfigured = activeEntries.length > 0;
+
+    res.json({
+      success: true,
+      router_id: id,
+      router_name: router.name,
+      is_configured: isConfigured,
+      entries: activeEntries,
+      default_hosts: checkTargets
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal membaca status Walled Garden: ${err.message}` });
+  }
+}
+
+/**
+ * Setup 1-Klik Hotspot Walled Garden di Router MikroTik
+ * Mem-bypass portal billing (arbill) & dompet ArabPay (wallet + sso)
+ */
+export async function setupWalledGarden(req: Request, res: Response) {
+  const { id } = req.params;
+  const { hosts = ['*arbill*', '*arabpay.my.id*', '*arabpay*'], custom_ip } = req.body;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 10
+    });
+    await conn.connect();
+
+    const addedNotes: string[] = [];
+
+    // 1. Setup /ip/hotspot/walled-garden (Domain Bypass)
+    let currentDomains: any[] = [];
+    try {
+      const d = await conn.write('/ip/hotspot/walled-garden/print');
+      if (Array.isArray(d)) currentDomains = d;
+    } catch (_) {}
+
+    for (const h of hosts) {
+      const cleanH = String(h).trim();
+      if (!cleanH) continue;
+
+      const exists = currentDomains.some(d => (d['dst-host'] || '').trim().toLowerCase() === cleanH.toLowerCase());
+      if (!exists) {
+        try {
+          await conn.write('/ip/hotspot/walled-garden/add', [
+            `=dst-host=${cleanH}`,
+            `=action=allow`,
+            `=comment=Bypass Billing & Wallet ArabPay`
+          ]);
+          addedNotes.push(`Domain Walled Garden: "${cleanH}" berhasil ditambahkan`);
+        } catch (addErr: any) {
+          console.warn(`Gagal menambah walled-garden ${cleanH}:`, addErr.message);
+        }
+      } else {
+        addedNotes.push(`Domain "${cleanH}" sudah terpasang`);
+      }
+    }
+
+    // 2. Setup /ip/hotspot/walled-garden/ip (IP & Host Port 80/443 Bypass)
+    let currentIps: any[] = [];
+    try {
+      const ips = await conn.write('/ip/hotspot/walled-garden/ip/print');
+      if (Array.isArray(ips)) currentIps = ips;
+    } catch (_) {}
+
+    for (const h of hosts) {
+      const cleanH = String(h).trim();
+      if (!cleanH) continue;
+
+      const exists = currentIps.some(ip => (ip['dst-host'] || '').trim().toLowerCase() === cleanH.toLowerCase());
+      if (!exists) {
+        try {
+          await conn.write('/ip/hotspot/walled-garden/ip/add', [
+            `=dst-host=${cleanH}`,
+            `=action=accept`,
+            `=comment=Bypass Billing & Wallet ArabPay`
+          ]);
+          addedNotes.push(`IP Walled Garden (Host ${cleanH}) berhasil ditambahkan`);
+        } catch (addErr: any) {
+          console.warn(`Gagal menambah walled-garden ip ${cleanH}:`, addErr.message);
+        }
+      }
+    }
+
+    // Jika ada custom IP server yang diberikan
+    if (custom_ip) {
+      const cleanIp = String(custom_ip).trim();
+      const ipExists = currentIps.some(ip => (ip['dst-address'] || '').trim() === cleanIp);
+      if (!ipExists) {
+        try {
+          await conn.write('/ip/hotspot/walled-garden/ip/add', [
+            `=dst-address=${cleanIp}`,
+            `=action=accept`,
+            `=comment=Bypass Server IP Billing & Wallet ArabPay`
+          ]);
+          addedNotes.push(`IP Server "${cleanIp}" berhasil di-bypass`);
+        } catch (_) {}
+      }
+    }
+
+    conn.close();
+
+    res.json({
+      success: true,
+      message: `⚡ Berhasil memasang Walled Garden di MikroTik "${router.name}"!`,
+      details: addedNotes
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal memasang Walled Garden: ${err.message}` });
+  }
+}
+
+/**
+ * Menghapus Rule Hotspot Walled Garden untuk Billing & ArabPay
+ */
+export async function removeWalledGarden(req: Request, res: Response) {
+  const { id } = req.params;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 8
+    });
+    await conn.connect();
+
+    let removedCount = 0;
+
+    // Remove from /ip/hotspot/walled-garden
+    try {
+      const domains: any = await conn.write('/ip/hotspot/walled-garden/print');
+      if (Array.isArray(domains)) {
+        for (const d of domains) {
+          const host = d['dst-host'] || '';
+          const comment = d['comment'] || '';
+          if (
+            host.includes('arbill') ||
+            host.includes('arabpay') ||
+            comment.toLowerCase().includes('arbill') ||
+            comment.toLowerCase().includes('arabpay')
+          ) {
+            await conn.write('/ip/hotspot/walled-garden/remove', [`=.id=${d['.id']}`]);
+            removedCount++;
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Remove from /ip/hotspot/walled-garden/ip
+    try {
+      const ips: any = await conn.write('/ip/hotspot/walled-garden/ip/print');
+      if (Array.isArray(ips)) {
+        for (const ip of ips) {
+          const host = ip['dst-host'] || ip['dst-address'] || '';
+          const comment = ip['comment'] || '';
+          if (
+            host.includes('arbill') ||
+            host.includes('arabpay') ||
+            comment.toLowerCase().includes('arbill') ||
+            comment.toLowerCase().includes('arabpay')
+          ) {
+            await conn.write('/ip/hotspot/walled-garden/ip/remove', [`=.id=${ip['.id']}`]);
+            removedCount++;
+          }
+        }
+      }
+    } catch (_) {}
+
+    conn.close();
+
+    res.json({
+      success: true,
+      message: `Berhasil menghapus ${removedCount} rule Walled Garden di MikroTik "${router.name}".`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal menghapus Walled Garden: ${err.message}` });
+  }
+}
+
+

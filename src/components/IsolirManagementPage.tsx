@@ -43,6 +43,7 @@ interface IsolirStatusData {
   nat: boolean;
   scheduler: boolean;
   is_ready: boolean;
+  walled_garden?: boolean;
 }
 
 export default function IsolirManagementPage({ profile }: { profile: BusinessProfile }) {
@@ -138,6 +139,15 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
         if (data.status.profile_details?.local_address) {
           setGatewayIp(data.status.profile_details.local_address);
         }
+
+        // Ambil status Hotspot Walled Garden
+        try {
+          const wgRes = await fetch(`/api/routers/${rId}/walled-garden-status`);
+          const wgData = await wgRes.json();
+          if (wgData.success) {
+            setIsolirStatus(prev => prev ? { ...prev, walled_garden: wgData.is_configured } : prev);
+          }
+        } catch (_) {}
       } else {
         setStatusError(data.message || 'Gagal membaca status router.');
         setIsolirStatus(null);
@@ -147,6 +157,25 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
       setIsolirStatus(null);
     } finally {
       setLoadingStatus(false);
+    }
+  };
+
+  const [wgSetupLoading, setWgSetupLoading] = useState(false);
+  const handleQuickSetupWalledGarden = async () => {
+    if (!selectedRouterId) return;
+    setWgSetupLoading(true);
+    try {
+      const res = await fetch(`/api/routers/${selectedRouterId}/setup-walled-garden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hosts: ['*arbill*', '*arabpay.my.id*', '*arabpay*'] })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsolirStatus(prev => prev ? { ...prev, walled_garden: true } : prev);
+      }
+    } catch (_) {} finally {
+      setWgSetupLoading(false);
     }
   };
 
@@ -414,7 +443,7 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
           )}
 
           {/* Component Check Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
             {/* 1. IP Pool */}
             <div className={`p-4 rounded-2xl border transition-all ${
               isolirStatus?.pool ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
@@ -507,6 +536,34 @@ export default function IsolirManagementPage({ profile }: { profile: BusinessPro
               <p className="text-[11px] text-slate-500 mt-1">
                 Cek otomatis tiap 10 menit
               </p>
+            </div>
+
+            {/* 6. Hotspot Walled Garden */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isolirStatus?.walled_garden ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-90'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">6. Walled Garden</span>
+                {isolirStatus?.walled_garden ? (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">TERPASANG</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 text-amber-800">BELUM ADA</span>
+                )}
+              </div>
+              <p className="font-bold text-slate-800 text-sm">Bypass Hotspot</p>
+              <p className="text-[11px] text-slate-500 mt-1 truncate" title="*arbill*, *arabpay.my.id*">
+                Arbill & E-Wallet ArabPay
+              </p>
+              {!isolirStatus?.walled_garden && (
+                <button
+                  type="button"
+                  onClick={handleQuickSetupWalledGarden}
+                  disabled={wgSetupLoading}
+                  className="mt-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer disabled:opacity-50"
+                >
+                  {wgSetupLoading ? 'Memasang...' : '+ Pasang Walled Garden'}
+                </button>
+              )}
             </div>
           </div>
 

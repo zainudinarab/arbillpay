@@ -4,7 +4,8 @@ import {
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, importPppSecrets, importHotspotUsers,
-  getIsolirStatus, setupIsolirOnMikrotik, getIsolirScript, getIsolatedCustomers
+  getIsolirStatus, setupIsolirOnMikrotik, getIsolirScript, getIsolatedCustomers,
+  getWalledGardenStatus, setupWalledGarden, removeWalledGarden
 } from '../controllers/mikrotikController.js';
 
 const router = Router();
@@ -45,5 +46,10 @@ router.get('/routers/:id/isolir-status', getIsolirStatus);
 router.post('/routers/:id/setup-isolir', setupIsolirOnMikrotik);
 router.get('/routers/:id/isolir-script', getIsolirScript);
 router.get('/routers/:id/isolated-customers', getIsolatedCustomers);
+
+// Hotspot Walled Garden (Bypass Billing & Wallet ArabPay)
+router.get('/routers/:id/walled-garden-status', getWalledGardenStatus);
+router.post('/routers/:id/setup-walled-garden', setupWalledGarden);
+router.post('/routers/:id/remove-walled-garden', removeWalledGarden);
 
 export default router;

@@ -16,9 +16,11 @@ import {
   DollarSign,
   X,
   Smartphone,
-  Clock,
   Eye,
-  EyeOff
+  EyeOff,
+  ShieldCheck,
+  Globe,
+  CreditCard
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -127,6 +129,14 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [inspecting, setInspecting] = useState(false);
   const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
   const [showMissingList, setShowMissingList] = useState(false);
+
+  // Walled Garden State
+  const [showWalledGardenModal, setShowWalledGardenModal] = useState(false);
+  const [wgRouterId, setWgRouterId] = useState<string>('');
+  const [wgLoading, setWgLoading] = useState(false);
+  const [wgStatus, setWgStatus] = useState<{ is_configured: boolean; entries: any[]; default_hosts: string[] } | null>(null);
+  const [wgActionLoading, setWgActionLoading] = useState(false);
+  const [customHost, setCustomHost] = useState('');
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -366,6 +376,82 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     }
   };
 
+  const fetchWalledGardenStatus = async (routerId: string) => {
+    if (!routerId) return;
+    setWgLoading(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${routerId}/walled-garden-status`);
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setWgStatus(data);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch WG status:', err);
+    } finally {
+      setWgLoading(false);
+    }
+  };
+
+  const handleSetupWalledGarden = async () => {
+    if (!wgRouterId) return;
+    setWgActionLoading(true);
+    try {
+      const apiUrl = getApiUrl();
+      const hosts = ['*arbill*', '*arabpay.my.id*', '*arabpay*'];
+      if (customHost.trim()) {
+        hosts.push(customHost.trim());
+      }
+      const res = await fetch(`${apiUrl}/api/routers/${wgRouterId}/setup-walled-garden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hosts })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setCustomHost('');
+        await fetchWalledGardenStatus(wgRouterId);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal memasang Walled Garden.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal: ${err.message}` });
+    } finally {
+      setWgActionLoading(false);
+    }
+  };
+
+  const handleRemoveWalledGarden = async () => {
+    if (!wgRouterId) return;
+    if (!confirm('Apakah Anda yakin ingin mencabut seluruh rule bypass Walled Garden di router ini?')) return;
+    setWgActionLoading(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${wgRouterId}/remove-walled-garden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        await fetchWalledGardenStatus(wgRouterId);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus Walled Garden.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal: ${err.message}` });
+    } finally {
+      setWgActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showWalledGardenModal && wgRouterId) {
+      fetchWalledGardenStatus(wgRouterId);
+    }
+  }, [showWalledGardenModal, wgRouterId]);
+
   // Active vouchers eligible for sync
   const eligibleSyncVouchers = useMemo(() => {
     return vouchers.filter(v => {
@@ -579,6 +665,18 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
             >
               <RefreshCw size={15} />
               <span>🔄 Sinkronkan ke MikroTik</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setWgRouterId(routers[0]?.id || '');
+                setShowWalledGardenModal(true);
+              }}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-2xl shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all cursor-pointer"
+              title="Bypass Portal Billing Arbill & E-Wallet ArabPay di Hotspot Walled Garden"
+            >
+              <ShieldCheck size={15} />
+              <span>🛡️ Bypass Portal (Walled Garden)</span>
             </button>
 
             <button
@@ -1456,6 +1554,195 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
           </div>
         </div>
       )}
+      {/* MODAL POPUP: HOTSPOT WALLED GARDEN (BYPASS BILLING & ARABPAY) */}
+      {showWalledGardenModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/40 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200 shadow-sm">
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-800">Hotspot Walled Garden</h3>
+                  <p className="text-xs text-slate-500">Bypass akses Billing Arbill & E-Wallet ArabPay sebelum login</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => !wgActionLoading && setShowWalledGardenModal(false)} 
+                disabled={wgActionLoading}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer disabled:opacity-40"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Select Router */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Pilih Target Router MikroTik
+                </label>
+                <div className="relative">
+                  <Server size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <select
+                    value={wgRouterId}
+                    onChange={(e) => setWgRouterId(e.target.value)}
+                    disabled={wgActionLoading || wgLoading}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition-all cursor-pointer"
+                  >
+                    {routers.map(r => (
+                      <option key={r.id} value={r.id}>
+                        ⚡ {r.name} ({r.ip_address || 'MikroTik'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Status Box */}
+              {wgLoading ? (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-center gap-2 text-xs text-slate-500">
+                  <RefreshCw size={15} className="animate-spin text-indigo-600" />
+                  <span>Memeriksa status Walled Garden di MikroTik...</span>
+                </div>
+              ) : wgStatus?.is_configured ? (
+                <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <div>
+                      <h5 className="font-bold text-xs text-emerald-900">Walled Garden Aktif di MikroTik</h5>
+                      <p className="text-[11px] text-emerald-700 mt-0.5">
+                        {wgStatus.entries.length} Rule Bypass Terpasang (Domain & IP)
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                    Aktif
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="w-3 h-3 rounded-full bg-amber-500"></span>
+                    <div>
+                      <h5 className="font-bold text-xs text-amber-900">Walled Garden Belum Aktif</h5>
+                      <p className="text-[11px] text-amber-700 mt-0.5">
+                        Pelanggan Hotspot belum bisa membuka billing & wallet jika belum login
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                    Belum Pasang
+                  </span>
+                </div>
+              )}
+
+              {/* Bypassed Targets Preview */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700">
+                  Daftar Domain & Port yang Di-Bypass:
+                </label>
+                <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/70 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <Globe size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arbill*</span>
+                      <p className="text-[11px] text-slate-500">Portal Web Billing Hotspot & Kasir POS (<code className="text-slate-700">arbill.arabpay.my.id</code>)</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 pt-2 border-t border-slate-200/60">
+                    <CreditCard size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arabpay.my.id*</span>
+                      <p className="text-[11px] text-slate-500">Platform E-Wallet ArabPay, Oauth SSO Login, & API Gateway</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 pt-2 border-t border-slate-200/60">
+                    <Zap size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-slate-800 font-mono text-[11.5px]">*arabpay*</span>
+                      <p className="text-[11px] text-slate-500">Wildcard seluruh ekosistem transaksi dompet digital & QRIS</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Optional Custom Host */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tambah Host / IP Kustom (Opsional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: api.tripay.co.id atau 103.x.x.x"
+                  value={customHost}
+                  onChange={(e) => setCustomHost(e.target.value)}
+                  disabled={wgActionLoading}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:bg-white focus:border-indigo-500 focus:outline-none transition-all"
+                />
+              </div>
+
+              {/* Info Note */}
+              <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-2xl flex items-start gap-2.5">
+                <AlertCircle size={15} className="text-blue-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-blue-800 leading-relaxed">
+                  <p className="font-bold mb-0.5">Cara Kerja Walled Garden Hotspot:</p>
+                  <p className="text-blue-700 text-[10.5px]">
+                    Setelah rule ini dipasang, setiap HP/Laptop yang terhubung ke sinyal WiFi Hotspot dapat langsung membuka website <strong>arbill.arabpay.my.id</strong> dan menggunakan <strong>ArabPay E-Wallet</strong> untuk beli voucher mandiri secara lancar tanpa dicegat/diblokir oleh login page MikroTik.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+              {wgStatus?.is_configured ? (
+                <button
+                  type="button"
+                  onClick={handleRemoveWalledGarden}
+                  disabled={wgActionLoading || wgLoading}
+                  className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-40 transition-all"
+                >
+                  <Trash2 size={13} />
+                  <span>Cabut Bypass</span>
+                </button>
+              ) : <div />}
+
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowWalledGardenModal(false)}
+                  disabled={wgActionLoading}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-40"
+                >
+                  Tutup
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSetupWalledGarden}
+                  disabled={!wgRouterId || wgActionLoading || wgLoading}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <ShieldCheck size={15} className={wgActionLoading ? 'animate-spin' : ''} />
+                  <span>
+                    {wgActionLoading 
+                      ? 'Sedang Memasang...' 
+                      : (wgStatus?.is_configured ? '⚡ Perbarui Rule Bypass' : '⚡ Pasang Walled Garden ke MikroTik')
+                    }
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
