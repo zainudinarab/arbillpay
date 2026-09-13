@@ -978,4 +978,171 @@ export async function syncVouchersToMikrotik(req: Request, res: Response) {
   }
 }
 
+/**
+ * Pengecekan Real-Time Kondisi Voucher di MikroTik Langsung
+ * Mengambil data /ip/hotspot/user/print dari router MikroTik secara live,
+ * membandingkan dengan voucher aktif di PostgreSQL,
+ * meng-update status is_synced jika ada ketidaksesuaian,
+ * dan mengembalikan statistik real serta daftar voucher yang hilang/belum ada di MikroTik.
+ */
+export async function inspectMikrotikStatus(req: Request, res: Response) {
+  const { router_id } = req.body;
+
+  try {
+    let query = `
+      SELECT v.id, v.code, v.password, v.comment, v.status, v.is_synced, v.expired_at,
+             r.id as router_id, r.name as router_name, r.ip_address, r.api_port, r.username, r.password as router_password,
+             COALESCE(rp.name, 'default') as profile_name, COALESCE(p.price, 0) as package_price
+      FROM hotspot_vouchers v
+      JOIN routers r ON v.router_id = r.id
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE (
+        v.status = 'active'
+        OR v.status = 'sold'
+        OR (v.status = 'used' AND (v.expired_at IS NULL OR v.expired_at > NOW()))
+      )
+      AND (v.expired_at IS NULL OR v.expired_at > NOW())
+    `;
+    const params: any[] = [];
+
+    if (router_id && router_id !== 'all') {
+      params.push(router_id);
+      query += ` AND v.router_id = $${params.length}`;
+    }
+
+    query += ` ORDER BY v.created_at DESC`;
+
+    const vRes = await pool.query(query, params);
+    const activeVouchers = vRes.rows;
+
+    // Kelompokkan voucher per router
+    const routerGroups = new Map<string, any[]>();
+    activeVouchers.forEach((v: any) => {
+      const rId = v.router_id;
+      if (!routerGroups.has(rId)) {
+        routerGroups.set(rId, []);
+      }
+      routerGroups.get(rId)!.push(v);
+    });
+
+    let targetRouters: any[] = [];
+    if (router_id && router_id !== 'all') {
+      const rRes = await pool.query(`SELECT id, name, ip_address, api_port, username, password FROM routers WHERE id = $1`, [router_id]);
+      if (rRes.rows.length > 0) targetRouters = rRes.rows;
+    } else {
+      const rRes = await pool.query(`SELECT id, name, ip_address, api_port, username, password FROM routers ORDER BY name ASC`);
+      targetRouters = rRes.rows;
+    }
+
+    let totalActiveDb = activeVouchers.length;
+    let foundInMikrotik = 0;
+    let missingInMikrotik = 0;
+    const missingVouchers: any[] = [];
+    const routersStatus: any[] = [];
+
+    for (const r of targetRouters) {
+      const items = routerGroups.get(r.id) || [];
+      let conn: any = null;
+      let routerFound = 0;
+      let routerMissing = 0;
+
+      try {
+        conn = new RouterOSAPI({
+          host: r.ip_address,
+          port: r.api_port || 8728,
+          user: r.username || 'admin',
+          password: r.password || '',
+          timeout: 6
+        });
+        await conn.connect();
+
+        // Ambil semua username hotspot di router
+        const existingUsers = await conn.write('/ip/hotspot/user/print');
+        const userSet = new Set<string>();
+        if (Array.isArray(existingUsers)) {
+          existingUsers.forEach((u: any) => {
+            if (u.name) userSet.add(u.name);
+          });
+        }
+
+        conn.close();
+
+        for (const item of items) {
+          if (userSet.has(item.code)) {
+            routerFound++;
+            foundInMikrotik++;
+            if (!item.is_synced) {
+              await pool.query(`UPDATE hotspot_vouchers SET is_synced = true, last_synced_at = NOW(), sync_error = NULL WHERE id = $1`, [item.id]);
+            }
+          } else {
+            routerMissing++;
+            missingInMikrotik++;
+            missingVouchers.push({
+              id: item.id,
+              code: item.code,
+              router_id: item.router_id,
+              router_name: item.router_name,
+              profile_name: item.profile_name,
+              package_price: Number(item.package_price) || 0,
+              status: item.status
+            });
+            if (item.is_synced) {
+              await pool.query(`UPDATE hotspot_vouchers SET is_synced = false, sync_error = 'Hilang dari MikroTik' WHERE id = $1`, [item.id]);
+            }
+          }
+        }
+
+        routersStatus.push({
+          router_id: r.id,
+          router_name: r.name,
+          ip_address: r.ip_address,
+          status: 'online',
+          total_active: items.length,
+          found: routerFound,
+          missing: routerMissing,
+          total_users_in_mikrotik: userSet.size
+        });
+      } catch (err: any) {
+        if (conn) try { conn.close(); } catch (_) {}
+        routersStatus.push({
+          router_id: r.id,
+          router_name: r.name,
+          ip_address: r.ip_address,
+          status: 'offline',
+          error: err.message,
+          total_active: items.length,
+          found: 0,
+          missing: items.length
+        });
+        missingInMikrotik += items.length;
+        items.forEach((item: any) => {
+          missingVouchers.push({
+            id: item.id,
+            code: item.code,
+            router_id: item.router_id,
+            router_name: item.router_name,
+            profile_name: item.profile_name,
+            package_price: Number(item.package_price) || 0,
+            status: item.status,
+            error: `Router offline: ${err.message}`
+          });
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      total_active_db: totalActiveDb,
+      found_in_mikrotik: foundInMikrotik,
+      missing_in_mikrotik: missingInMikrotik,
+      missing_vouchers: missingVouchers,
+      routers_status: routersStatus
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal memeriksa status MikroTik: ${err.message}` });
+  }
+}
+
+
 

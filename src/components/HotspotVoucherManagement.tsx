@@ -16,7 +16,9 @@ import {
   DollarSign,
   X,
   Smartphone,
-  Clock
+  Clock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -75,6 +77,35 @@ interface VoucherItem {
   sync_error?: string;
 }
 
+interface MissingVoucherItem {
+  id: string;
+  code: string;
+  router_id: string;
+  router_name: string;
+  profile_name: string;
+  package_price: number;
+  status: string;
+  error?: string;
+}
+
+interface InspectionResult {
+  total_active_db: number;
+  found_in_mikrotik: number;
+  missing_in_mikrotik: number;
+  missing_vouchers: MissingVoucherItem[];
+  routers_status: Array<{
+    router_id: string;
+    router_name: string;
+    ip_address: string;
+    status: 'online' | 'offline';
+    error?: string;
+    total_active: number;
+    found: number;
+    missing: number;
+    total_users_in_mikrotik?: number;
+  }>;
+}
+
 interface HotspotVoucherManagementProps {
   profile: BusinessProfile;
   t: any;
@@ -93,6 +124,9 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncTargetRouterId, setSyncTargetRouterId] = useState<string>('all');
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectionResult, setInspectionResult] = useState<InspectionResult | null>(null);
+  const [showMissingList, setShowMissingList] = useState(false);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -272,6 +306,38 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     }
   };
 
+  const inspectMikrotikLive = async (targetRouterId?: string) => {
+    setInspecting(true);
+    try {
+      const apiUrl = getApiUrl();
+      const rId = targetRouterId !== undefined ? targetRouterId : syncTargetRouterId;
+      const res = await fetch(`${apiUrl}/api/vouchers/inspect-mikrotik`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ router_id: rId !== 'all' ? rId : undefined })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setInspectionResult(data);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal memeriksa status router MikroTik.' });
+      }
+    } catch (err: any) {
+      console.error('Inspection error:', err);
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showSyncModal) {
+      inspectMikrotikLive(syncTargetRouterId);
+      setShowMissingList(false);
+    } else {
+      setInspectionResult(null);
+    }
+  }, [showSyncModal, syncTargetRouterId]);
+
   const handleSyncAllActiveVouchers = async () => {
     setSyncing(true);
     setToastMsg(null);
@@ -287,7 +353,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
       const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
-        setShowSyncModal(false);
+        await inspectMikrotikLive(syncTargetRouterId);
         fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal menyinkronkan voucher.' });
@@ -1127,16 +1193,16 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
       {/* MODAL POPUP: SINKRONISASI MIKROTIK */}
       {showSyncModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up flex flex-col">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[92vh]">
             {/* Header */}
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
-                  <RefreshCw size={20} className={syncing ? 'animate-spin' : ''} />
+                  <RefreshCw size={20} className={syncing || inspecting ? 'animate-spin' : ''} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-slate-800">Sinkronisasi ke MikroTik</h3>
-                  <p className="text-xs text-slate-400">Pilih router MikroTik target untuk sinkronisasi voucher aktif</p>
+                  <h3 className="font-bold text-base text-slate-800">Sinkronisasi Voucher ke MikroTik</h3>
+                  <p className="text-xs text-slate-400">Pemeriksaan live MikroTik & sinkronisasi voucher aktif</p>
                 </div>
               </div>
               <button 
@@ -1149,18 +1215,30 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
             </div>
 
             {/* Content */}
-            <div className="p-6 space-y-5">
-              {/* Select Router */}
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Select Router & Live Check Trigger */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Pilih Target Router MikroTik
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Pilih Target Router MikroTik
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => inspectMikrotikLive()}
+                    disabled={inspecting || syncing}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Periksa ulang data user langsung di router MikroTik"
+                  >
+                    <RefreshCw size={12} className={inspecting ? 'animate-spin' : ''} />
+                    <span>{inspecting ? 'Memeriksa MikroTik...' : '🔍 Periksa MikroTik'}</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <Server size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   <select
                     value={syncTargetRouterId}
                     onChange={(e) => setSyncTargetRouterId(e.target.value)}
-                    disabled={syncing}
+                    disabled={syncing || inspecting}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all cursor-pointer"
                   >
                     <option value="all">🌐 Semua Router MikroTik ({routers.length} Router)</option>
@@ -1173,59 +1251,176 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                 </div>
               </div>
 
-              {/* Stats Card */}
+              {/* Status Koneksi Router Live */}
+              {inspectionResult && inspectionResult.routers_status.length > 0 && (
+                <div className="p-2.5 bg-slate-50 border border-slate-200/70 rounded-2xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      inspectionResult.routers_status[0]?.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
+                    }`} />
+                    <span className="font-bold text-slate-700">
+                      {inspectionResult.routers_status[0]?.status === 'online' ? 'MikroTik Terhubung (Live)' : 'Router Tidak Terjangkau'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {inspectionResult.routers_status[0]?.router_name} • {inspectionResult.routers_status[0]?.total_users_in_mikrotik ?? 0} user di router
+                  </span>
+                </div>
+              )}
+
+              {/* Real-time Comparison Stats Cards */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-center">
-                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Siap Sync</span>
-                  <span className="text-lg font-black text-slate-800">{syncStats.total}</span>
+                  <span className="text-[10px] font-bold text-slate-400 block uppercase">Aktif di Sistem</span>
+                  <span className="text-lg font-black text-slate-800">
+                    {inspectionResult ? inspectionResult.total_active_db : syncStats.total}
+                  </span>
                   <span className="text-[9px] text-slate-500 block">voucher aktif</span>
                 </div>
-                <div className="p-3.5 bg-amber-50/60 border border-amber-100 rounded-2xl text-center">
-                  <span className="text-[10px] font-bold text-amber-600 block uppercase">Belum Sync</span>
-                  <span className="text-lg font-black text-amber-700">{syncStats.unsynced}</span>
-                  <span className="text-[9px] text-amber-600/80 block">di MikroTik</span>
+                <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl text-center">
+                  <span className="text-[10px] font-bold text-emerald-600 block uppercase">Ada di MikroTik</span>
+                  <span className="text-lg font-black text-emerald-700">
+                    {inspectionResult ? inspectionResult.found_in_mikrotik : syncStats.synced}
+                  </span>
+                  <span className="text-[9px] text-emerald-600/80 block">valid di router</span>
                 </div>
-                <div className="p-3.5 bg-emerald-50/60 border border-emerald-100 rounded-2xl text-center">
-                  <span className="text-[10px] font-bold text-emerald-600 block uppercase">Tersinkron</span>
-                  <span className="text-lg font-black text-emerald-700">{syncStats.synced}</span>
-                  <span className="text-[9px] text-emerald-600/80 block">sesuai</span>
+                <div className={`p-3.5 rounded-2xl text-center border transition-all ${
+                  (inspectionResult ? inspectionResult.missing_in_mikrotik : syncStats.unsynced) > 0
+                    ? 'bg-rose-50 border-rose-200 text-rose-700'
+                    : 'bg-emerald-50/50 border-slate-100 text-slate-700'
+                }`}>
+                  <span className="text-[10px] font-bold block uppercase">
+                    {(inspectionResult ? inspectionResult.missing_in_mikrotik : syncStats.unsynced) > 0 ? 'Hilang / Belum Ada' : 'Belum Sync'}
+                  </span>
+                  <span className={`text-lg font-black ${
+                    (inspectionResult ? inspectionResult.missing_in_mikrotik : syncStats.unsynced) > 0 ? 'text-rose-700' : 'text-slate-800'
+                  }`}>
+                    {inspectionResult ? inspectionResult.missing_in_mikrotik : syncStats.unsynced}
+                  </span>
+                  <span className="text-[9px] block opacity-80">
+                    {(inspectionResult ? inspectionResult.missing_in_mikrotik : syncStats.unsynced) > 0 ? 'perlu disinkronkan' : 'di MikroTik'}
+                  </span>
                 </div>
               </div>
 
+              {/* Detail Voucher yang Hilang di MikroTik */}
+              {inspectionResult && inspectionResult.missing_in_mikrotik > 0 && (
+                <div className="p-3.5 bg-rose-50/90 border border-rose-200 rounded-2xl space-y-2.5 animate-fade-in">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                      <span className="text-xs font-bold text-rose-900">
+                        {inspectionResult.missing_in_mikrotik} Voucher Aktif Belum Ada / Hilang di MikroTik!
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMissingList(prev => !prev)}
+                      className="px-2.5 py-1 bg-white border border-rose-200 hover:bg-rose-100/50 text-rose-700 text-[11px] font-extrabold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-sm"
+                    >
+                      {showMissingList ? <EyeOff size={13} /> : <Eye size={13} />}
+                      <span>{showMissingList ? 'Tutup Daftar' : 'Lihat Daftar Voucher'}</span>
+                    </button>
+                  </div>
+
+                  {showMissingList && (
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-rose-200 bg-white p-2 shadow-inner">
+                      <table className="w-full text-left text-[11px]">
+                        <thead>
+                          <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[9px] tracking-wider">
+                            <th className="pb-1.5 pl-2">No</th>
+                            <th className="pb-1.5">Kode Voucher</th>
+                            <th className="pb-1.5">Profil Paket</th>
+                            <th className="pb-1.5">Harga</th>
+                            <th className="pb-1.5 pr-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {inspectionResult.missing_vouchers.map((mv, idx) => (
+                            <tr key={mv.id} className="hover:bg-rose-50/40">
+                              <td className="py-1.5 pl-2 text-slate-400 font-mono text-[10px]">{idx + 1}</td>
+                              <td className="py-1.5 font-mono font-bold text-slate-900">{mv.code}</td>
+                              <td className="py-1.5 text-indigo-600 font-semibold">{mv.profile_name}</td>
+                              <td className="py-1.5 text-slate-700 font-mono">Rp {mv.package_price.toLocaleString('id-ID')}</td>
+                              <td className="py-1.5 pr-2">
+                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                                  mv.status === 'active' ? 'bg-amber-100 text-amber-800' :
+                                  mv.status === 'sold' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {mv.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* All Synced Green Callout */}
+              {inspectionResult && inspectionResult.missing_in_mikrotik === 0 && inspectionResult.total_active_db > 0 && (
+                <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>Semua {inspectionResult.total_active_db} voucher aktif di sistem sudah ada dan cocok di router MikroTik!</span>
+                </div>
+              )}
+
               {/* Info Note */}
-              <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-2xl flex items-start gap-2.5">
-                <AlertCircle size={16} className="text-blue-600 shrink-0 mt-0.5" />
+              <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-2xl flex items-start gap-2.5">
+                <AlertCircle size={15} className="text-blue-600 shrink-0 mt-0.5" />
                 <div className="text-[11px] text-blue-800 leading-relaxed">
                   <p className="font-bold mb-0.5">Ketentuan Sinkronisasi Otomatis:</p>
-                  <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+                  <ul className="list-disc list-inside space-y-0.5 text-blue-700 text-[10.5px]">
                     <li>Hanya voucher <strong>aktif</strong> (belum login, terjual, atau sedang aktif belum expired) yang akan dikirim ke MikroTik.</li>
-                    <li>Voucher yang sudah <strong>expired</strong> tidak akan dimasukkan ke MikroTik.</li>
-                    <li>Jika user sudah ada di MikroTik, komentar dan profile akan diperbarui tanpa memutus sesi aktif.</li>
+                    <li>Voucher yang sudah <strong>expired</strong> diabaikan dan tidak akan dimasukkan ke MikroTik.</li>
+                    <li>Jika user sudah ada di MikroTik, komentar dan profile akan diperbarui tanpa memutus sesi aktif user.</li>
                   </ul>
                 </div>
               </div>
             </div>
 
             {/* Footer Buttons */}
-            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-2.5 bg-slate-50/50">
+            <div className="p-5 border-t border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowSyncModal(false)}
-                disabled={syncing}
-                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-40"
+                onClick={() => inspectMikrotikLive()}
+                disabled={inspecting || syncing}
+                className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
               >
-                Batal
+                <RefreshCw size={13} className={inspecting ? 'animate-spin' : ''} />
+                <span>Cek Ulang</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleSyncAllActiveVouchers}
-                disabled={syncing || syncStats.total === 0}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-200 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                <span>{syncing ? 'Sedang Menyinkronkan...' : 'Mulai Sinkronisasi'}</span>
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowSyncModal(false)}
+                  disabled={syncing}
+                  className="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-40"
+                >
+                  Tutup
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSyncAllActiveVouchers}
+                  disabled={syncing || inspecting || (inspectionResult ? inspectionResult.total_active_db === 0 : syncStats.total === 0)}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-200 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                  <span>
+                    {syncing 
+                      ? 'Sedang Menyinkronkan...' 
+                      : (inspectionResult && inspectionResult.missing_in_mikrotik > 0
+                          ? `Sinkronkan ${inspectionResult.missing_in_mikrotik} Voucher ke MikroTik`
+                          : 'Mulai Sinkronisasi'
+                        )
+                    }
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
