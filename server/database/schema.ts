@@ -125,6 +125,8 @@ export async function initDatabaseSchema() {
         batch_id VARCHAR(64),
         router_id VARCHAR(64) REFERENCES routers(id) ON DELETE SET NULL,
         router_profile_id VARCHAR(64) REFERENCES router_profiles(id) ON DELETE SET NULL,
+        invoice_id VARCHAR(64),
+        invoice_number VARCHAR(64),
         code VARCHAR(64) NOT NULL,
         password VARCHAR(64) NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'active',
@@ -148,6 +150,8 @@ export async function initDatabaseSchema() {
         id VARCHAR(64) PRIMARY KEY,
         invoice_number VARCHAR(64) UNIQUE NOT NULL,
         customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE SET NULL,
+        voucher_id VARCHAR(64),
+        voucher_code VARCHAR(64),
         customer_name VARCHAR(255),
         client_name VARCHAR(255),
         customer_phone VARCHAR(64),
@@ -263,14 +267,21 @@ export async function initDatabaseSchema() {
       UPDATE packages SET uptime_limit = 'P1D' WHERE uptime_limit = '1d';
       UPDATE packages SET uptime_limit = 'PT30M' WHERE uptime_limit = '30m';
       UPDATE packages SET uptime_limit = 'PT1H' WHERE uptime_limit = '1h';
-      -- Alter & Patch hotspot_vouchers table for first login webhook
+      -- Alter & Patch hotspot_vouchers table for first login webhook & invoice relation
       ALTER TABLE hotspot_vouchers
       ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMP WITH TIME ZONE,
       ADD COLUMN IF NOT EXISTS mac_address VARCHAR(64),
       ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64),
       ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP WITH TIME ZONE;
+
+      -- Alter & Patch invoices table for voucher relation
+      ALTER TABLE invoices
+      ADD COLUMN IF NOT EXISTS voucher_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64);
     `).catch((err) => console.warn('Patch router_profiles & packages notice:', err.message));
-    console.log('✅ routers, router_profiles, packages & hotspot_vouchers schema patched successfully!');
+    console.log('✅ routers, router_profiles, packages, hotspot_vouchers & invoices schema patched successfully!');
 
     // 2. Alter & Patch ip_pools table columns
     await pool.query(`
@@ -321,6 +332,8 @@ export async function initDatabaseSchema() {
     await pool.query(`
       ALTER TABLE invoices 
       ADD COLUMN IF NOT EXISTS customer_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS voucher_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64),
       ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS client_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(64),
@@ -347,6 +360,8 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS batch_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS router_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS router_profile_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64),
       ADD COLUMN IF NOT EXISTS sold_to VARCHAR(255),
       ADD COLUMN IF NOT EXISTS sold_at TIMESTAMP WITH TIME ZONE;
     `).catch((err) => console.warn('Patch hotspot_vouchers notice:', err.message));

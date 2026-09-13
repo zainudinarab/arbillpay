@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
-import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, savePurchasedVoucherToFirestore, getPurchasedVouchersFromFirestore, getCustomersFromFirestore } from '../services/firebaseService';
+import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 import { generateNextCustomerCode } from '../utils';
 import { IndonesianAddressForm } from './IndonesianAddressForm';
 import { parseIso8601 } from '../utils/iso8601';
@@ -176,7 +176,7 @@ export default function CustomerPortal({
     if (currentUser) {
       fetchCustomerProfile();
       fetchLiveArabPayBalance();
-      fetchCloudPurchasedVouchers();
+      fetchMyPurchasedVouchers();
 
       // 1. Auto-refresh live balance when returning to tab/window
       const handleFocus = () => {
@@ -214,6 +214,7 @@ export default function CustomerPortal({
               const data = JSON.parse(e.data);
               if (data && data.status === 'PAID') {
                 fetchAvailableVouchers();
+                fetchMyPurchasedVouchers();
               }
             } catch (err) { }
           });
@@ -230,17 +231,25 @@ export default function CustomerPortal({
     }
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
 
-  // Fetch cloud purchased vouchers history from Firebase Cloud Firestore
-  const fetchCloudPurchasedVouchers = async () => {
+  // Fetch purchased vouchers history directly from PostgreSQL Database
+  const fetchMyPurchasedVouchers = async () => {
     try {
       const uId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id;
-      const res = await getPurchasedVouchersFromFirestore(uId);
-      if (res.success && Array.isArray(res.vouchers) && res.vouchers.length > 0) {
-        setLocalPurchasedVouchers(res.vouchers);
-        localStorage.setItem('purchased_vouchers_history', JSON.stringify(res.vouchers));
-        console.log(`✅ [FIREBASE FIRESTORE] Successfully synced ${res.vouchers.length} purchased vouchers from Cloud Database!`);
+      const phone = currentUser?.phone_number || '';
+      const apiUrl = getApiUrl();
+      if (apiUrl && (uId || phone)) {
+        const res = await fetch(`${apiUrl}/api/vouchers/my-vouchers?user_id=${encodeURIComponent(uId || '')}&phone=${encodeURIComponent(phone)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.vouchers)) {
+            setLocalPurchasedVouchers(data.vouchers);
+            console.log(`✅ [POSTGRESQL] ${data.vouchers.length} riwayat voucher termuat dari PostgreSQL.`);
+          }
+        }
       }
-    } catch (e) { }
+    } catch (e) {
+      console.warn('Failed to fetch my vouchers from PostgreSQL:', e);
+    }
   };
 
   // Fetch logged in customer's live profile & invoices from PostgreSQL / Firestore
@@ -886,23 +895,6 @@ export default function CustomerPortal({
           packageName: selectedPackage.package_name || selectedPackage.name
         });
 
-        // Push to local history as PENDING
-        const historyItem = {
-          id: invoiceCode,
-          date: new Date().toLocaleString('id-ID'),
-          packageName: selectedPackage.package_name || selectedPackage.name,
-          price: price,
-          username: buyData.voucher.code,
-          password: buyData.voucher.password,
-          status: 'SUCCESS',
-          paymentChannel: 'QRIS Transfer'
-        };
-        const targetUId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id || 'guest';
-        const updatedHist = [historyItem, ...localPurchasedVouchers];
-        setLocalPurchasedVouchers(updatedHist);
-        localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
-        savePurchasedVoucherToFirestore(historyItem, targetUId);
-
         setVoucherResult({
           code: buyData.voucher.code,
           password: buyData.voucher.password,
@@ -910,6 +902,7 @@ export default function CustomerPortal({
         });
         setPaymentStep('success');
         fetchAvailableVouchers();
+        fetchMyPurchasedVouchers();
       } else {
         setPinError(buyData.message || 'Gagal membuat transaksi.');
         setPaymentStep('error');
@@ -1094,10 +1087,10 @@ export default function CustomerPortal({
       const newBalance = Math.max(0, currentBal - price);
       onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
 
-      // Register or claim voucher on Mikrotik RouterOS via Backend API
-      let finalVoucherCode = 'NET-' + Math.floor(100000 + Math.random() * 900000);
-      let finalVoucherPass = Math.floor(100000 + Math.random() * 900000).toString();
-      let invoiceNum = 'INV-' + Date.now().toString(36).toUpperCase();
+      // Register or claim voucher on Mikrotik RouterOS via Backend API & PostgreSQL
+      let finalVoucherCode = '';
+      let finalVoucherPass = '';
+      let invoiceNum = '';
 
       try {
         const apiUrl = getApiUrl();
@@ -1123,27 +1116,18 @@ export default function CustomerPortal({
             if (buyData.invoice_number) {
               invoiceNum = buyData.invoice_number;
             }
+          } else {
+            setPinError(buyData?.message || 'Gagal menerbitkan voucher di router MikroTik.');
+            setPaymentStep('pin');
+            return;
           }
         }
-      } catch (apiBuyErr) {
+      } catch (apiBuyErr: any) {
         console.warn('Backend voucher buy live Mikrotik notice:', apiBuyErr);
+        setPinError(apiBuyErr?.message || 'Gagal terhubung ke server pembuat voucher.');
+        setPaymentStep('pin');
+        return;
       }
-
-      const historyItem = {
-        id: 'TX-' + Date.now().toString(36).toUpperCase(),
-        date: new Date().toLocaleString('id-ID'),
-        packageName: selectedPackage.package_name || selectedPackage.name,
-        price: price,
-        username: finalVoucherCode,
-        password: finalVoucherPass,
-        status: 'SUCCESS',
-        paymentChannel: 'ArabPay E-Wallet'
-      };
-      const targetUId = currentUser?.phone_number || currentUser?.arabpay_user_id || currentUser?.id || 'guest';
-      const updatedHist = [historyItem, ...localPurchasedVouchers];
-      setLocalPurchasedVouchers(updatedHist);
-      localStorage.setItem('purchased_vouchers_history', JSON.stringify(updatedHist));
-      savePurchasedVoucherToFirestore(historyItem, targetUId);
 
       setVoucherResult({
         code: finalVoucherCode,
@@ -1152,6 +1136,7 @@ export default function CustomerPortal({
       });
       setPaymentStep('success');
       fetchAvailableVouchers();
+      fetchMyPurchasedVouchers();
 
       // Fetch live balance from ArabPay server to ensure 100% sync
       setTimeout(() => {
@@ -1642,6 +1627,24 @@ export default function CustomerPortal({
         {/* ==================== TAB 2: VOUCHER HISTORY (Persis arbiljs) ==================== */}
         {activeTab === 'history' && currentUser && (
           <div className="space-y-6">
+            <div className="flex items-center justify-between bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+              <div>
+                <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
+                  <Ticket className="w-4 h-4 text-amber-400" />
+                  <span>Daftar Voucher Saya</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">Tersimpan di database PostgreSQL & siap digunakan</p>
+              </div>
+              <button
+                onClick={fetchMyPurchasedVouchers}
+                className="p-2 text-slate-400 hover:text-amber-400 rounded-xl hover:bg-slate-800 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                title="Muat Ulang Voucher"
+              >
+                <RefreshCw size={14} />
+                <span>Segarkan</span>
+              </button>
+            </div>
+
             {localPurchasedVouchers.length === 0 ? (
               <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
                 <Clock className="w-12 h-12 text-slate-600 mx-auto" />

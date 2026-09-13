@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { pool } from '../config/db.js';
 import { getAllVouchers, generateRandomCode, deleteBatchVouchers } from '../models/voucherModel.js';
 import { RouterOSAPI } from 'node-routeros';
@@ -303,8 +304,14 @@ export async function buyVoucher(req: Request, res: Response) {
   try {
     let voucherCode = '';
     let voucherPass = '';
+    let voucherId = '';
     let batchId = 'vc-instant-buy';
     let isFromPreGenerated = false;
+
+    // Generate UUID invoice dan nomor invoice di awal agar bisa saling relasi
+    const invoiceId = crypto.randomUUID();
+    const now = new Date();
+    const invoiceNumber = `INV-VC-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${Date.now().toString(36).toUpperCase()}`;
 
     // METODE 1: Coba ambil dari stok Pre-Generated dulu (Pre-generated Stock / Diskon)
     if (mode !== 'ondemand') {
@@ -320,17 +327,18 @@ export async function buyVoucher(req: Request, res: Response) {
 
       if (vRes.rows.length > 0) {
         const preVoucher = vRes.rows[0];
+        voucherId = preVoucher.id;
         voucherCode = preVoucher.code;
         voucherPass = preVoucher.password;
         batchId = preVoucher.batch_id || 'vc-batch';
         isFromPreGenerated = true;
 
-        // Mark pre-generated voucher as sold
+        // Mark pre-generated voucher as sold and link invoice
         await pool.query(`
           UPDATE hotspot_vouchers
-          SET status = 'sold', sold_to = $1, sold_at = NOW()
-          WHERE id = $2
-        `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', preVoucher.id]);
+          SET status = 'sold', sold_to = $1, sold_at = NOW(), invoice_id = $2, invoice_number = $3
+          WHERE id = $4
+        `, [buyer_phone || buyer_name || arabpay_user_id || 'pelanggan', invoiceId, invoiceNumber, preVoucher.id]);
       }
     }
 
@@ -364,6 +372,7 @@ export async function buyVoucher(req: Request, res: Response) {
       const routerProfile = pRes.rows[0];
       const formattedUptime = routerProfile.uptime_limit ? isoToMikrotikTime(routerProfile.uptime_limit) : '';
       const vId = `vc-instant-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      voucherId = vId;
       voucherCode = generateRandomCode(6, 'lower', 'vc');
       voucherPass = voucherCode;
 
@@ -401,25 +410,25 @@ export async function buyVoucher(req: Request, res: Response) {
         if (conn) try { conn.close(); } catch (_) {}
       }
 
-      // Record newly generated on-demand voucher directly into DB as sold
+      // Record newly generated on-demand voucher directly into DB as sold and link invoice
       await pool.query(`
-        INSERT INTO hotspot_vouchers (id, batch_id, router_id, router_profile_id, code, password, status, comment, sold_to, sold_at, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, 'sold', $7, $8, NOW(), NOW())
+        INSERT INTO hotspot_vouchers (
+          id, batch_id, router_id, router_profile_id, code, password, status, comment, sold_to, sold_at, invoice_id, invoice_number, created_at
+        ) VALUES (
+          $1, 'vc-instant-ondemand', $2, $3, $4, $5, 'sold', $6, $7, NOW(), $8, $9, NOW()
+        )
       `, [
         vId,
-        'vc-instant-ondemand',
         routerProfile.router_id,
         profile_id,
         voucherCode,
         voucherPass,
         vComment,
-        buyer_phone || buyer_name || arabpay_user_id || 'pelanggan'
+        buyer_phone || buyer_name || arabpay_user_id || 'pelanggan',
+        invoiceId,
+        invoiceNumber
       ]);
     }
-
-    // Invoice generation
-    const now = new Date();
-    const invoiceNumber = `INV-VC-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${Date.now().toString(36).toUpperCase()}`;
 
     // 1. Live ArabPay E-Wallet Balance Deduction via S2S API (hanya jika belum dipotong di frontend)
     let remainingBalance: number | null = null;
@@ -441,38 +450,110 @@ export async function buyVoucher(req: Request, res: Response) {
       }
     }
 
+    // 2. Simpan invoice transaksi keuangan ke tabel invoices dengan relasi langsung ke voucher
     await pool.query(`
       INSERT INTO invoices (
-        id, invoice_number, customer_name, client_name, customer_phone, client_phone, 
-        connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, created_at
+        id, invoice_number, customer_id, customer_name, client_name, customer_phone, client_phone, 
+        connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, voucher_id, voucher_code, created_at
       ) VALUES (
-        gen_random_uuid(), $1, $2, $2, $3, $3, 
-        'hotspot_voucher', 'Voucher Hotspot', $4, $4, 'paid', CURRENT_DATE, CURRENT_DATE, $5, $6, NOW(), NOW()
+        $1, $2, $3, $4, $4, $5, $5, 
+        'hotspot_voucher', $6, $7, $7, 'paid', CURRENT_DATE, CURRENT_DATE, $8, $9, NOW(), $10, $11, NOW()
       )
     `, [
+      invoiceId,
       invoiceNumber,
+      arabpay_user_id || null,
       buyer_name || 'Pelanggan Hotspot',
       buyer_phone || '',
+      targetProfileName || 'Voucher Hotspot',
       amount || 0,
       payment_method || 'ArabPay E-Wallet',
-      `Pembelian Voucher Hotspot (${isFromPreGenerated ? 'Stok Diskon' : 'Instant On-Demand'}) - Kode: ${voucherCode}`
+      `Pembelian Voucher Hotspot (${isFromPreGenerated ? 'Stok Diskon' : 'Instant On-Demand'}) - Kode: ${voucherCode}`,
+      voucherId,
+      voucherCode
     ]);
 
     res.json({
       success: true,
       message: `✅ Voucher berhasil ${isFromPreGenerated ? 'diambil dari stok' : 'dibuat instan'}! Gunakan kode di bawah untuk login ke WiFi Hotspot.${!isFromPreGenerated && !livePushSuccess ? ` (Perhatian MikroTik: ${livePushError})` : ''}`,
       voucher: {
+        id: voucherId,
         code: voucherCode,
         password: voucherPass
       },
       mikrotik_synced: isFromPreGenerated ? true : livePushSuccess,
       mikrotik_error: livePushError || undefined,
       method: isFromPreGenerated ? 'Stok Terbatas (Diskon)' : 'Instant On-Demand',
+      invoice_id: invoiceId,
       invoice_number: invoiceNumber,
       remaining_balance: remainingBalance
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Mengambil daftar seluruh riwayat voucher yang telah dibeli oleh user langsung dari database PostgreSQL
+ */
+export async function listMyPurchasedVouchers(req: Request, res: Response) {
+  const { user_id, phone } = req.query;
+  const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, '') : '';
+  const cleanUserId = user_id ? String(user_id).trim() : '';
+
+  if (!cleanUserId && !cleanPhone) {
+    return res.json({ success: true, vouchers: [] });
+  }
+
+  try {
+    const result = await pool.query(`
+      SELECT 
+        v.id as voucher_id,
+        v.code as username,
+        v.password,
+        v.status,
+        COALESCE(v.sold_at, v.created_at) as date,
+        v.sold_at,
+        v.comment,
+        COALESCE(v.invoice_id, i.id) as invoice_id,
+        COALESCE(v.invoice_number, i.invoice_number, v.id) as invoice_number,
+        COALESCE(rp.name, 'Voucher Hotspot') as profile_name,
+        COALESCE(p.name, rp.name, 'Voucher Hotspot') as package_name,
+        p.validity_iso,
+        p.speed_limit as rate_limit,
+        COALESCE(i.amount, p.price, 0)::int as price,
+        COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel
+      FROM hotspot_vouchers v
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      LEFT JOIN invoices i ON (v.invoice_id = i.id OR i.voucher_id = v.id OR (v.invoice_number IS NOT NULL AND i.invoice_number = v.invoice_number))
+      WHERE (
+        (v.sold_to IS NOT NULL AND (v.sold_to = $1 OR v.sold_to = $2 OR ($2 <> '' AND v.sold_to LIKE '%' || $2 || '%')))
+        OR (i.customer_phone IS NOT NULL AND ($2 <> '' AND (i.customer_phone = $2 OR i.customer_phone LIKE '%' || $2 || '%')))
+        OR (i.client_phone IS NOT NULL AND ($2 <> '' AND (i.client_phone = $2 OR i.client_phone LIKE '%' || $2 || '%')))
+        OR (i.customer_id IS NOT NULL AND $1 <> '' AND i.customer_id = $1)
+      )
+      ORDER BY COALESCE(v.sold_at, v.created_at) DESC
+      LIMIT 100
+    `, [cleanUserId, cleanPhone]);
+
+    const formatted = result.rows.map(row => ({
+      id: row.invoice_number || row.voucher_id,
+      voucher_id: row.voucher_id,
+      invoice_id: row.invoice_id,
+      invoice_number: row.invoice_number,
+      date: row.date ? new Date(row.date).toLocaleString('id-ID') : new Date().toLocaleString('id-ID'),
+      packageName: row.package_name || row.profile_name || 'Voucher Hotspot',
+      price: Number(row.price || 0),
+      username: row.username,
+      password: row.password,
+      status: row.status === 'sold' || row.status === 'active' ? 'SUCCESS' : row.status,
+      paymentChannel: row.payment_channel
+    }));
+
+    res.json({ success: true, vouchers: formatted });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message, vouchers: [] });
   }
 }
 

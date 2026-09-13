@@ -5,6 +5,7 @@ import {
   removeBatchVouchers,
   listAvailableVouchers,
   buyVoucher,
+  listMyPurchasedVouchers,
   handleVoucherFirstLogin
 } from '../controllers/voucherController.js';
 
@@ -16,6 +17,7 @@ router.post('/first-login', handleVoucherFirstLogin);
 
 router.get('/', listVouchers);
 router.get('/available', listAvailableVouchers);
+router.get('/my-vouchers', listMyPurchasedVouchers);
 router.post('/buy', buyVoucher);
 router.post('/generate', generateBatchVouchers);
 router.delete('/batch/:batch_id', removeBatchVouchers);
