@@ -150,6 +150,7 @@ export async function initDatabaseSchema() {
         id VARCHAR(64) PRIMARY KEY,
         invoice_number VARCHAR(64) UNIQUE NOT NULL,
         customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE SET NULL,
+        user_id VARCHAR(64),
         voucher_id VARCHAR(64),
         voucher_code VARCHAR(64),
         customer_name VARCHAR(255),
@@ -330,6 +331,7 @@ export async function initDatabaseSchema() {
     await pool.query(`
       ALTER TABLE invoices 
       ADD COLUMN IF NOT EXISTS customer_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS user_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS voucher_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64),
       ADD COLUMN IF NOT EXISTS customer_name VARCHAR(255),
@@ -345,9 +347,6 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS payment_method VARCHAR(64),
       ADD COLUMN IF NOT EXISTS notes TEXT;
 
-      -- Backfill and Drop legacy duplicate columns (client_name, client_phone)
-      UPDATE invoices SET customer_name = client_name WHERE (customer_name IS NULL OR customer_name = '') AND client_name IS NOT NULL;
-      UPDATE invoices SET customer_phone = client_phone WHERE (customer_phone IS NULL OR customer_phone = '') AND client_phone IS NOT NULL;
       ALTER TABLE invoices DROP COLUMN IF EXISTS client_name;
       ALTER TABLE invoices DROP COLUMN IF EXISTS client_phone;
 
@@ -411,6 +410,7 @@ export async function initDatabaseSchema() {
 
       -- Invoices Indexing
       CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
       CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
       CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
       CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);

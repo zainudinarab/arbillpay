@@ -50,7 +50,7 @@ export async function getInvoices(filters: { customer_id?: string; phone?: strin
 
     if (filters.customer_id) {
       params.push(filters.customer_id);
-      whereClauses.push(`i.customer_id = $${params.length}`);
+      whereClauses.push(`(i.customer_id = $${params.length} OR i.user_id = $${params.length} OR c.user_id = $${params.length})`);
     }
     if (filters.phone) {
       const cleanPhone = String(filters.phone).replace(/[^0-9]/g, '');

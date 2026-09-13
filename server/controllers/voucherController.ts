@@ -307,6 +307,8 @@ export async function buyVoucher(req: Request, res: Response) {
     let voucherId = '';
     let batchId = 'vc-instant-buy';
     let isFromPreGenerated = false;
+    let livePushSuccess = false;
+    let livePushError = '';
 
     // Generate UUID invoice dan nomor invoice di awal agar bisa saling relasi
     const invoiceId = crypto.randomUUID();
@@ -380,8 +382,6 @@ export async function buyVoucher(req: Request, res: Response) {
       const vComment = `vc-${voucherCode}-${nowStr}-instant|${routerProfile.profile_name}`;
 
       // Push Live to Mikrotik Router via RouterOS API
-      let livePushSuccess = false;
-      let livePushError = '';
       let conn: any = null;
       try {
         conn = new RouterOSAPI({
@@ -450,18 +450,35 @@ export async function buyVoucher(req: Request, res: Response) {
       }
     }
 
+    // Resolve matched customer_id from customers table only if a valid customer record exists
+    let matchedCustomerId: string | null = null;
+    try {
+      if (arabpay_user_id || buyer_phone) {
+        const cRes = await pool.query(`
+          SELECT id FROM customers 
+          WHERE (user_id = $1 AND $1 IS NOT NULL AND $1 <> '')
+             OR (phone_number = $2 AND $2 IS NOT NULL AND $2 <> '')
+          LIMIT 1
+        `, [arabpay_user_id || null, buyer_phone || null]);
+        if (cRes.rows.length > 0) {
+          matchedCustomerId = cRes.rows[0].id;
+        }
+      }
+    } catch (_) {}
+
     // 2. Simpan invoice transaksi keuangan ke tabel invoices dengan relasi langsung ke voucher
     await pool.query(`
       INSERT INTO invoices (
-        id, invoice_number, customer_id, customer_name, customer_phone, 
+        id, invoice_number, customer_id, user_id, customer_name, customer_phone, 
         connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, voucher_id, voucher_code, created_at
       ) VALUES (
-        $1, $2, $3, $4, $5, 
-        'hotspot_voucher', $6, $7, $7, 'paid', CURRENT_DATE, CURRENT_DATE, $8, $9, NOW(), $10, $11, NOW()
+        $1, $2, $3, $4, $5, $6, 
+        'hotspot_voucher', $7, $8, $8, 'paid', CURRENT_DATE, CURRENT_DATE, $9, $10, NOW(), $11, $12, NOW()
       )
     `, [
       invoiceId,
       invoiceNumber,
+      matchedCustomerId,
       arabpay_user_id || null,
       buyer_name || 'Pelanggan Hotspot',
       buyer_phone || '',
