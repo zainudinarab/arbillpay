@@ -66,6 +66,10 @@ interface VoucherItem {
   mac_address?: string;
   ip_address?: string;
   expired_at?: string;
+  sold_to?: string;
+  sold_at?: string;
+  invoice_id?: string;
+  invoice_number?: string;
 }
 
 interface HotspotVoucherManagementProps {
@@ -88,6 +92,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRouter, setFilterRouter] = useState<string>('all');
+  const [filterSource, setFilterSource] = useState<'all' | 'admin' | 'customer'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'used' | 'sold' | 'available'>('all');
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [printBatchId, setPrintBatchId] = useState<string>('all');
@@ -282,18 +288,38 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   // Filter Vouchers
   const filteredVouchers = useMemo(() => {
     return vouchers.filter(v => {
-      const matchesSearch = v.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            (v.router_name && v.router_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                            (v.profile_name && v.profile_name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const q = searchTerm.toLowerCase();
+      const matchesSearch = v.code.toLowerCase().includes(q) ||
+                            (v.router_name && v.router_name.toLowerCase().includes(q)) ||
+                            (v.profile_name && v.profile_name.toLowerCase().includes(q)) ||
+                            (v.sold_to && v.sold_to.toLowerCase().includes(q)) ||
+                            (v.invoice_number && v.invoice_number.toLowerCase().includes(q)) ||
+                            (v.mac_address && v.mac_address.toLowerCase().includes(q));
+
       const matchesRouter = filterRouter === 'all' || v.router_name === filterRouter;
-      return matchesSearch && matchesRouter;
+
+      const isCustomer = v.batch_id === 'vc-instant-ondemand' || Boolean(v.sold_to) || Boolean(v.invoice_id);
+      const matchesSource = filterSource === 'all' ||
+                            (filterSource === 'customer' && isCustomer) ||
+                            (filterSource === 'admin' && !isCustomer);
+
+      const isUsed = Boolean(v.first_login_at) || v.status === 'used';
+      const isSold = (v.status === 'sold' || isCustomer) && !isUsed;
+      const isAvailable = !isUsed && !isSold;
+
+      const matchesStatus = filterStatus === 'all' ||
+                            (filterStatus === 'used' && isUsed) ||
+                            (filterStatus === 'sold' && isSold) ||
+                            (filterStatus === 'available' && isAvailable);
+
+      return matchesSearch && matchesRouter && matchesSource && matchesStatus;
     });
-  }, [vouchers, searchTerm, filterRouter]);
+  }, [vouchers, searchTerm, filterRouter, filterSource, filterStatus]);
 
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterRouter]);
+  }, [searchTerm, filterRouter, filterSource, filterStatus]);
 
   const totalItems = filteredVouchers.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -392,27 +418,51 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
         {activeTab === 'vouchers' && (
           <div className="space-y-4">
             {/* Search & Filter Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
               <div className="relative flex-1 max-w-md">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Cari kode voucher, router, profile..."
+                  placeholder="Cari kode voucher, no hp, invoice, router..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none transition-all"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Filter Sumber */}
+                <select
+                  value={filterSource}
+                  onChange={(e: any) => setFilterSource(e.target.value)}
+                  className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Semua Sumber</option>
+                  <option value="admin">🛠️ Generate Admin</option>
+                  <option value="customer">📱 Beli Mandiri (Pelanggan)</option>
+                </select>
+
+                {/* Filter Status */}
+                <select
+                  value={filterStatus}
+                  onChange={(e: any) => setFilterStatus(e.target.value)}
+                  className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="used">🟢 Sedang Dipakai (Login)</option>
+                  <option value="sold">🟡 Terjual (Belum Login)</option>
+                  <option value="available">⚪ Stok Tersedia</option>
+                </select>
+
+                {/* Filter Router */}
                 <select
                   value={filterRouter}
                   onChange={(e) => setFilterRouter(e.target.value)}
-                  className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none"
+                  className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
                 >
-                  <option value="all">Semua Server Router</option>
+                  <option value="all">Semua Router</option>
                   {routers.map(r => (
-                    <option key={r.id} value={r.name}>{r.name} ({r.ip_address})</option>
+                    <option key={r.id} value={r.name}>{r.name}</option>
                   ))}
                 </select>
               </div>
@@ -436,83 +486,158 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                       <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
                         <th className="py-3.5 px-4">No</th>
                         <th className="py-3.5 px-4">Kode Voucher</th>
-                        <th className="py-3.5 px-4">Router Mikrotik</th>
-                        <th className="py-3.5 px-4">Profile Hotspot</th>
-                        <th className="py-3.5 px-4">Tarif & Masa Aktif</th>
+                        <th className="py-3.5 px-4">Sumber & Pembeli</th>
+                        <th className="py-3.5 px-4">Router & Profile</th>
+                        <th className="py-3.5 px-4">Tarif & Paket</th>
                         <th className="py-3.5 px-4">Status & Sinyal Aktif</th>
                         <th className="py-3.5 px-4">Waktu Buat</th>
                         <th className="py-3.5 px-4 text-right">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700 font-sans">
-                      {paginatedVouchers.map((v, idx) => (
-                        <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">{startIndex + idx + 1}</td>
-                          <td className="py-3 px-4">
-                            <span className="font-mono font-extrabold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-xs inline-flex items-center gap-1.5">
-                              <Ticket size={13} />
-                              {v.code}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-slate-800">📡 {v.router_name || '-'}</td>
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-lg text-[11px]">
-                              {v.profile_name || 'default'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            {v.package_price ? (
-                              <span className="font-bold text-emerald-700">
-                                Rp {Number(v.package_price).toLocaleString('id-ID')}
+                      {paginatedVouchers.map((v, idx) => {
+                        const isCustomerBought = v.batch_id === 'vc-instant-ondemand' || Boolean(v.sold_to) || Boolean(v.invoice_id);
+                        const isUsed = Boolean(v.first_login_at) || v.status === 'used';
+                        const isSoldNotUsed = (v.status === 'sold' || isCustomerBought) && !isUsed;
+
+                        return (
+                          <tr key={v.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">{startIndex + idx + 1}</td>
+                            
+                            {/* Kode Voucher */}
+                            <td className="py-3 px-4">
+                              <span className="font-mono font-extrabold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 text-xs inline-flex items-center gap-1.5">
+                                <Ticket size={13} />
+                                {v.code}
                               </span>
-                            ) : (
-                              <span className="text-slate-400 font-mono text-[11px]">{v.rate_limit || '-'}</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            {v.first_login_at ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md w-fit">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                  Aktif (Dipakai)
+                              {v.password && v.password !== v.code && (
+                                <span className="block text-[10px] font-mono text-slate-400 mt-0.5">
+                                  Pass: {v.password}
                                 </span>
-                                <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                                  <Clock size={10} className="text-slate-400" />
-                                  {new Date(v.first_login_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
-                                </span>
-                                {v.mac_address && (
-                                  <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                                    <Smartphone size={10} className="text-slate-400" />
-                                    {v.mac_address}
+                              )}
+                            </td>
+
+                            {/* Sumber & Pembeli */}
+                            <td className="py-3 px-4">
+                              {isCustomerBought ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md w-fit">
+                                    <Smartphone size={11} className="text-sky-600" />
+                                    Beli Mandiri
                                   </span>
-                                )}
-                                {v.expired_at && (
-                                  <span className="text-[10px] text-amber-700 font-mono font-medium">
-                                    Exp: {new Date(v.expired_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                  {v.sold_to && (
+                                    <span className="text-[11px] font-mono font-bold text-slate-800">
+                                      {v.sold_to}
+                                    </span>
+                                  )}
+                                  {v.invoice_number && (
+                                    <span className="text-[9px] font-mono text-slate-400">
+                                      #{v.invoice_number}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md w-fit">
+                                    <Layers size={11} className="text-indigo-600" />
+                                    Generate Admin
                                   </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md w-fit">
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                Belum Dipakai
+                                  <span className="text-[9px] font-mono text-slate-400">
+                                    {v.batch_id || 'Batch'}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Router & Profile */}
+                            <td className="py-3 px-4">
+                              <span className="font-semibold text-slate-800 block text-xs">📡 {v.router_name || '-'}</span>
+                              <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md text-[10px] mt-0.5 inline-block">
+                                {v.profile_name || 'default'}
                               </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
-                            {new Date(v.created_at).toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleDeleteBatch(v.batch_id)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                              title="Hapus Batch ini"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            {/* Tarif & Durasi */}
+                            <td className="py-3 px-4">
+                              {v.package_price ? (
+                                <span className="font-bold text-emerald-700 block text-xs">
+                                  Rp {Number(v.package_price).toLocaleString('id-ID')}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-mono text-[11px]">{v.rate_limit || '-'}</span>
+                              )}
+                              <span className="text-[10px] text-slate-400">
+                                {v.uptime_limit || v.validity_iso || '1 Hari'}
+                              </span>
+                            </td>
+
+                            {/* Status & Sinyal Aktif / Tanda Pemakaian */}
+                            <td className="py-3 px-4">
+                              {isUsed ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md w-fit">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                    Sedang Dipakai
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                    <Clock size={10} className="text-slate-400" />
+                                    Login: {new Date(v.first_login_at!).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                  </span>
+                                  {v.mac_address && (
+                                    <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                                      <Smartphone size={10} className="text-slate-400" />
+                                      MAC: {v.mac_address}
+                                    </span>
+                                  )}
+                                  {v.ip_address && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      IP: {v.ip_address}
+                                    </span>
+                                  )}
+                                  {v.expired_at && (
+                                    <span className="text-[10px] text-rose-600 font-mono font-medium">
+                                      Exp: {new Date(v.expired_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : isSoldNotUsed ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md w-fit">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    Terjual (Belum Login)
+                                  </span>
+                                  {v.sold_at && (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      Beli: {new Date(v.sold_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md w-fit">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                  Stok Tersedia
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Waktu Buat */}
+                            <td className="py-3 px-4 font-mono text-slate-400 text-[11px]">
+                              {new Date(v.created_at).toLocaleString('id-ID')}
+                            </td>
+
+                            {/* Aksi */}
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteBatch(v.batch_id)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                title="Hapus Batch ini"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
 
