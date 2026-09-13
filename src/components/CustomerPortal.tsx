@@ -281,7 +281,17 @@ export default function CustomerPortal({
             localStorage.setItem('my_member_registrations', JSON.stringify(updated));
             return updated;
           });
-          const invRes = await fetch(`${apiUrl}/api/invoices?customer_id=${data.customer.id}`);
+        }
+
+        // Fetch customer's invoices from PostgreSQL by customer_id and/or phone
+        const customerId = data?.customer?.id || '';
+        const userPhone = currentUser.phone_number || '';
+        if (customerId || userPhone) {
+          const params = new URLSearchParams();
+          if (customerId) params.append('customer_id', customerId);
+          if (userPhone) params.append('phone', userPhone);
+
+          const invRes = await fetch(`${apiUrl}/api/invoices?${params.toString()}`);
           if (invRes.ok) {
             const invData = await invRes.json();
             if (invData.success) {

@@ -7,7 +7,7 @@ export function generateInvoiceNumber() {
   return `INV-${dateStr}-${uniqueStr}`;
 }
 
-export async function getInvoices(filters: { customer_id?: string; connection_type?: string; status?: string }) {
+export async function getInvoices(filters: { customer_id?: string; phone?: string; connection_type?: string; status?: string }) {
   if (process.env.DB_DRIVER === 'firebase') {
     const db = getFirestore();
     if (db) {
@@ -20,6 +20,10 @@ export async function getInvoices(filters: { customer_id?: string; connection_ty
       });
       if (filters.customer_id) {
         list = list.filter(i => String(i.customer_id) === String(filters.customer_id));
+      }
+      if (filters.phone) {
+        const cleanPhone = String(filters.phone).replace(/[^0-9]/g, '');
+        list = list.filter(i => (i.customer_phone && String(i.customer_phone).includes(cleanPhone)) || (i.client_phone && String(i.client_phone).includes(cleanPhone)));
       }
       if (filters.connection_type) {
         list = list.filter(i => String(i.connection_type) === String(filters.connection_type));
@@ -47,6 +51,13 @@ export async function getInvoices(filters: { customer_id?: string; connection_ty
     if (filters.customer_id) {
       params.push(filters.customer_id);
       whereClauses.push(`i.customer_id = $${params.length}`);
+    }
+    if (filters.phone) {
+      const cleanPhone = String(filters.phone).replace(/[^0-9]/g, '');
+      if (cleanPhone) {
+        params.push(cleanPhone);
+        whereClauses.push(`(i.customer_phone LIKE '%' || $${params.length} || '%' OR i.client_phone LIKE '%' || $${params.length} || '%' OR c.phone_number LIKE '%' || $${params.length} || '%')`);
+      }
     }
     if (filters.connection_type) {
       params.push(filters.connection_type);

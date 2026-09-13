@@ -6,11 +6,12 @@ import { sendInvoicePaymentLinkWA } from '../services/whatsappService.js';
 import { addIsoDuration } from '../utils/duration.js';
 
 export async function listInvoices(req: Request, res: Response) {
-  const { customer_id, connection_type, status } = req.query;
+  const { customer_id, phone, connection_type, status } = req.query;
 
   try {
     const invoices = await getInvoices({
       customer_id: customer_id as string,
+      phone: phone as string,
       connection_type: connection_type as string,
       status: status as string
     });
