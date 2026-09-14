@@ -164,7 +164,13 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
       const data = await res.json();
       if (data.success) {
         setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
+        try {
+          const applied = data.config || config;
+          localStorage.setItem('arbil_portal_config', JSON.stringify(applied));
+          localStorage.setItem('arbil_portal_config_time', Date.now().toString());
+          window.dispatchEvent(new Event('storage'));
+        } catch (_) {}
+        setTimeout(() => setSaveSuccess(false), 3500);
       } else {
         alert(data.message || 'Gagal menyimpan konfigurasi.');
       }
@@ -241,6 +247,55 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
       default: return <Layout size={16} className="text-slate-400" />;
     }
   };
+
+  const renderApplyActionFooter = (tabLabel: string) => (
+    <div className="pt-4 mt-6 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80 -mx-5 -mb-5 p-4 rounded-b-3xl">
+      <div className="flex items-center gap-2">
+        <span className={`w-2.5 h-2.5 rounded-full ${saveSuccess ? 'bg-emerald-500 animate-ping' : 'bg-indigo-500'}`}></span>
+        <span className="text-xs font-semibold text-slate-700">
+          {saveSuccess ? '✅ Perubahan berhasil disimpan & langsung aktif di portal!' : `Selesai atur ${tabLabel}? Terapkan ke portal pelanggan:`}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <a
+          href="/#/customer"
+          target="_blank"
+          rel="noreferrer"
+          className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+        >
+          <ExternalLink size={13} />
+          <span>Buka Portal</span>
+        </a>
+        <button
+          type="button"
+          onClick={handleSaveConfig}
+          disabled={saving}
+          className={`px-5 py-2.5 text-white font-black text-xs rounded-xl shadow-lg flex items-center gap-2 transition-all cursor-pointer ${
+            saveSuccess
+              ? 'bg-emerald-600 shadow-emerald-600/30 ring-2 ring-emerald-400'
+              : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/25 hover:scale-[1.02] active:scale-95'
+          }`}
+        >
+          {saving ? (
+            <>
+              <RefreshCw size={14} className="animate-spin" />
+              <span>Menerapkan...</span>
+            </>
+          ) : saveSuccess ? (
+            <>
+              <Check size={15} />
+              <span>Tersimpan & Aktif!</span>
+            </>
+          ) : (
+            <>
+              <Save size={15} />
+              <span>Simpan & Terapkan ({tabLabel})</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -461,6 +516,8 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                   </span>
                 </div>
               </div>
+
+              {renderApplyActionFooter('Pilihan Tema')}
             </div>
           )}
 
@@ -585,6 +642,8 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                   );
                 })}
               </div>
+
+              {renderApplyActionFooter('Tata Letak Modul')}
             </div>
           )}
 
@@ -707,6 +766,8 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                   </div>
                 </div>
               </div>
+
+              {renderApplyActionFooter('Flash Sale Promo')}
             </div>
           )}
 
@@ -777,6 +838,8 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                   />
                 </div>
               </div>
+
+              {renderApplyActionFooter('Teks & Branding')}
             </div>
           )}
         </div>
@@ -1021,6 +1084,59 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Sticky Floating Bottom Apply Bar */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white backdrop-blur-xl border border-slate-700 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-4 animate-fade-in max-w-xl w-[92%] sm:w-auto justify-between sm:justify-start">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div className="text-left">
+            <p className="text-xs font-bold text-white leading-tight">
+              {saveSuccess ? '🎉 Konfigurasi Berhasil Diterapkan!' : 'Konfigurasi Siap Diterapkan'}
+            </p>
+            <p className="text-[10px] text-slate-400">Langsung tampil di portal pelanggan</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <a
+            href="/#/customer"
+            target="_blank"
+            rel="noreferrer"
+            className="hidden sm:flex px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 items-center gap-1 transition"
+          >
+            <ExternalLink size={12} />
+            <span>Cek Portal</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={handleSaveConfig}
+            disabled={saving}
+            className={`px-4 py-2 text-white font-black text-xs rounded-xl shadow-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+              saveSuccess
+                ? 'bg-emerald-600 shadow-emerald-600/40 ring-2 ring-emerald-400'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-600/30 hover:scale-105 active:scale-95'
+            }`}
+          >
+            {saving ? (
+              <>
+                <RefreshCw size={13} className="animate-spin" />
+                <span>Menerapkan...</span>
+              </>
+            ) : saveSuccess ? (
+              <>
+                <Check size={14} />
+                <span>Aktif!</span>
+              </>
+            ) : (
+              <>
+                <Save size={14} />
+                <span>Simpan & Terapkan</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

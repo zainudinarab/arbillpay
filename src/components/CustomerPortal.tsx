@@ -173,7 +173,7 @@ export default function CustomerPortal({
 
   const fetchPortalConfig = async () => {
     try {
-      const res = await fetch('/api/portal-config');
+      const res = await fetch('/api/portal-config', { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.config) {
         setPortalConfig(data.config);
@@ -235,6 +235,12 @@ export default function CustomerPortal({
     fetchAvailableVouchers();
     fetchMonthlyMemberPackages();
     fetchLiveMemberRegistrationsStatus();
+
+    const handleSync = () => {
+      fetchPortalConfig();
+    };
+    window.addEventListener('focus', handleSync);
+    window.addEventListener('storage', handleSync);
 
     if (currentUser) {
       fetchCustomerProfile();

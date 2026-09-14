@@ -64,11 +64,13 @@ export async function getPortalConfig(req: Request, res: Response) {
           ...parsed,
           branding: { ...defaultPortalConfig.branding, ...(parsed.branding || {}) },
           announcement: { ...defaultPortalConfig.announcement, ...(parsed.announcement || {}) },
+          flash_sale: { ...defaultPortalConfig.flash_sale, ...(parsed.flash_sale || {}) },
           sections: Array.isArray(parsed.sections) && parsed.sections.length > 0 ? parsed.sections : defaultPortalConfig.sections
         };
         try {
           await redisSet(REDIS_KEY, merged, 300); // 5 menit
         } catch (_) {}
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         return res.json({ success: true, config: merged, source: 'db' });
       } catch (parseErr) {
         console.warn('Gagal parse customer_portal_config JSON:', parseErr);
@@ -76,9 +78,11 @@ export async function getPortalConfig(req: Request, res: Response) {
     }
 
     // 3. Fallback default
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     return res.json({ success: true, config: defaultPortalConfig, source: 'default' });
   } catch (err: any) {
     console.error('Error fetching portal config:', err);
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     return res.json({ success: true, config: defaultPortalConfig, source: 'error_fallback' });
   }
 }
@@ -109,6 +113,16 @@ export async function savePortalConfig(req: Request, res: Response) {
         text: (config.announcement?.text || '').trim(),
         type: config.announcement?.type || 'info'
       },
+      flash_sale: {
+        enabled: config.flash_sale?.enabled !== false,
+        title: (config.flash_sale?.title || defaultPortalConfig.flash_sale.title).trim(),
+        subtitle: (config.flash_sale?.subtitle || defaultPortalConfig.flash_sale.subtitle).trim(),
+        badge_label: (config.flash_sale?.badge_label || defaultPortalConfig.flash_sale.badge_label).trim(),
+        end_time: config.flash_sale?.end_time || defaultPortalConfig.flash_sale.end_time,
+        discount_text: (config.flash_sale?.discount_text || defaultPortalConfig.flash_sale.discount_text).trim(),
+        target_package_id: config.flash_sale?.target_package_id || '',
+        button_text: (config.flash_sale?.button_text || defaultPortalConfig.flash_sale.button_text).trim()
+      },
       sections: Array.isArray(config.sections) ? config.sections : defaultPortalConfig.sections
     };
 
@@ -126,9 +140,10 @@ export async function savePortalConfig(req: Request, res: Response) {
       await redisSet(REDIS_KEY, cleanConfig, 300);
     } catch (_) {}
 
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     return res.json({
       success: true,
-      message: '✅ Konfigurasi Tampilan Pelanggan Berhasil Disimpan!',
+      message: '✅ Konfigurasi Tampilan Pelanggan Berhasil Disimpan & Diterapkan!',
       config: cleanConfig
     });
   } catch (err: any) {
