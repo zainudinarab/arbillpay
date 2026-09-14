@@ -1554,74 +1554,67 @@ export default function CustomerPortal({
 
         {/* ==================== FLASH SALE & COUNTDOWN TIMER BANNER ==================== */}
         {isSectionEnabled('flash_sale') && portalConfig?.flash_sale?.enabled && (
-          <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/40 shadow-2xl shadow-rose-600/10 backdrop-blur-xl">
-            {/* Ambient Lighting & Flame Glow */}
-            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-60 h-60 bg-rose-500/15 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-60 h-60 bg-amber-500/15 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute inset-0 bg-[radial-gradient(#f43f5e_1px,transparent_1px)] [background-size:20px_20px] opacity-10 pointer-events-none"></div>
+          <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/30 shadow-lg shadow-rose-950/20 backdrop-blur-xl">
+            {/* Subtle glow */}
+            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 -mb-6 -ml-6 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
-            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
-              {/* Left Details */}
-              <div className="space-y-3.5 max-w-xl">
+            <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 sm:gap-4">
+              {/* Left Details: Compact & Integrated */}
+              <div className="flex-1 min-w-0 space-y-2">
+                {/* Top Micro-Badges */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-3 py-1 bg-gradient-to-r from-rose-600 to-red-600 rounded-full text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-rose-600/30">
-                    <Flame className="w-3.5 h-3.5 animate-bounce" />
+                  <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                    <Flame className="w-3 h-3 animate-bounce" />
                     <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
                   </span>
-                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+
+                  <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
                     <span>{portalConfig.flash_sale.discount_text || 'Diskon Terbatas'}</span>
                   </span>
+
                   {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                    <span className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-300 text-[10px] font-black tracking-wider uppercase">
+                    <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
                       Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
                     </span>
                   )}
+
+                  <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
+                    🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
+                  </span>
                 </div>
 
-                <div>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
-                    {portalConfig.flash_sale.title || '⚡ Promo Hotspot Spesial'}
+                {/* Title & Product Info in sleek inline flow */}
+                <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
+                  <h3 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
                   </h3>
-                  <p className="text-xs sm:text-sm text-slate-300 font-medium mt-1">
-                    {portalConfig.flash_sale.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum promo berakhir!'}
-                  </p>
+                  <span className="text-xs text-rose-200/90 font-medium truncate">
+                    {portalConfig.flash_sale.target_package_name ? `• ${portalConfig.flash_sale.target_package_name}` : (portalConfig.flash_sale.subtitle || '')}
+                  </span>
                 </div>
 
-                {/* Linked Target Product Box Preview */}
-                <div className="p-3 sm:p-4 rounded-2xl bg-black/40 border border-rose-500/30 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Paket Sasaran Promo</span>
-                      <span className="text-[10px] font-semibold text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/60">
-                        🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1} voucher / akun
+                {/* Pricing & Mini Quota Bar */}
+                <div className="flex items-center gap-3 sm:gap-4 flex-wrap pt-0.5">
+                  <div className="flex items-baseline gap-2">
+                    {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                      <span className="text-xs text-slate-400 line-through font-mono">
+                        {formatRupiah(Number(portalConfig.flash_sale.original_price))}
                       </span>
-                    </div>
-                    <div className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span>{portalConfig.flash_sale.target_package_name || 'Voucher Hotspot Pilihan'}</span>
-                    </div>
-                    <div className="flex items-baseline gap-2 pt-0.5">
-                      {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                        <span className="text-xs text-slate-400 line-through font-mono">
-                          {formatRupiah(Number(portalConfig.flash_sale.original_price))}
-                        </span>
-                      )}
-                      <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
-                        {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
-                      </span>
-                    </div>
+                    )}
+                    <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
+                      {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
+                    </span>
                   </div>
 
-                  {/* Quota Progress Bar */}
-                  <div className="sm:w-44 space-y-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-rose-500/20">
-                    <div className="flex justify-between text-[11px] font-semibold">
-                      <span className="text-slate-400">Kuota Promo</span>
-                      <span className="text-rose-300 font-mono">
-                        {portalConfig.flash_sale.quota_sold || 0} / {portalConfig.flash_sale.quota_limit || 100}
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
+                  <div className="h-3 w-px bg-slate-700 hidden sm:block" />
+
+                  {/* Mini Quota indicator */}
+                  <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400">
+                    <span>Kuota:</span>
+                    <div className="w-20 sm:w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
                       <div
                         className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
                         style={{
@@ -1629,71 +1622,74 @@ export default function CustomerPortal({
                         }}
                       />
                     </div>
-                    <p className="text-[10px] text-slate-400 text-right">
-                      {isFlashSaleSoldOut ? '❌ Kuota Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))} voucher`}
-                    </p>
+                    <span className="font-mono text-slate-300 font-semibold">
+                      {portalConfig.flash_sale.quota_sold || 0}/{portalConfig.flash_sale.quota_limit || 100}
+                    </span>
+                    <span className="text-[10px] text-amber-400/80">
+                      ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Right: Countdown Cards & CTA */}
-              <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center gap-3.5 shrink-0">
-                {/* Countdown Digit Boxes */}
-                <div className="flex items-center justify-center gap-2">
+              {/* Right: Compact Countdown & Action Button */}
+              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-rose-500/20 shrink-0">
+                {/* Compact Countdown */}
+                <div className="flex items-center gap-1 sm:gap-1.5">
                   {countdown.days > 0 && (
-                    <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
-                      <span className="text-xl sm:text-2xl font-black font-mono text-white leading-none">
+                    <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
+                      <span className="text-xs sm:text-sm font-black font-mono text-white leading-none">
                         {String(countdown.days).padStart(2, '0')}
                       </span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Hari</span>
+                      <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Hari</span>
                     </div>
                   )}
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
-                    <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 leading-none">
+                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
+                    <span className="text-xs sm:text-sm font-black font-mono text-amber-300 leading-none">
                       {String(countdown.hours).padStart(2, '0')}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Jam</span>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Jam</span>
                   </div>
-                  <span className="text-xl font-bold text-rose-400 font-mono -mt-3">:</span>
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
-                    <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 leading-none">
+                  <span className="text-xs font-bold text-rose-400 font-mono">:</span>
+                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
+                    <span className="text-xs sm:text-sm font-black font-mono text-amber-300 leading-none">
                       {String(countdown.minutes).padStart(2, '0')}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Menit</span>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Mnt</span>
                   </div>
-                  <span className="text-xl font-bold text-rose-400 font-mono -mt-3">:</span>
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
-                    <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 leading-none animate-pulse">
+                  <span className="text-xs font-bold text-rose-400 font-mono">:</span>
+                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
+                    <span className="text-xs sm:text-sm font-black font-mono text-rose-400 leading-none animate-pulse">
                       {String(countdown.seconds).padStart(2, '0')}
                     </span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Detik</span>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Dtk</span>
                   </div>
                 </div>
 
-                {/* Claim CTA Button */}
+                {/* Compact Action CTA Button */}
                 {userHasClaimedFlashSale ? (
                   <button
                     disabled
-                    className="px-5 py-3.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs sm:text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-90"
+                    className="px-3.5 py-2 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
                   >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>✓ Sudah Diklaim (Maks. 1)</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="whitespace-nowrap">Sudah Diklaim</span>
                   </button>
                 ) : isFlashSaleSoldOut ? (
                   <button
                     disabled
-                    className="px-5 py-3.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs sm:text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                    className="px-3.5 py-2 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
                   >
-                    <AlertCircle className="w-4 h-4 text-rose-400" />
-                    <span>Kuota Promo Habis</span>
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span className="whitespace-nowrap">Habis</span>
                   </button>
                 ) : (
                   <button
                     onClick={handleBuyFlashSale}
-                    className="px-5 py-3.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
+                    className="px-4 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-rose-600/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95 whitespace-nowrap"
                   >
-                    <Flame className="w-4 h-4" />
-                    <span>{portalConfig.flash_sale.button_text || 'Beli Promo Flash Sale'}</span>
+                    <Flame className="w-3.5 h-3.5 shrink-0" />
+                    <span>{portalConfig.flash_sale.button_text || 'Beli Promo'}</span>
                   </button>
                 )}
               </div>
