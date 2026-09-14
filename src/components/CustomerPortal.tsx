@@ -86,8 +86,8 @@ export default function CustomerPortal({
   const [payLoadingId, setPayLoadingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; text: string } | null>(null);
 
-  // Tabs: 'buy' | 'history' | 'invoices' | 'register_member'
-  const [activeTab, setActiveTab] = useState<'buy' | 'history' | 'invoices' | 'register_member'>('buy');
+  // Tabs: 'buy' | 'subscriptions' | 'history' | 'invoices' | 'register_member'
+  const [activeTab, setActiveTab] = useState<'buy' | 'subscriptions' | 'history' | 'invoices' | 'register_member'>('buy');
   const [localShowLoginModal, setLocalShowLoginModal] = useState(false);
 
   const showLoginModal = propShowLoginModal ?? localShowLoginModal;
@@ -115,6 +115,7 @@ export default function CustomerPortal({
 
   // Member Registrations status state (fetched LIVE from Database for active user)
   const [myRegistrations, setMyRegistrations] = useState<any[]>([]);
+  const allRegs = customerData ? [customerData, ...myRegistrations.filter((r: any) => r.id !== customerData.id)] : myRegistrations;
 
   // Quick Bill Check (For Visitors)
   const [searchIdentity, setSearchIdentity] = useState('');
@@ -1757,73 +1758,21 @@ export default function CustomerPortal({
           </div>
         )}
 
-        {/* ==================== BANNER STATUS PENDAFTARAN MEMBER (DITAMPILKAN DI ATAS VOUCHER) ==================== */}
-        {(() => {
-          const allRegs = customerData ? [customerData, ...myRegistrations.filter((r: any) => r.id !== customerData.id)] : myRegistrations;
-          if (allRegs.length === 0) return null;
-
-          return (
-            <div className="space-y-4">
-              {allRegs.map((reg: any, idx: number) => {
-                const isOff = reg.status === 'off' || reg.status === 'pending' || !reg.status;
-                const isActive = reg.status === 'active' || reg.status === 'on';
-
-                return (
-                  <div
-                    key={reg.id || idx}
-                    className={`p-5 rounded-3xl border shadow-xl backdrop-blur-md transition-all ${isActive
-                        ? 'bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-900 border-emerald-500/40 shadow-emerald-500/10'
-                        : 'bg-gradient-to-r from-amber-950/80 via-slate-900 to-slate-900 border-amber-500/40 shadow-amber-500/10'
-                      }`}
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3.5">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' : 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
-                          }`}>
-                          {isActive ? <CheckCircle2 size={24} /> : <Clock size={24} />}
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Status Permohonan Member:</span>
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider border ${isActive
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                              }`}>
-                              {isActive ? '🟢 Aktif (Berlangganan)' : '🟡 Non-Aktif (Pending Verifikasi Admin)'}
-                            </span>
-                          </div>
-                          <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                            <span>{reg.package_name || reg.package?.name || 'Paket Member Bulanan'}</span>
-                            <span className="text-xs text-amber-400 font-mono font-normal">({reg.pppoe_username || reg.name})</span>
-                          </h4>
-                          <p className="text-xs text-slate-300">
-                            {isActive
-                              ? 'Layanan internet bulanan Anda telah aktif. Tagihan invoice otomatis terbit setiap bulan.'
-                              : 'Pendaftaran Anda telah berhasil tercatat dengan status Non-Aktif (Off/Pending). Admin/Teknisi sedang memproses verifikasi & aktivasi.'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 self-end md:self-center shrink-0">
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-500 font-bold block uppercase">Speed</span>
-                          <span className="text-xs font-mono font-bold text-amber-400">{reg.speed_limit || 'Dedicated'}</span>
-                        </div>
-                        <button
-                          onClick={fetchLiveMemberRegistrationsStatus}
-                          className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-700 active:scale-95"
-                        >
-                          <RefreshCw size={13} />
-                          <span>Cek Status</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+        {/* Notifikasi Ringkas Pengajuan Member (Hanya Ditampilkan Jika Ada Pengajuan Pending) */}
+        {currentUser && allRegs.some((r: any) => r.status === 'pending' || r.status === 'off' || !r.status) && (
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 text-xs text-amber-300 backdrop-blur-md">
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+              <span>Pengajuan pendaftaran member Anda sedang diproses oleh teknisi / menunggu aktivasi.</span>
             </div>
-          );
-        })()}
+            <button
+              onClick={() => setActiveTab('subscriptions')}
+              className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg font-bold shrink-0 transition cursor-pointer text-[11px]"
+            >
+              Lihat Status →
+            </button>
+          </div>
+        )}
 
         {/* ==================== NAVIGATION TABS (RESPONSIVE SCROLLBAR / GRID) ==================== */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -1837,6 +1786,19 @@ export default function CustomerPortal({
             <ShoppingCart className="w-4 h-4" />
             <span>Beli Voucher</span>
           </button>
+
+          {currentUser && allRegs.length > 0 && (
+            <button
+              onClick={() => setActiveTab('subscriptions')}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'subscriptions'
+                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/20'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+            >
+              <Signal className="w-4 h-4 text-emerald-400" />
+              <span>Langganan Saya ({allRegs.length})</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -1888,6 +1850,177 @@ export default function CustomerPortal({
             </button>
           )}
         </div>
+
+        {/* ==================== TAB: DAFTAR LANGGANAN SAYA ==================== */}
+        {activeTab === 'subscriptions' && currentUser && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 p-5 rounded-3xl border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
+                  <Signal size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-100 flex items-center gap-2">
+                    <span>Daftar Langganan Internet Saya</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                      {allRegs.length} Layanan
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Pantau status koneksi, profil kecepatan, dan detail akun internet bulanan Anda</p>
+                </div>
+              </div>
+              <button
+                onClick={fetchLiveMemberRegistrationsStatus}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border border-slate-700 shrink-0 self-start sm:self-auto"
+                title="Refresh Status Layanan"
+              >
+                <RefreshCw size={14} />
+                <span>Segarkan Status</span>
+              </button>
+            </div>
+
+            {allRegs.length === 0 ? (
+              <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
+                <Wifi className="w-12 h-12 text-slate-600 mx-auto" />
+                <h3 className="text-lg font-bold text-slate-300">Belum Ada Layanan Internet Terdaftar</h3>
+                <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                  Daftarkan diri Anda untuk berlangganan internet bulanan (PPPoE / Hotspot Dedicated).
+                </p>
+                <button
+                  onClick={() => {
+                    setActiveTab('register_member');
+                    fetchMonthlyMemberPackages();
+                  }}
+                  className="mt-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition cursor-pointer inline-flex items-center gap-2"
+                >
+                  <Zap size={14} />
+                  <span>Daftar Langganan Member</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {allRegs.map((reg: any, idx: number) => {
+                  const isActive = reg.status === 'active' || reg.status === 'on';
+                  const isIsolated = reg.status === 'isolated' || reg.status === 'isolir';
+                  const isExpired = reg.status === 'expired';
+
+                  const statusConfig = isActive
+                    ? {
+                        label: 'Aktif (Berlangganan)',
+                        color: 'emerald',
+                        badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                        cardBg: 'bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border-emerald-500/30 shadow-emerald-500/5',
+                        desc: 'Layanan internet bulanan Anda aktif normal. Tagihan invoice otomatis terbit setiap bulan.',
+                        icon: <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                      }
+                    : isIsolated
+                    ? {
+                        label: 'Terisolir (Tunggakan Tagihan)',
+                        color: 'rose',
+                        badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+                        cardBg: 'bg-gradient-to-r from-rose-950/60 via-slate-900 to-slate-900 border-rose-500/30 shadow-rose-500/5',
+                        desc: 'Koneksi sementara terisolir karena terdapat tagihan belum lunas. Segera lakukan pembayaran untuk mengaktifkan kembali.',
+                        icon: <AlertCircle className="w-6 h-6 text-rose-400 animate-pulse" />
+                      }
+                    : isExpired
+                    ? {
+                        label: 'Kadaluarsa / Nonaktif',
+                        color: 'slate',
+                        badgeBg: 'bg-slate-700/50 text-slate-300 border-slate-600',
+                        cardBg: 'bg-slate-900 border-slate-800',
+                        desc: 'Masa berlaku paket internet telah berakhir.',
+                        icon: <Clock className="w-6 h-6 text-slate-400" />
+                      }
+                    : {
+                        label: 'Pengajuan Baru (Menunggu Aktivasi)',
+                        color: 'amber',
+                        badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                        cardBg: 'bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border-amber-500/30 shadow-amber-500/5',
+                        desc: 'Pengajuan pendaftaran member Anda telah diterima dan sedang diproses teknisi/admin. Harap tunggu verifikasi & aktivasi.',
+                        icon: <Clock className="w-6 h-6 text-amber-400 animate-pulse" />
+                      };
+
+                  return (
+                    <div
+                      key={reg.id || idx}
+                      className={`p-5 sm:p-6 rounded-3xl border shadow-xl backdrop-blur-md transition-all ${statusConfig.cardBg}`}
+                    >
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                        <div className="flex items-start gap-4">
+                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border border-slate-700/60 bg-slate-900">
+                            {statusConfig.icon}
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">Status Layanan:</span>
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase tracking-wider border ${statusConfig.badgeBg}`}>
+                                {statusConfig.label}
+                              </span>
+                              {reg.connection_type && (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                                  {reg.connection_type}
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="text-lg font-black text-white flex items-center gap-2 flex-wrap">
+                              <span>{reg.package_name || reg.package?.name || 'Paket Internet Bulanan'}</span>
+                              <span className="text-xs text-amber-400 font-mono font-normal">
+                                ({reg.pppoe_username || reg.name || 'Akun Member'})
+                              </span>
+                            </h4>
+
+                            <p className="text-xs text-slate-300 max-w-2xl">
+                              {statusConfig.desc}
+                            </p>
+
+                            <div className="flex items-center gap-4 text-xs text-slate-400 pt-1 flex-wrap">
+                              {reg.installation_date && (
+                                <span>Tgl Pasang: <strong className="text-slate-200">{new Date(reg.installation_date).toLocaleDateString('id-ID')}</strong></span>
+                              )}
+                              {reg.expired_at && (
+                                <span>Masa Aktif: <strong className="text-slate-200">{new Date(reg.expired_at).toLocaleDateString('id-ID')}</strong></span>
+                              )}
+                              {reg.customer_code && (
+                                <span>ID Pelanggan: <strong className="font-mono text-slate-200">{reg.customer_code}</strong></span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800/80 justify-between lg:justify-end shrink-0">
+                          <div className="text-left lg:text-right pr-2">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase">Kecepatan</span>
+                            <span className="text-sm font-mono font-black text-amber-400">{reg.speed_limit || 'Dedicated'}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {isIsolated && (
+                              <button
+                                onClick={() => setActiveTab('invoices')}
+                                className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-600/20 active:scale-95"
+                              >
+                                <CreditCard size={13} />
+                                <span>Bayar Tagihan</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={fetchLiveMemberRegistrationsStatus}
+                              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-700 active:scale-95"
+                            >
+                              <RefreshCw size={13} />
+                              <span>Cek Status</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ==================== TAB 1: BUY VOUCHER (Persis arbiljs) ==================== */}
         {activeTab === 'buy' && (
@@ -3174,23 +3307,56 @@ export default function CustomerPortal({
 
               {/* Status Pelanggan RT/RW Net */}
               <div className="pt-2">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Status Langganan Internet</h4>
-                {customerData ? (
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Paket Internet:</span>
-                      <span className="font-bold text-indigo-400">{customerData.package_name || 'Member Hotspot/PPPoE'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Username PPPoE:</span>
-                      <span className="font-mono font-bold text-slate-200">{customerData.pppoe_username || '-'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Status Layanan:</span>
-                      <span className={`font-bold ${customerData.status === 'active' ? 'text-emerald-400' : 'text-amber-400'}`}>
-                        {customerData.status === 'active' ? '🟢 AKTIF' : '🟡 MENUNGGU AKTIVASI'}
-                      </span>
-                    </div>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    Daftar Langganan Internet ({allRegs.length})
+                  </h4>
+                  {allRegs.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setShowProfileModal(false);
+                        setActiveTab('subscriptions');
+                      }}
+                      className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <span>Buka Tab Langganan</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {allRegs.length > 0 ? (
+                  <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                    {allRegs.map((reg: any, idx: number) => {
+                      const isActive = reg.status === 'active' || reg.status === 'on';
+                      const isIsolated = reg.status === 'isolated' || reg.status === 'isolir';
+                      const isExpired = reg.status === 'expired';
+
+                      const badge = isActive
+                        ? { text: '🟢 AKTIF', style: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' }
+                        : isIsolated
+                        ? { text: '🔴 TERISOLIR', style: 'text-rose-400 bg-rose-500/10 border-rose-500/30' }
+                        : isExpired
+                        ? { text: '⚪ NONAKTIF', style: 'text-slate-400 bg-slate-700/30 border-slate-700' }
+                        : { text: '🟡 PENGAJUAN / VERIFIKASI', style: 'text-amber-400 bg-amber-500/10 border-amber-500/30' };
+
+                      return (
+                        <div key={reg.id || idx} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-200 text-xs truncate max-w-[200px]">
+                              {reg.package_name || reg.package?.name || 'Paket Internet Bulanan'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border shrink-0 ${badge.style}`}>
+                              {badge.text}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span>Akun: <strong className="text-slate-200 font-mono">{reg.pppoe_username || reg.name}</strong></span>
+                            <span>Speed: <strong className="text-amber-400 font-mono">{reg.speed_limit || 'Dedicated'}</strong></span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-center space-y-2">
@@ -3199,6 +3365,7 @@ export default function CustomerPortal({
                       onClick={() => {
                         setShowProfileModal(false);
                         setActiveTab('register_member');
+                        fetchMonthlyMemberPackages();
                       }}
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition cursor-pointer"
                     >
