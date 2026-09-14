@@ -121,9 +121,10 @@ const ACCENT_COLORS = [
 
 interface PortalTemplateEditorProps {
   profile: BusinessProfile;
+  onNavigateView?: (view: string) => void;
 }
 
-export default function PortalTemplateEditor({ profile }: PortalTemplateEditorProps) {
+export default function PortalTemplateEditor({ profile, onNavigateView }: PortalTemplateEditorProps) {
   const [config, setConfig] = useState<CustomerPortalConfig>(defaultEditorConfig);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -748,6 +749,31 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                   <Flame size={14} className={config.flash_sale?.enabled ? 'text-rose-600 animate-pulse' : ''} />
                   <span>{config.flash_sale?.enabled ? 'Promo Aktif' : 'Promo Nonaktif'}</span>
                 </button>
+              </div>
+
+              {/* Dedicated Flash Sale Page Notice */}
+              <div className="p-3.5 bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <Flame size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-rose-950">Menu Mandiri Flash Sale</h4>
+                    <p className="text-[11px] text-rose-800">
+                      Anda kini juga dapat mengelola promo ini di menu sidebar tersendiri: <strong>Flash Sale Promo</strong>.
+                    </p>
+                  </div>
+                </div>
+                {onNavigateView && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateView('flash-sale')}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                  >
+                    <span>Buka Menu Flash Sale</span>
+                    <ArrowRight size={13} />
+                  </button>
+                )}
               </div>
 
               <div className="space-y-3.5">

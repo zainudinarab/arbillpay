@@ -74,6 +74,7 @@ import LoginModal from './components/LoginModal';
 import PublicVoucherStore from './components/PublicVoucherStore';
 import CustomerPortal from './components/CustomerPortal';
 import PortalTemplateEditor from './components/PortalTemplateEditor';
+import FlashSaleManagement from './components/FlashSaleManagement';
 import SetupWizard from './components/SetupWizard';
 import { UserAccount } from './types';
 
@@ -1065,6 +1066,14 @@ const safeFormatDate = (val: any): string => {
         return (
           <PortalTemplateEditor
             profile={profile}
+            onNavigateView={setCurrentView}
+          />
+        );
+      case 'flash-sale':
+        return (
+          <FlashSaleManagement
+            profile={profile}
+            onNavigateView={setCurrentView}
           />
         );
       case 'notifications':

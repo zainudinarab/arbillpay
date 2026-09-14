@@ -25,7 +25,8 @@ import {
   Bell,
   Cpu,
   ShieldAlert,
-  Palette
+  Palette,
+  Flame
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -112,6 +113,7 @@ export default function Sidebar({
         { id: 'customers', label: 'Pelanggan Rumah', icon: Globe, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hotspot-customers', label: 'Pelanggan Hotspot', icon: Wifi, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'vouchers', label: 'Voucher Hotspot', icon: Ticket, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
+        { id: 'flash-sale', label: 'Flash Sale Promo', icon: Flame, roles: ['owner', 'marketing', 'kasir'] },
         { id: 'invoices', label: userRole === 'pelanggan' ? 'Tagihan Saya' : t.invoices, icon: FileText, roles: ['owner', 'kasir', 'pelanggan'] },
       ]
     },
