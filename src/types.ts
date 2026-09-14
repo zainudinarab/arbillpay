@@ -96,7 +96,7 @@ export interface BusinessProfile {
 }
 
 export interface CustomerPortalSection {
-  id: 'announcement' | 'hero' | 'wallet_widget' | 'quick_billing' | 'vouchers' | 'monthly_packages' | 'contact_footer';
+  id: 'announcement' | 'hero' | 'flash_sale' | 'wallet_widget' | 'quick_billing' | 'vouchers' | 'monthly_packages' | 'contact_footer';
   label: string;
   enabled: boolean;
   order: number;
@@ -118,5 +118,16 @@ export interface CustomerPortalConfig {
     text: string;
     type: 'info' | 'promo' | 'warning';
   };
+  flash_sale?: {
+    enabled: boolean;
+    title: string;
+    subtitle: string;
+    badge_label: string;
+    end_time: string; // ISO datetime string e.g. "2026-09-30T23:59:59"
+    discount_text: string;
+    target_package_id?: string;
+    button_text: string;
+  };
   sections: CustomerPortalSection[];
 }
+

@@ -6,7 +6,7 @@ import {
   Star, Sparkles, Globe, Signal, Timer, ChevronRight,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info,
-  MessageCircle, Megaphone
+  MessageCircle, Megaphone, Flame
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
@@ -185,6 +185,42 @@ export default function CustomerPortal({
       console.warn('Gagal memuat portal config:', err);
     }
   };
+
+  // Countdown Timer State for Flash Sale & Promo
+  const [countdown, setCountdown] = useState<{ days: number; hours: number; minutes: number; seconds: number; isExpired: boolean }>({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    isExpired: false
+  });
+
+  useEffect(() => {
+    const targetIso = portalConfig?.flash_sale?.end_time;
+    if (!targetIso) return;
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const end = new Date(targetIso).getTime();
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true });
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setCountdown({ days, hours, minutes, seconds, isExpired: false });
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+    return () => clearInterval(interval);
+  }, [portalConfig?.flash_sale?.end_time]);
 
   const apiUrl = getApiUrl();
 
@@ -1455,6 +1491,89 @@ export default function CustomerPortal({
           </div>
         )}
 
+        {/* ==================== FLASH SALE & COUNTDOWN TIMER BANNER ==================== */}
+        {isSectionEnabled('flash_sale') && portalConfig?.flash_sale?.enabled && (
+          <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/40 shadow-2xl shadow-rose-600/10 backdrop-blur-xl">
+            {/* Ambient Lighting & Flame Glow */}
+            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-60 h-60 bg-rose-500/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-60 h-60 bg-amber-500/15 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(#f43f5e_1px,transparent_1px)] [background-size:20px_20px] opacity-10 pointer-events-none"></div>
+
+            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+              {/* Left Details */}
+              <div className="space-y-2.5 max-w-xl">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-3 py-1 bg-gradient-to-r from-rose-600 to-red-600 rounded-full text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-rose-600/30">
+                    <Flame className="w-3.5 h-3.5 animate-bounce" />
+                    <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
+                  </span>
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{portalConfig.flash_sale.discount_text || 'Diskon Terbatas'}</span>
+                  </span>
+                </div>
+
+                <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
+                  {portalConfig.flash_sale.title || '⚡ Promo Hotspot Spesial'}
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300 font-medium">
+                  {portalConfig.flash_sale.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum promo berakhir!'}
+                </p>
+              </div>
+
+              {/* Right: Countdown Cards & CTA */}
+              <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center gap-3.5 shrink-0">
+                {/* Countdown Digit Boxes */}
+                <div className="flex items-center justify-center gap-2">
+                  {countdown.days > 0 && (
+                    <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
+                      <span className="text-xl sm:text-2xl font-black font-mono text-white leading-none">
+                        {String(countdown.days).padStart(2, '0')}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Hari</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
+                    <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 leading-none">
+                      {String(countdown.hours).padStart(2, '0')}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Jam</span>
+                  </div>
+                  <span className="text-xl font-bold text-rose-400 font-mono -mt-3">:</span>
+                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
+                    <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 leading-none">
+                      {String(countdown.minutes).padStart(2, '0')}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Menit</span>
+                  </div>
+                  <span className="text-xl font-bold text-rose-400 font-mono -mt-3">:</span>
+                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-3 py-2 rounded-2xl min-w-[50px] shadow-inner">
+                    <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 leading-none animate-pulse">
+                      {String(countdown.seconds).padStart(2, '0')}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Detik</span>
+                  </div>
+                </div>
+
+                {/* Claim CTA Button */}
+                <button
+                  onClick={() => {
+                    setActiveTab('buy');
+                    const voucherList = document.getElementById('voucher-catalog-section');
+                    if (voucherList) {
+                      voucherList.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  className="px-5 py-3 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
+                >
+                  <Flame className="w-4 h-4" />
+                  <span>{portalConfig.flash_sale.button_text || 'Beli Voucher Promo'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ==================== WALLET WIDGET SECTION ==================== */}
         {isSectionEnabled('wallet_widget') && (
           currentUser ? (
@@ -1765,7 +1884,7 @@ export default function CustomerPortal({
 
         {/* ==================== TAB 1: BUY VOUCHER (Persis arbiljs) ==================== */}
         {activeTab === 'buy' && (
-          <div className="space-y-6">
+          <div id="voucher-catalog-section" className="space-y-6">
             {voucherLoading ? (
               <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
                 <RefreshCw size={28} className="animate-spin text-indigo-500" />

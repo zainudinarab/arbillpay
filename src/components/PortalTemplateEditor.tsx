@@ -24,7 +24,10 @@ import {
   Check,
   Grid,
   List,
-  AlertCircle
+  AlertCircle,
+  Flame,
+  Timer,
+  Clock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile, CustomerPortalConfig, CustomerPortalSection } from '../types';
@@ -44,14 +47,24 @@ const defaultEditorConfig: CustomerPortalConfig = {
     text: 'Beli voucher WiFi sekarang lebih mudah via QRIS & Saldo ArabPay! Aktif otomatis 24 Jam.',
     type: 'info'
   },
+  flash_sale: {
+    enabled: true,
+    title: '⚡ FLASH SALE AKHIR PEKAN',
+    subtitle: 'Voucher 24 Jam Nonstop Diskon Spesial',
+    badge_label: 'PROMO TERBATAS',
+    end_time: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+    discount_text: 'Hanya Rp 5.000 (Hemat 40%)',
+    button_text: 'Beli Sekarang'
+  },
   sections: [
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
     { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
-    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 3 },
-    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 4 },
-    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 5, variant: 'grid' },
-    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 6 },
-    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 7 }
+    { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
+    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid' },
+    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
+    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 8 }
   ]
 };
 
@@ -108,7 +121,7 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'desktop'>('mobile');
-  const [activeTab, setActiveTab] = useState<'themes' | 'layout' | 'branding'>('themes');
+  const [activeTab, setActiveTab] = useState<'themes' | 'layout' | 'flash_sale' | 'branding'>('themes');
 
   useEffect(() => {
     fetchCurrentConfig();
@@ -120,7 +133,17 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
       const res = await fetch('/api/portal-config');
       const data = await res.json();
       if (data.success && data.config) {
-        setConfig(data.config);
+        const loaded = {
+          ...defaultEditorConfig,
+          ...data.config,
+          flash_sale: data.config.flash_sale || defaultEditorConfig.flash_sale,
+          sections: data.config.sections?.length ? data.config.sections : defaultEditorConfig.sections
+        };
+        if (!loaded.sections.some((s: any) => s.id === 'flash_sale')) {
+          loaded.sections.splice(2, 0, { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 });
+          loaded.sections.forEach((s: any, idx: number) => { s.order = idx + 1; });
+        }
+        setConfig(loaded);
       }
     } catch (e) {
       console.warn('Gagal memuat konfigurasi portal:', e);
@@ -209,6 +232,7 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
     switch (id) {
       case 'announcement': return <Megaphone size={16} className="text-amber-500" />;
       case 'hero': return <Wifi size={16} className="text-emerald-500" />;
+      case 'flash_sale': return <Flame size={16} className="text-rose-500" />;
       case 'wallet_widget': return <Wallet size={16} className="text-indigo-500" />;
       case 'quick_billing': return <FileText size={16} className="text-blue-500" />;
       case 'vouchers': return <Package size={16} className="text-purple-500" />;
@@ -306,44 +330,57 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
         {/* ================= LEFT COLUMN: EDITOR CONTROLS ================= */}
         <div className="lg:col-span-7 space-y-4">
           {/* Navigation Tabs */}
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-2 bg-white/60 p-2 rounded-2xl border">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 border-b border-slate-200 pb-2 bg-white/60 p-2 rounded-2xl border">
             <button
               type="button"
               onClick={() => setActiveTab('themes')}
-              className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'themes'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Palette size={15} />
-              1. Pilihan Tema
+              <Palette size={14} />
+              <span>1. Tema</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('layout')}
-              className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'layout'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Layout size={15} />
-              2. Susun Model Tata Letak
+              <Layout size={14} />
+              <span>2. Tata Letak</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('flash_sale')}
+              className={`py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'flash_sale'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Flame size={14} className={activeTab === 'flash_sale' ? 'text-white' : 'text-rose-500'} />
+              <span>3. Flash Sale</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('branding')}
-              className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              className={`py-2 px-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'branding'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <Type size={15} />
-              3. Teks & Branding
+              <Type size={14} />
+              <span>4. Branding</span>
             </button>
           </div>
 
@@ -551,7 +588,129 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
             </div>
           )}
 
-          {/* TAB 3: BRANDING & CUSTOM TEXT */}
+          {/* TAB 3: FLASH SALE & PROMO COUNTDOWN */}
+          {activeTab === 'flash_sale' && (
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-rose-500" />
+                    Pengaturan Banner Flash Sale & Hitung Mundur
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Aktifkan kampanye promo dengan hitungan mundur jam, menit, dan detik untuk menarik minat pembeli.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfig(prev => ({
+                    ...prev,
+                    flash_sale: {
+                      ...(prev.flash_sale || defaultEditorConfig.flash_sale!),
+                      enabled: !prev.flash_sale?.enabled
+                    }
+                  }))}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    config.flash_sale?.enabled
+                      ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  <Flame size={14} className={config.flash_sale?.enabled ? 'text-rose-600 animate-pulse' : ''} />
+                  <span>{config.flash_sale?.enabled ? 'Promo Aktif' : 'Promo Nonaktif'}</span>
+                </button>
+              </div>
+
+              <div className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Judul Utama Promo Flash Sale</label>
+                  <input
+                    type="text"
+                    value={config.flash_sale?.title || ''}
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
+                      flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), title: e.target.value }
+                    }))}
+                    placeholder="Contoh: ⚡ FLASH SALE AKHIR PEKAN"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Badge Tag / Label Promo</label>
+                    <input
+                      type="text"
+                      value={config.flash_sale?.badge_label || ''}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), badge_label: e.target.value }
+                      }))}
+                      placeholder="Contoh: PROMO SPESIAL atau DISKON 50%"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Waktu Berakhir (Countdown Timer)</label>
+                    <input
+                      type="datetime-local"
+                      value={config.flash_sale?.end_time ? config.flash_sale.end_time.slice(0, 16) : ''}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), end_time: new Date(e.target.value).toISOString() }
+                      }))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Sub-judul / Penjelasan Promo</label>
+                  <input
+                    type="text"
+                    value={config.flash_sale?.subtitle || ''}
+                    onChange={(e) => setConfig(prev => ({
+                      ...prev,
+                      flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), subtitle: e.target.value }
+                    }))}
+                    placeholder="Contoh: Paket Voucher 24 Jam Nonstop Diskon Spesial Hari Ini"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Teks Harga Diskon / Manfaat</label>
+                    <input
+                      type="text"
+                      value={config.flash_sale?.discount_text || ''}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), discount_text: e.target.value }
+                      }))}
+                      placeholder="Contoh: Hanya Rp 5.000 (Hemat 40%)"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-emerald-600 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Teks Tombol Aksi</label>
+                    <input
+                      type="text"
+                      value={config.flash_sale?.button_text || ''}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), button_text: e.target.value }
+                      }))}
+                      placeholder="Contoh: Beli Sekarang"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: BRANDING & CUSTOM TEXT */}
           {activeTab === 'branding' && (
             <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -718,6 +877,34 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                         <p className="text-[10px] text-slate-400 mt-1 line-clamp-2">
                           {config.branding.tagline || 'Internet Cepat, Beli Voucher Instan via QRIS'}
                         </p>
+                      </div>
+                    );
+                  }
+
+                  if (s.id === 'flash_sale' && config.flash_sale?.enabled) {
+                    return (
+                      <div key={s.id} className="p-3 rounded-2xl bg-gradient-to-r from-rose-950/80 via-red-900/60 to-amber-950/80 border border-rose-500/40 text-white space-y-2 relative overflow-hidden">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white flex items-center gap-1">
+                            <Flame size={10} className="animate-bounce" />
+                            {config.flash_sale.badge_label || 'FLASH SALE'}
+                          </span>
+                          <div className="flex items-center gap-1 text-[9px] font-mono font-bold text-amber-300">
+                            <span className="px-1.5 py-0.5 bg-black/60 rounded">05</span>:
+                            <span className="px-1.5 py-0.5 bg-black/60 rounded">42</span>:
+                            <span className="px-1.5 py-0.5 bg-black/60 rounded">19</span>
+                          </div>
+                        </div>
+                        <div>
+                          <h5 className="font-black text-xs text-white leading-tight">{config.flash_sale.title}</h5>
+                          <p className="text-[10px] text-rose-200 mt-0.5 line-clamp-1">{config.flash_sale.subtitle}</p>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-rose-500/30">
+                          <span className="text-[10px] font-bold text-amber-300 font-mono">{config.flash_sale.discount_text}</span>
+                          <span className="px-2.5 py-1 bg-rose-600 rounded-lg text-[9px] font-extrabold text-white">
+                            {config.flash_sale.button_text || 'Beli'}
+                          </span>
+                        </div>
                       </div>
                     );
                   }

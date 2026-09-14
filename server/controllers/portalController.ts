@@ -17,14 +17,24 @@ export const defaultPortalConfig = {
     text: 'Beli voucher WiFi sekarang lebih mudah via QRIS & Saldo ArabPay! Aktif otomatis 24 Jam.',
     type: 'info'
   },
+  flash_sale: {
+    enabled: true,
+    title: '⚡ FLASH SALE AKHIR PEKAN',
+    subtitle: 'Voucher 24 Jam Nonstop Diskon Spesial',
+    badge_label: 'PROMO TERBATAS',
+    end_time: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    discount_text: 'Hanya Rp 5.000 (Hemat 40%)',
+    button_text: 'Beli Sekarang'
+  },
   sections: [
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
     { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
-    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 3 },
-    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 4 },
-    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 5, variant: 'grid' },
-    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 6 },
-    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 7 }
+    { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
+    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid' },
+    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
+    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 8 }
   ]
 };
 
