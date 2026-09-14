@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { UserAccount, CustomerPortalConfig } from '../types';
 import {
   Wifi, Zap, Clock, Shield, ShoppingCart, Wallet, X,
@@ -846,6 +846,51 @@ export default function CustomerPortal({
     setShowPaymentModal(true);
   };
 
+  const userHasClaimedFlashSale = useMemo(() => {
+    if (!currentUser) return false;
+    return localPurchasedVouchers.some((v: any) => Boolean(v.is_flash_sale));
+  }, [currentUser, localPurchasedVouchers]);
+
+  const fsQuotaLimit = Number(portalConfig?.flash_sale?.quota_limit) || 100;
+  const fsQuotaSold = Number(portalConfig?.flash_sale?.quota_sold) || 0;
+  const isFlashSaleSoldOut = fsQuotaSold >= fsQuotaLimit;
+
+  const handleBuyFlashSale = () => {
+    if (!currentUser) {
+      setShowLoginModal(true);
+      return;
+    }
+    if (userHasClaimedFlashSale) {
+      alert('⚠️ Anda sudah pernah mengklaim promo Flash Sale ini. Batasan promo: maksimal 1 voucher per akun!');
+      return;
+    }
+    if (isFlashSaleSoldOut) {
+      alert('⚠️ Maaf, kuota promo Flash Sale sudah habis terjual!');
+      return;
+    }
+
+    const fs = portalConfig?.flash_sale;
+    const targetPkg = voucherGroups.find(
+      (g: any) => g.profile_id === fs?.target_package_id || g.id === fs?.target_package_id
+    ) || {
+      profile_id: fs?.target_package_id,
+      id: fs?.target_package_id,
+      package_name: fs?.target_package_name || 'Voucher Hotspot Flash Sale',
+      name: fs?.target_package_name || 'Voucher Hotspot Flash Sale',
+      rate_limit: 'High Speed Promo',
+      mode: 'auto'
+    };
+
+    const promoPrice = Number(fs?.promo_price) || 0;
+
+    handleBuyVoucher({
+      ...targetPkg,
+      price: promoPrice,
+      original_price: Number(fs?.original_price) || targetPkg.price,
+      is_flash_sale: true
+    });
+  };
+
   const handleProceedPayment = async () => {
     if (paymentMethod === 'balance') {
       const price = Number(selectedPackage?.price || 0);
@@ -960,7 +1005,8 @@ export default function CustomerPortal({
           buyer_phone: currentUser?.phone_number,
           arabpay_user_id: currentUser?.id,
           payment_method: 'ArabPay QRIS Transfer',
-          amount: price
+          amount: price,
+          is_flash_sale: Boolean(selectedPackage.is_flash_sale)
         })
       });
 
@@ -983,6 +1029,7 @@ export default function CustomerPortal({
           dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'arab.net'
         });
         setPaymentStep('success');
+        fetchPortalConfig();
         fetchAvailableVouchers();
         fetchMyPurchasedVouchers();
       } else {
@@ -1188,7 +1235,8 @@ export default function CustomerPortal({
               arabpay_user_id: currentUser?.arabpay_user_id || currentUser?.id,
               payment_method: 'ArabPay E-Wallet',
               amount: price,
-              skip_arabpay_deduction: true
+              skip_arabpay_deduction: true,
+              is_flash_sale: Boolean(selectedPackage.is_flash_sale)
             })
           });
           const buyData = await buyRes.json().catch(() => null);
@@ -1219,6 +1267,7 @@ export default function CustomerPortal({
         dns_name: selectedPackage?.dns_name || 'arab.net'
       });
       setPaymentStep('success');
+      fetchPortalConfig();
       fetchAvailableVouchers();
       fetchMyPurchasedVouchers();
 
@@ -1513,7 +1562,7 @@ export default function CustomerPortal({
 
             <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
               {/* Left Details */}
-              <div className="space-y-2.5 max-w-xl">
+              <div className="space-y-3.5 max-w-xl">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="px-3 py-1 bg-gradient-to-r from-rose-600 to-red-600 rounded-full text-white text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-rose-600/30">
                     <Flame className="w-3.5 h-3.5 animate-bounce" />
@@ -1523,14 +1572,68 @@ export default function CustomerPortal({
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                     <span>{portalConfig.flash_sale.discount_text || 'Diskon Terbatas'}</span>
                   </span>
+                  {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                    <span className="px-2.5 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-300 text-[10px] font-black tracking-wider uppercase">
+                      Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
+                    </span>
+                  )}
                 </div>
 
-                <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
-                  {portalConfig.flash_sale.title || '⚡ Promo Hotspot Spesial'}
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-300 font-medium">
-                  {portalConfig.flash_sale.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum promo berakhir!'}
-                </p>
+                <div>
+                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
+                    {portalConfig.flash_sale.title || '⚡ Promo Hotspot Spesial'}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-300 font-medium mt-1">
+                    {portalConfig.flash_sale.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum promo berakhir!'}
+                  </p>
+                </div>
+
+                {/* Linked Target Product Box Preview */}
+                <div className="p-3 sm:p-4 rounded-2xl bg-black/40 border border-rose-500/30 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Paket Sasaran Promo</span>
+                      <span className="text-[10px] font-semibold text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/60">
+                        🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1} voucher / akun
+                      </span>
+                    </div>
+                    <div className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{portalConfig.flash_sale.target_package_name || 'Voucher Hotspot Pilihan'}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2 pt-0.5">
+                      {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                        <span className="text-xs text-slate-400 line-through font-mono">
+                          {formatRupiah(Number(portalConfig.flash_sale.original_price))}
+                        </span>
+                      )}
+                      <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
+                        {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quota Progress Bar */}
+                  <div className="sm:w-44 space-y-1.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-rose-500/20">
+                    <div className="flex justify-between text-[11px] font-semibold">
+                      <span className="text-slate-400">Kuota Promo</span>
+                      <span className="text-rose-300 font-mono">
+                        {portalConfig.flash_sale.quota_sold || 0} / {portalConfig.flash_sale.quota_limit || 100}
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 text-right">
+                      {isFlashSaleSoldOut ? '❌ Kuota Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))} voucher`}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* Right: Countdown Cards & CTA */}
@@ -1568,19 +1671,31 @@ export default function CustomerPortal({
                 </div>
 
                 {/* Claim CTA Button */}
-                <button
-                  onClick={() => {
-                    setActiveTab('buy');
-                    const voucherList = document.getElementById('voucher-catalog-section');
-                    if (voucherList) {
-                      voucherList.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
-                  className="px-5 py-3 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
-                >
-                  <Flame className="w-4 h-4" />
-                  <span>{portalConfig.flash_sale.button_text || 'Beli Voucher Promo'}</span>
-                </button>
+                {userHasClaimedFlashSale ? (
+                  <button
+                    disabled
+                    className="px-5 py-3.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs sm:text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-90"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>✓ Sudah Diklaim (Maks. 1)</span>
+                  </button>
+                ) : isFlashSaleSoldOut ? (
+                  <button
+                    disabled
+                    className="px-5 py-3.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs sm:text-sm rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                  >
+                    <AlertCircle className="w-4 h-4 text-rose-400" />
+                    <span>Kuota Promo Habis</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleBuyFlashSale}
+                    className="px-5 py-3.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
+                  >
+                    <Flame className="w-4 h-4" />
+                    <span>{portalConfig.flash_sale.button_text || 'Beli Promo Flash Sale'}</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2049,15 +2164,27 @@ export default function CustomerPortal({
                   const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
+                  const isTargetFlashSale = Boolean(
+                    portalConfig?.flash_sale?.enabled &&
+                    portalConfig.flash_sale.target_package_id &&
+                    (pkg.profile_id === portalConfig.flash_sale.target_package_id || pkg.id === portalConfig.flash_sale.target_package_id)
+                  );
+                  const fsPromoPrice = Number(portalConfig?.flash_sale?.promo_price || 0);
+                  const fsOrigPrice = Number(portalConfig?.flash_sale?.original_price || price);
+                  const canBuyFlashSale = isTargetFlashSale && !userHasClaimedFlashSale && !isFlashSaleSoldOut;
+
                   return (
                     <div
                       key={pkg.profile_id || idx}
                       className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                        isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                        isTargetFlashSale
+                          ? 'bg-gradient-to-r from-rose-950/30 via-slate-900 to-slate-900 border-rose-500/50 shadow-lg shadow-rose-600/10'
+                          : isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                          isTargetFlashSale ? 'bg-rose-500/20 text-rose-400' :
                           color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
                           color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
                           color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
@@ -2065,14 +2192,19 @@ export default function CustomerPortal({
                           color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
                           'bg-amber-500/10 text-amber-400'
                         }`}>
-                          <Zap className="w-5 h-5" />
+                          {isTargetFlashSale ? <Flame className="w-5 h-5 text-rose-400 animate-pulse" /> : <Zap className="w-5 h-5" />}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className={`font-bold text-sm sm:text-base ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                               {pkg.package_name || pkg.profile_name}
                             </h4>
-                            {pkg.popular && (
+                            {isTargetFlashSale && (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 text-[10px] font-black flex items-center gap-1">
+                                <Flame className="w-3 h-3 text-rose-400 animate-bounce" /> Flash Sale
+                              </span>
+                            )}
+                            {pkg.popular && !isTargetFlashSale && (
                               <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
                                 Populer
                               </span>
@@ -2096,18 +2228,40 @@ export default function CustomerPortal({
 
                       <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">
                         <div className="text-left sm:text-right">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
-                          <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono">
-                            {price === 0 ? 'GRATIS' : formatRupiah(price)}
+                          <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                            {canBuyFlashSale ? 'Harga Flash Sale' : 'Harga'}
                           </span>
+                          <div className="flex items-baseline gap-1.5 sm:justify-end">
+                            {canBuyFlashSale && fsOrigPrice > fsPromoPrice && (
+                              <span className="text-xs text-slate-400 line-through font-mono">
+                                {formatRupiah(fsOrigPrice)}
+                              </span>
+                            )}
+                            <span className={`text-lg sm:text-xl font-black font-mono ${canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'}`}>
+                              {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
+                            </span>
+                          </div>
+                          {isTargetFlashSale && userHasClaimedFlashSale && (
+                            <span className="text-[9px] text-slate-400 block sm:text-right">Maks. 1 promo sudah diklaim</span>
+                          )}
                         </div>
-                        <button
-                          onClick={() => handleBuyVoucher(pkg)}
-                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
-                        >
-                          <ShoppingCart className="w-4 h-4" />
-                          <span>Beli Voucher</span>
-                        </button>
+                        {canBuyFlashSale ? (
+                          <button
+                            onClick={handleBuyFlashSale}
+                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
+                          >
+                            <Flame className="w-4 h-4" />
+                            <span>Beli Flash Sale</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleBuyVoucher(pkg)}
+                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
+                          >
+                            <ShoppingCart className="w-4 h-4" />
+                            <span>Beli Voucher</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -2128,13 +2282,36 @@ export default function CustomerPortal({
                   const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
+                  const isTargetFlashSale = Boolean(
+                    portalConfig?.flash_sale?.enabled &&
+                    portalConfig.flash_sale.target_package_id &&
+                    (pkg.profile_id === portalConfig.flash_sale.target_package_id || pkg.id === portalConfig.flash_sale.target_package_id)
+                  );
+                  const fsPromoPrice = Number(portalConfig?.flash_sale?.promo_price || 0);
+                  const fsOrigPrice = Number(portalConfig?.flash_sale?.original_price || price);
+                  const canBuyFlashSale = isTargetFlashSale && !userHasClaimedFlashSale && !isFlashSaleSoldOut;
+
                   return (
                     <div
                       key={pkg.profile_id || idx}
-                      className="group relative bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300 flex flex-col"
+                      className={`group relative bg-slate-900 border rounded-2xl overflow-hidden transition-all duration-300 flex flex-col ${
+                        isTargetFlashSale
+                          ? 'border-rose-500/50 shadow-xl shadow-rose-600/10'
+                          : 'border-slate-800 hover:border-slate-700 hover:shadow-xl hover:shadow-indigo-500/5'
+                      }`}
                     >
+                      {/* Flash Sale Badge */}
+                      {isTargetFlashSale && (
+                        <div className="absolute top-2.5 left-2.5 z-10">
+                          <div className="flex items-center gap-1 px-2 py-0.5 bg-rose-500/20 border border-rose-500/40 rounded-full shadow-md">
+                            <Flame className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-rose-400 fill-rose-400 animate-bounce" />
+                            <span className="text-[9px] sm:text-[10px] font-bold text-rose-300 uppercase tracking-wider">Flash Sale</span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Popular Badge */}
-                      {pkg.popular && (
+                      {pkg.popular && !isTargetFlashSale && (
                         <div className="absolute top-2.5 right-2.5 z-10">
                           <div className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full">
                             <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 fill-amber-400" />
@@ -2144,13 +2321,15 @@ export default function CustomerPortal({
                       )}
 
                       {/* Card Top Colored Bar */}
-                      <div className={`h-1.5 w-full ${color === 'cyan' ? 'bg-gradient-to-r from-cyan-500 to-cyan-400' :
-                          color === 'blue' ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
-                            color === 'violet' ? 'bg-gradient-to-r from-violet-500 to-violet-400' :
-                              color === 'indigo' ? 'bg-gradient-to-r from-indigo-500 to-indigo-400' :
-                                color === 'emerald' ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
-                                  'bg-gradient-to-r from-amber-500 to-amber-400'
-                        }`} />
+                      <div className={`h-1.5 w-full ${
+                        isTargetFlashSale ? 'bg-gradient-to-r from-rose-500 via-red-500 to-amber-500' :
+                        color === 'cyan' ? 'bg-gradient-to-r from-cyan-500 to-cyan-400' :
+                        color === 'blue' ? 'bg-gradient-to-r from-blue-500 to-blue-400' :
+                        color === 'violet' ? 'bg-gradient-to-r from-violet-500 to-violet-400' :
+                        color === 'indigo' ? 'bg-gradient-to-r from-indigo-500 to-indigo-400' :
+                        color === 'emerald' ? 'bg-gradient-to-r from-emerald-500 to-emerald-400' :
+                        'bg-gradient-to-r from-amber-500 to-amber-400'
+                      }`} />
 
                       <div className={`flex-1 flex flex-col justify-between ${
                         voucherColumns === 2 ? 'p-3.5 sm:p-5 space-y-3 sm:space-y-4' : 'p-5 space-y-4'
@@ -2160,14 +2339,16 @@ export default function CustomerPortal({
                           <div className="flex items-start gap-2.5 sm:gap-3.5 mb-2 sm:mb-3">
                             <div className={`rounded-xl flex items-center justify-center shrink-0 ${
                               voucherColumns === 2 ? 'w-9 h-9 sm:w-12 sm:h-12' : 'w-12 h-12'
-                            } ${color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
-                                color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
-                                  color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
-                                    color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
-                                      color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
-                                        'bg-amber-500/10 text-amber-400'
-                              }`}>
-                              <Zap className={voucherColumns === 2 ? 'w-4 h-4 sm:w-6 sm:h-6' : 'w-6 h-6'} />
+                            } ${
+                              isTargetFlashSale ? 'bg-rose-500/20 text-rose-400' :
+                              color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
+                              color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
+                              color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
+                              color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
+                              color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
+                              'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              {isTargetFlashSale ? <Flame className={voucherColumns === 2 ? 'w-4 h-4 sm:w-6 sm:h-6 text-rose-400 animate-pulse' : 'w-6 h-6 text-rose-400 animate-pulse'} /> : <Zap className={voucherColumns === 2 ? 'w-4 h-4 sm:w-6 sm:h-6' : 'w-6 h-6'} />}
                             </div>
                             <div className="min-w-0">
                               <h3 className={`font-bold text-slate-100 leading-tight truncate ${
@@ -2198,22 +2379,48 @@ export default function CustomerPortal({
                         {/* Price + Buy Button */}
                         <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-slate-800/60 gap-2">
                           <div className="min-w-0">
-                            <p className="text-[9px] sm:text-xs text-slate-500 font-bold uppercase">Harga</p>
-                            <p className={`font-black text-emerald-400 font-mono truncate ${
-                              voucherColumns === 2 ? 'text-sm sm:text-xl' : 'text-xl'
-                            }`}>
-                              {price === 0 ? 'GRATIS' : formatRupiah(price)}
+                            <p className="text-[9px] sm:text-xs text-slate-500 font-bold uppercase">
+                              {canBuyFlashSale ? 'Flash Sale' : 'Harga'}
                             </p>
+                            <div className="flex items-baseline gap-1 truncate">
+                              {canBuyFlashSale && fsOrigPrice > fsPromoPrice && (
+                                <span className="text-[10px] sm:text-xs text-slate-400 line-through font-mono">
+                                  {formatRupiah(fsOrigPrice)}
+                                </span>
+                              )}
+                              <p className={`font-black font-mono truncate ${
+                                canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'
+                              } ${
+                                voucherColumns === 2 ? 'text-sm sm:text-xl' : 'text-xl'
+                              }`}>
+                                {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
+                              </p>
+                            </div>
+                            {isTargetFlashSale && userHasClaimedFlashSale && (
+                              <p className="text-[9px] text-slate-400 truncate">Maks. 1 promo dipakai</p>
+                            )}
                           </div>
-                          <button
-                            onClick={() => handleBuyVoucher(pkg)}
-                            className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
-                              voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
-                            }`}
-                          >
-                            <ShoppingCart className="w-3.5 h-3.5" />
-                            <span>Beli</span>
-                          </button>
+                          {canBuyFlashSale ? (
+                            <button
+                              onClick={handleBuyFlashSale}
+                              className={`flex items-center justify-center gap-1 sm:gap-1.5 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse ${
+                                voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs' : 'px-3.5 py-2 text-xs'
+                              }`}
+                            >
+                              <Flame className="w-3.5 h-3.5" />
+                              <span>Beli Promo</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleBuyVoucher(pkg)}
+                              className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
+                                voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
+                              }`}
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5" />
+                              <span>Beli</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2272,9 +2479,16 @@ export default function CustomerPortal({
                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">{item.id}</span>
                         <p className="text-xs text-slate-400 mt-0.5">{item.date}</p>
                       </div>
-                      <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full flex items-center gap-1 border border-emerald-500/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Berhasil
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {item.is_flash_sale && (
+                          <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-500/30">
+                            <Flame className="w-3 h-3 text-rose-400" /> Flash Sale
+                          </span>
+                        )}
+                        <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full flex items-center gap-1 border border-emerald-500/20">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Berhasil
+                        </span>
+                      </div>
                     </div>
 
                     {/* Package Info */}
@@ -2784,6 +2998,16 @@ export default function CustomerPortal({
                 <div className="p-5 space-y-5">
                   {/* Package Summary Box */}
                   <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                    {selectedPackage.is_flash_sale && (
+                      <div className="flex items-center justify-between text-xs bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-xl">
+                        <span className="font-bold text-rose-400 flex items-center gap-1">
+                          <Flame className="w-3.5 h-3.5 text-rose-400 animate-bounce" /> PROMO FLASH SALE
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-md">
+                          Maks. 1 Per Akun
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-400">Voucher WiFi</span>
                       <span className="font-extrabold text-indigo-400">{selectedPackage.package_name || selectedPackage.name || '3 Jam'}</span>

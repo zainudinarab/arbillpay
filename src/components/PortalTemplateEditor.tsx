@@ -54,7 +54,14 @@ const defaultEditorConfig: CustomerPortalConfig = {
     subtitle: 'Voucher 24 Jam Nonstop Diskon Spesial',
     badge_label: 'PROMO TERBATAS',
     end_time: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
-    discount_text: 'Hanya Rp 5.000 (Hemat 40%)',
+    discount_text: 'Hanya Rp 2.500 (Hemat 50%)',
+    target_package_id: '',
+    target_package_name: '',
+    original_price: 5000,
+    promo_price: 2500,
+    quota_limit: 50,
+    quota_sold: 0,
+    max_per_user: 1,
     button_text: 'Beli Sekarang'
   },
   sections: [
@@ -123,10 +130,22 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'desktop'>('mobile');
   const [activeTab, setActiveTab] = useState<'themes' | 'layout' | 'flash_sale' | 'branding'>('themes');
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
 
   useEffect(() => {
     fetchCurrentConfig();
+    fetchVoucherPackages();
   }, []);
+
+  const fetchVoucherPackages = async () => {
+    try {
+      const res = await fetch('/api/vouchers/available');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.groups)) {
+        setAvailablePackages(data.groups);
+      }
+    } catch (_) {}
+  };
 
   const fetchCurrentConfig = async () => {
     setLoading(true);
@@ -732,6 +751,46 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
               </div>
 
               <div className="space-y-3.5">
+                {/* PILIH PRODUK VOUCHER SASARAN FLASH SALE */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Pilih Produk Voucher Sasaran Flash Sale
+                  </label>
+                  <select
+                    value={config.flash_sale?.target_package_id || ''}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const pkg = availablePackages.find((p: any) => p.profile_id === selectedId || p.package_name === selectedId);
+                      const orig = pkg ? Number(pkg.price || 5000) : (config.flash_sale?.original_price || 5000);
+                      const promo = Math.round(orig * 0.5);
+                      const pName = pkg?.package_name || pkg?.profile_name || 'Voucher Hotspot';
+                      setConfig(prev => ({
+                        ...prev,
+                        flash_sale: {
+                          ...(prev.flash_sale || defaultEditorConfig.flash_sale!),
+                          target_package_id: selectedId,
+                          target_package_name: pName,
+                          original_price: orig,
+                          promo_price: promo,
+                          discount_text: `Hanya Rp ${promo.toLocaleString('id-ID')} (Hemat 50%)`,
+                          title: `⚡ FLASH SALE: ${pName}`
+                        }
+                      }));
+                    }}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="">-- Pilih Voucher Yang Akan Dikenakan Promo Flash Sale --</option>
+                    {availablePackages.map((p: any, idx: number) => (
+                      <option key={p.profile_id || idx} value={p.profile_id}>
+                        📦 {p.package_name || p.profile_name} (Normal: Rp {Number(p.price || 0).toLocaleString('id-ID')} - {p.rate_limit || 'Fast'})
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] text-slate-400">
+                    Pilih paket voucher yang akan mendapatkan potongan harga coret dan tampil di banner promo.
+                  </span>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Judul Utama Promo Flash Sale</label>
                   <input
@@ -744,6 +803,93 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                     placeholder="Contoh: ⚡ FLASH SALE AKHIR PEKAN"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-rose-500"
                   />
+                </div>
+
+                {/* HARGA NORMAL VS HARGA FLASH SALE */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-rose-50/40 rounded-2xl border border-rose-200/60">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Harga Normal (Sebelum Diskon)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">Rp</span>
+                      <input
+                        type="number"
+                        value={config.flash_sale?.original_price ?? 5000}
+                        onChange={(e) => {
+                          const orig = Number(e.target.value);
+                          const promo = config.flash_sale?.promo_price ?? Math.round(orig * 0.5);
+                          const discPercent = orig > 0 ? Math.max(0, Math.round(((orig - promo) / orig) * 100)) : 0;
+                          setConfig(prev => ({
+                            ...prev,
+                            flash_sale: {
+                              ...(prev.flash_sale || defaultEditorConfig.flash_sale!),
+                              original_price: orig,
+                              discount_text: `Hanya Rp ${promo.toLocaleString('id-ID')} (Hemat ${discPercent}%)`
+                            }
+                          }));
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Harga Promo Flash Sale (Harga Bayar)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2 text-xs font-bold text-emerald-600">Rp</span>
+                      <input
+                        type="number"
+                        value={config.flash_sale?.promo_price ?? 2500}
+                        onChange={(e) => {
+                          const promo = Number(e.target.value);
+                          const orig = config.flash_sale?.original_price ?? 5000;
+                          const discPercent = orig > 0 ? Math.max(0, Math.round(((orig - promo) / orig) * 100)) : 0;
+                          setConfig(prev => ({
+                            ...prev,
+                            flash_sale: {
+                              ...(prev.flash_sale || defaultEditorConfig.flash_sale!),
+                              promo_price: promo,
+                              discount_text: `Hanya Rp ${promo.toLocaleString('id-ID')} (Hemat ${discPercent}%)`
+                            }
+                          }));
+                        }}
+                        className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-emerald-600 focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* KUOTA TOTAL & BATASAN 1 VOUCHER PER USER */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/40 rounded-2xl border border-amber-200/60">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Total Kuota Stok Promo (Qty)</label>
+                    <input
+                      type="number"
+                      value={config.flash_sale?.quota_limit ?? 50}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), quota_limit: Number(e.target.value) }
+                      }))}
+                      placeholder="50"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-rose-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Terjual saat ini: <strong className="text-amber-700">{config.flash_sale?.quota_sold || 0}</strong> voucher</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Maksimal Beli Per Akun (Limit)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={config.flash_sale?.max_per_user ?? 1}
+                      onChange={(e) => setConfig(prev => ({
+                        ...prev,
+                        flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), max_per_user: Number(e.target.value) }
+                      }))}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-rose-500"
+                    />
+                    <span className="text-[10px] text-emerald-600 font-bold">🔒 Dibatasi 1 voucher per nomor HP/akun pelanggan</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -790,7 +936,7 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Teks Harga Diskon / Manfaat</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Teks Sorotan Diskon</label>
                     <input
                       type="text"
                       value={config.flash_sale?.discount_text || ''}
@@ -798,7 +944,7 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                         ...prev,
                         flash_sale: { ...(prev.flash_sale || defaultEditorConfig.flash_sale!), discount_text: e.target.value }
                       }))}
-                      placeholder="Contoh: Hanya Rp 5.000 (Hemat 40%)"
+                      placeholder="Contoh: Hanya Rp 2.500 (Hemat 50%)"
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-emerald-600 focus:outline-none focus:border-rose-500"
                     />
                   </div>

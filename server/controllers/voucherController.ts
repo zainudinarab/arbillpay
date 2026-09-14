@@ -334,13 +334,70 @@ export async function listAvailableVouchers(req: Request, res: Response) {
  * Body: { profile_id, mode ('pregenerated' | 'ondemand'), buyer_name, buyer_phone, payment_method, amount }
  */
 export async function buyVoucher(req: Request, res: Response) {
-  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount, skip_arabpay_deduction } = req.body;
+  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount, skip_arabpay_deduction, is_flash_sale } = req.body;
 
   if (!profile_id) {
     return res.status(400).json({ success: false, message: 'Profile voucher wajib dipilih.' });
   }
 
   try {
+    let finalAmount = Number(amount || 0);
+
+    // ==================== VALIDASI FLASH SALE (KUOTA & BATASAN 1 VOUCHER PER USER) ====================
+    if (is_flash_sale) {
+      const cfgRes = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_portal_config'");
+      if (cfgRes.rows.length > 0) {
+        try {
+          const cfg = JSON.parse(cfgRes.rows[0].value);
+          const fs = cfg.flash_sale;
+          if (!fs || fs.enabled === false) {
+            return res.status(400).json({ success: false, message: 'Promo Flash Sale saat ini sedang tidak aktif.' });
+          }
+          if (fs.end_time && new Date(fs.end_time).getTime() < Date.now()) {
+            return res.status(400).json({ success: false, message: 'Periode promo Flash Sale telah berakhir.' });
+          }
+          if (fs.quota_limit && (fs.quota_sold || 0) >= fs.quota_limit) {
+            return res.status(400).json({ success: false, message: 'Kuota voucher promo Flash Sale telah habis terjual.' });
+          }
+
+          // Batasan maksimal pembelian per akun (default: 1 user hanya boleh 1)
+          const maxPerUser = Number(fs.max_per_user || 1);
+          const userPhone = buyer_phone ? String(buyer_phone).replace(/[^0-9]/g, '') : '';
+          const userId = arabpay_user_id ? String(arabpay_user_id).trim() : '';
+
+          if (userPhone || userId) {
+            const checkPrior = await pool.query(`
+              SELECT COUNT(*)::int as cnt
+              FROM invoices
+              WHERE notes LIKE '%FLASH SALE%'
+                AND (
+                  (customer_phone IS NOT NULL AND $1 <> '' AND (customer_phone = $1 OR customer_phone LIKE '%' || $1 || '%'))
+                  OR (user_id IS NOT NULL AND $2 <> '' AND user_id = $2)
+                )
+            `, [userPhone, userId]);
+
+            if ((checkPrior.rows[0]?.cnt || 0) >= maxPerUser) {
+              return res.status(400).json({
+                success: false,
+                message: `⚠️ Batasan promo: Setiap akun hanya boleh membeli maksimal ${maxPerUser} voucher promo Flash Sale! Kuota akun Anda sudah digunakan.`
+              });
+            }
+          }
+
+          // Terapkan harga promo yang sah dari server (mencegah manipulasi harga)
+          if (fs.promo_price && fs.promo_price > 0) {
+            finalAmount = Number(fs.promo_price);
+          }
+
+          // Tambah counter kuota terjual
+          fs.quota_sold = (fs.quota_sold || 0) + 1;
+          await pool.query("UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = 'customer_portal_config'", [JSON.stringify(cfg)]).catch(() => {});
+        } catch (e: any) {
+          console.warn('Flash sale validation warning:', e?.message);
+        }
+      }
+    }
+
     let voucherCode = '';
     let voucherPass = '';
     let voucherId = '';
@@ -537,8 +594,8 @@ export async function buyVoucher(req: Request, res: Response) {
         const { deductArabPayBalance } = await import('../services/arabpayService.js');
         const deductResult = await deductArabPayBalance({
           userId: arabpay_user_id || buyer_phone || buyer_name,
-          amount: amount || 0,
-          notes: `Pembelian ${packageName} (Kode: ${voucherCode})`,
+          amount: finalAmount || 0,
+          notes: is_flash_sale ? `Pembelian ⚡ FLASH SALE ${packageName} (Kode: ${voucherCode})` : `Pembelian ${packageName} (Kode: ${voucherCode})`,
           invoiceId: invoiceNumber
         });
         if (deductResult.remaining_balance !== undefined) {
@@ -582,9 +639,11 @@ export async function buyVoucher(req: Request, res: Response) {
       buyer_name || 'Pelanggan Hotspot',
       buyer_phone || '',
       targetProfileName || 'Voucher Hotspot',
-      amount || 0,
+      finalAmount || 0,
       payment_method || 'ArabPay E-Wallet',
-      `Pembelian Voucher Hotspot (${isFromPreGenerated ? 'Stok Diskon' : 'Instant On-Demand'}) - Kode: ${voucherCode}`,
+      is_flash_sale
+        ? `Pembelian Voucher Hotspot (⚡ FLASH SALE PROMO) - Kode: ${voucherCode}`
+        : `Pembelian Voucher Hotspot (${isFromPreGenerated ? 'Stok Diskon' : 'Instant On-Demand'}) - Kode: ${voucherCode}`,
       voucherId,
       voucherCode
     ]);
@@ -659,7 +718,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
         COALESCE(r.dns_name, 'arab.net') as dns_name,
         COALESCE(i.amount, p.price, 0)::int as price,
-        COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel
+        COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel,
+        i.notes as invoice_notes
       FROM hotspot_vouchers v
       LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
       LEFT JOIN routers r ON (v.router_id = r.id OR rp.router_id = r.id)
@@ -687,7 +747,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       hotspot_ip: row.hotspot_ip || '10.0.0.1',
       dns_name: row.dns_name || 'arab.net',
       status: row.status === 'sold' || row.status === 'active' ? 'SUCCESS' : row.status,
-      paymentChannel: row.payment_channel
+      paymentChannel: row.payment_channel,
+      is_flash_sale: Boolean((row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
     }));
 
     res.json({ success: true, vouchers: formatted });

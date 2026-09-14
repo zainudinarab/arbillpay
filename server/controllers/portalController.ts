@@ -24,7 +24,14 @@ export const defaultPortalConfig = {
     subtitle: 'Voucher 24 Jam Nonstop Diskon Spesial',
     badge_label: 'PROMO TERBATAS',
     end_time: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    discount_text: 'Hanya Rp 5.000 (Hemat 40%)',
+    discount_text: 'Hanya Rp 2.500 (Hemat 50%)',
+    target_package_id: '',
+    target_package_name: '',
+    original_price: 5000,
+    promo_price: 2500,
+    quota_limit: 50,
+    quota_sold: 0,
+    max_per_user: 1,
     button_text: 'Beli Sekarang'
   },
   sections: [
@@ -124,6 +131,12 @@ export async function savePortalConfig(req: Request, res: Response) {
         end_time: config.flash_sale?.end_time || defaultPortalConfig.flash_sale.end_time,
         discount_text: (config.flash_sale?.discount_text || defaultPortalConfig.flash_sale.discount_text).trim(),
         target_package_id: config.flash_sale?.target_package_id || '',
+        target_package_name: config.flash_sale?.target_package_name || '',
+        original_price: Number(config.flash_sale?.original_price ?? defaultPortalConfig.flash_sale.original_price),
+        promo_price: Number(config.flash_sale?.promo_price ?? defaultPortalConfig.flash_sale.promo_price),
+        quota_limit: Number(config.flash_sale?.quota_limit ?? 50),
+        quota_sold: Number(config.flash_sale?.quota_sold ?? 0),
+        max_per_user: Number(config.flash_sale?.max_per_user ?? 1),
         button_text: (config.flash_sale?.button_text || defaultPortalConfig.flash_sale.button_text).trim()
       },
       sections: Array.isArray(config.sections) ? config.sections : defaultPortalConfig.sections

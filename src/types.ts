@@ -128,6 +128,12 @@ export interface CustomerPortalConfig {
     end_time: string; // ISO datetime string e.g. "2026-09-30T23:59:59"
     discount_text: string;
     target_package_id?: string;
+    target_package_name?: string;
+    original_price?: number;
+    promo_price?: number;
+    quota_limit?: number;
+    quota_sold?: number;
+    max_per_user?: number;
     button_text: string;
   };
   sections: CustomerPortalSection[];
