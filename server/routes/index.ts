@@ -11,6 +11,7 @@ import genieacsRoutes from './genieacsRoutes.js';
 import mikrotikRoutes from './mikrotikRoutes.js';
 import ftthMapRoutes from './ftthMapRoutes.js';
 import pppRoutes from './pppRoutes.js';
+import portalRoutes from './portalRoutes.js';
 
 const router = Router();
 
@@ -35,6 +36,8 @@ router.use('/vouchers', voucherRoutes);
 router.use('/genieacs', genieacsRoutes);
 router.use('/ftth', ftthMapRoutes);
 router.use('/ppp', pppRoutes);
+router.use('/portal', portalRoutes);
+router.use('/', portalRoutes);
 router.use('/mikrotik', mikrotikRoutes);
 router.use('/', mikrotikRoutes);
 

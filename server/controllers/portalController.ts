@@ -1,0 +1,151 @@
+import { Request, Response } from 'express';
+import { pool } from '../config/db.js';
+import { redisGet, redisSet, redisDel } from '../config/redis.js';
+
+export const defaultPortalConfig = {
+  template_theme: 'dark_glass', // 'dark_glass' | 'clean_light' | 'mikhmon_compact' | 'voucher_store'
+  primary_color: 'emerald', // 'emerald' | 'indigo' | 'rose' | 'sky' | 'amber'
+  branding: {
+    hotspot_name: 'ARBILL Hotspot & Internet',
+    tagline: 'Internet Cepat, Beli Voucher Instan & Bayar Tagihan Mudah',
+    contact_phone: '081234567890',
+    logo_url: '',
+    banner_url: ''
+  },
+  announcement: {
+    enabled: true,
+    text: 'Beli voucher WiFi sekarang lebih mudah via QRIS & Saldo ArabPay! Aktif otomatis 24 Jam.',
+    type: 'info'
+  },
+  sections: [
+    { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
+    { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
+    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 3 },
+    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 4 },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 5, variant: 'grid' },
+    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 6 },
+    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 7 }
+  ]
+};
+
+const REDIS_KEY = 'arbil:customer_portal_config';
+
+/**
+ * Mendapatkan konfigurasi template & layout Customer Portal
+ */
+export async function getPortalConfig(req: Request, res: Response) {
+  try {
+    // 1. Cek cache Redis
+    try {
+      const cached = await redisGet(REDIS_KEY);
+      if (cached) {
+        return res.json({ success: true, config: cached, source: 'cache' });
+      }
+    } catch (_) {}
+
+    // 2. Ambil dari PostgreSQL system_settings
+    const row = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_portal_config' LIMIT 1");
+    if (row.rows.length > 0 && row.rows[0].value) {
+      try {
+        const parsed = JSON.parse(row.rows[0].value);
+        // Merge with default to ensure backward compatibility if new keys are added
+        const merged = {
+          ...defaultPortalConfig,
+          ...parsed,
+          branding: { ...defaultPortalConfig.branding, ...(parsed.branding || {}) },
+          announcement: { ...defaultPortalConfig.announcement, ...(parsed.announcement || {}) },
+          sections: Array.isArray(parsed.sections) && parsed.sections.length > 0 ? parsed.sections : defaultPortalConfig.sections
+        };
+        try {
+          await redisSet(REDIS_KEY, merged, 300); // 5 menit
+        } catch (_) {}
+        return res.json({ success: true, config: merged, source: 'db' });
+      } catch (parseErr) {
+        console.warn('Gagal parse customer_portal_config JSON:', parseErr);
+      }
+    }
+
+    // 3. Fallback default
+    return res.json({ success: true, config: defaultPortalConfig, source: 'default' });
+  } catch (err: any) {
+    console.error('Error fetching portal config:', err);
+    return res.json({ success: true, config: defaultPortalConfig, source: 'error_fallback' });
+  }
+}
+
+/**
+ * Menyimpan konfigurasi template & layout Customer Portal dari Admin
+ */
+export async function savePortalConfig(req: Request, res: Response) {
+  try {
+    const { config } = req.body;
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'Format konfigurasi portal tidak valid.' });
+    }
+
+    // Pastikan struktur valid
+    const cleanConfig = {
+      template_theme: config.template_theme || 'dark_glass',
+      primary_color: config.primary_color || 'emerald',
+      branding: {
+        hotspot_name: (config.branding?.hotspot_name || 'ARBILL Hotspot & Internet').trim(),
+        tagline: (config.branding?.tagline || 'Internet Cepat & Hemat').trim(),
+        contact_phone: (config.branding?.contact_phone || '').trim(),
+        logo_url: (config.branding?.logo_url || '').trim(),
+        banner_url: (config.branding?.banner_url || '').trim()
+      },
+      announcement: {
+        enabled: config.announcement?.enabled !== false,
+        text: (config.announcement?.text || '').trim(),
+        type: config.announcement?.type || 'info'
+      },
+      sections: Array.isArray(config.sections) ? config.sections : defaultPortalConfig.sections
+    };
+
+    const jsonStr = JSON.stringify(cleanConfig);
+
+    await pool.query(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('customer_portal_config', $1, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `, [jsonStr]);
+
+    // Hapus dan update cache Redis
+    try {
+      await redisDel(REDIS_KEY);
+      await redisSet(REDIS_KEY, cleanConfig, 300);
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: '✅ Konfigurasi Tampilan Pelanggan Berhasil Disimpan!',
+      config: cleanConfig
+    });
+  } catch (err: any) {
+    console.error('Error saving portal config:', err);
+    return res.status(500).json({
+      success: false,
+      message: `Gagal menyimpan konfigurasi tampilan: ${err.message}`
+    });
+  }
+}
+
+/**
+ * Reset konfigurasi ke pengaturan default
+ */
+export async function resetPortalConfig(req: Request, res: Response) {
+  try {
+    await pool.query("DELETE FROM system_settings WHERE key = 'customer_portal_config'");
+    try {
+      await redisDel(REDIS_KEY);
+    } catch (_) {}
+
+    return res.json({
+      success: true,
+      message: '🔄 Konfigurasi tampilan berhasil dikembalikan ke standar!',
+      config: defaultPortalConfig
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: `Gagal reset konfigurasi: ${err.message}` });
+  }
+}

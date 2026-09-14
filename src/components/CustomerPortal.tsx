@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { UserAccount } from '../types';
+import { UserAccount, CustomerPortalConfig } from '../types';
 import {
   Wifi, Zap, Clock, Shield, ShoppingCart, Wallet, X,
   CheckCircle2, Lock, ArrowRight, Loader2, AlertCircle,
   Star, Sparkles, Globe, Signal, Timer, ChevronRight,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
-  QrCode, Copy, FileText, Search, Ticket, UserCheck, Info
+  QrCode, Copy, FileText, Search, Ticket, UserCheck, Info,
+  MessageCircle, Megaphone
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
@@ -160,6 +161,31 @@ export default function CustomerPortal({
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
 
+  // Portal Template & Layout Configuration (Loaded dynamically from Admin)
+  const [portalConfig, setPortalConfig] = useState<CustomerPortalConfig | null>(() => {
+    try {
+      const saved = localStorage.getItem('arbil_portal_config');
+      return saved ? JSON.parse(saved) : null;
+    } catch (_) {
+      return null;
+    }
+  });
+
+  const fetchPortalConfig = async () => {
+    try {
+      const res = await fetch('/api/portal-config');
+      const data = await res.json();
+      if (data.success && data.config) {
+        setPortalConfig(data.config);
+        try {
+          localStorage.setItem('arbil_portal_config', JSON.stringify(data.config));
+        } catch (_) {}
+      }
+    } catch (err) {
+      console.warn('Gagal memuat portal config:', err);
+    }
+  };
+
   const apiUrl = getApiUrl();
 
   const formatRupiah = (val: number) => {
@@ -168,6 +194,7 @@ export default function CustomerPortal({
 
   // --- INITIAL & LIVE AUTO-REFRESH DATA FETCHING ---
   useEffect(() => {
+    fetchPortalConfig();
     fetchCheckoutInit();
     fetchAvailableVouchers();
     fetchMonthlyMemberPackages();
@@ -1226,22 +1253,68 @@ export default function CustomerPortal({
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased flex flex-col justify-between">
+  // Theme & Layout Builder configurations from portalConfig
+  const currentTheme = portalConfig?.template_theme || 'dark_glass';
+  const isLight = currentTheme === 'clean_light' || currentTheme === 'mikhmon_compact';
+  const hotspotName = portalConfig?.branding?.hotspot_name || 'NETSPOT / ARBIL';
+  const tagline = portalConfig?.branding?.tagline || 'Hotspot & Broadband Portal';
+  const contactPhone = portalConfig?.branding?.contact_phone || '';
+  const announcement = portalConfig?.announcement;
 
-      {/* ==================== NAVBAR (Persis arbiljs Vouchers.vue) ==================== */}
-      <nav className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
+  const isSectionEnabled = (sectionId: string) => {
+    if (!portalConfig?.sections) return true;
+    const found = portalConfig.sections.find(s => s.id === sectionId);
+    return found ? found.enabled : true;
+  };
+
+  const voucherVariant = portalConfig?.sections?.find(s => s.id === 'vouchers')?.variant || 'grid';
+
+  const getThemeContainerClass = () => {
+    switch (currentTheme) {
+      case 'clean_light':
+        return 'min-h-screen bg-slate-50 text-slate-900 font-sans antialiased flex flex-col justify-between';
+      case 'mikhmon_compact':
+        return 'min-h-screen bg-slate-100 text-slate-800 font-sans antialiased flex flex-col justify-between';
+      case 'voucher_store':
+        return 'min-h-screen bg-gradient-to-b from-[#0b0f19] via-[#0f172a] to-[#020617] text-slate-100 font-sans antialiased flex flex-col justify-between';
+      case 'dark_glass':
+      default:
+        return 'min-h-screen bg-slate-950 text-slate-100 font-sans antialiased flex flex-col justify-between';
+    }
+  };
+
+  const getNavClass = () => {
+    switch (currentTheme) {
+      case 'clean_light':
+        return 'sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-slate-200 shadow-xs text-slate-800';
+      case 'mikhmon_compact':
+        return 'sticky top-0 z-40 bg-slate-900 text-white border-b border-slate-800 shadow-md';
+      case 'voucher_store':
+        return 'sticky top-0 z-40 bg-[#0b0f19]/90 backdrop-blur-xl border-b border-indigo-950/60 shadow-lg text-white';
+      case 'dark_glass':
+      default:
+        return 'sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 text-white';
+    }
+  };
+
+  return (
+    <div className={getThemeContainerClass()}>
+
+      {/* ==================== NAVBAR ==================== */}
+      <nav className={getNavClass()}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Wifi className="w-5 h-5 text-white" />
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
+              <Wifi className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-bold text-lg tracking-wide bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent leading-none">
-                NETSPOT / ARBIL
+              <h1 className={`font-bold text-lg tracking-wide leading-none ${
+                isLight ? 'text-slate-900' : 'bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent'
+              }`}>
+                {hotspotName}
               </h1>
-              <p className="text-[10px] font-medium text-slate-500 mt-0.5">Hotspot & Broadband Portal</p>
+              <p className="text-[10px] font-medium text-slate-500 mt-0.5">{tagline}</p>
             </div>
           </div>
 
@@ -1304,16 +1377,35 @@ export default function CustomerPortal({
         </div>
       </nav>
 
-      {/* ==================== COMPACT 1-LINE HEADER (Mobile Clean View) ==================== */}
-      <div className="relative py-2.5 px-4 border-b border-slate-800/60 bg-slate-950/50 backdrop-blur-md text-center">
-        <p className="text-xs sm:text-sm font-medium text-slate-300">
-          <Signal className="inline w-3.5 h-3.5 mr-1.5 text-emerald-400 -mt-0.5" />
-          <span className="font-bold text-white">Beli Voucher WiFi Instan</span> — Bayar Saldo <span className="text-emerald-400 font-semibold">ArabPay Wallet</span>
-        </p>
-      </div>
+      {/* ==================== ANNOUNCEMENT BAR ==================== */}
+      {isSectionEnabled('announcement') && (
+        announcement?.enabled && announcement?.text ? (
+          <div className={`relative py-2 px-4 text-center border-b ${
+            announcement.type === 'promo'
+              ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+              : announcement.type === 'warning'
+              ? 'bg-amber-950/60 border-amber-500/30 text-amber-300'
+              : 'bg-indigo-950/60 border-indigo-500/30 text-indigo-300'
+          }`}>
+            <p className="text-xs sm:text-sm font-semibold flex items-center justify-center gap-2">
+              <Megaphone className="w-3.5 h-3.5 shrink-0 text-amber-400 animate-pulse" />
+              <span>{announcement.text}</span>
+            </p>
+          </div>
+        ) : (
+          <div className={`relative py-2.5 px-4 border-b text-center ${
+            isLight ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-950/50 border-slate-800/60 text-slate-300 backdrop-blur-md'
+          }`}>
+            <p className="text-xs sm:text-sm font-medium">
+              <Signal className="inline w-3.5 h-3.5 mr-1.5 text-emerald-400 -mt-0.5" />
+              <span className="font-bold text-white">Beli Voucher WiFi Instan</span> — Bayar Saldo <span className="text-emerald-400 font-semibold">ArabPay Wallet</span>
+            </p>
+          </div>
+        )
+      )}
 
       {/* Main Container */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 space-y-8 flex-1 w-full">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 space-y-6 flex-1 w-full">
 
         {/* Toast Alert Notification */}
         {toastMsg && (
@@ -1326,69 +1418,216 @@ export default function CustomerPortal({
             <button onClick={() => setToastMsg(null)} className="text-xs font-bold underline cursor-pointer">Tutup</button>
           </div>
         )}
-        {/* ==================== CARD SALDO ARABPAY (RESPONSIVE ULTRA-MODERN FINTECH CARD) ==================== */}
-        {currentUser && (
-          <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/70 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
-            {/* Ambient Lighting & Pattern Overlay */}
-            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
-            <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
 
-            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
-              {/* Left Side: Wallet Chip Header & Big Balance */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between sm:justify-start gap-2">
-                  <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
-                    <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>SALDO ARABPAY WALLET</span>
-                  </div>
-                  <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span>SSE Synced</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                    {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+        {/* ==================== HERO SECTION (BRANDING & WIFI WELCOME) ==================== */}
+        {isSectionEnabled('hero') && (
+          <div className={`relative overflow-hidden p-6 sm:p-7 rounded-3xl border shadow-xl backdrop-blur-xl ${
+            isLight
+              ? 'bg-gradient-to-br from-indigo-50/90 via-white to-sky-50/60 border-slate-200 text-slate-800'
+              : 'bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border-slate-800 text-white'
+          }`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="space-y-2 max-w-xl">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    Hotspot Online
                   </span>
-                  <button
-                    onClick={fetchLiveArabPayBalance}
-                    className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
-                    title="Refresh Saldo Live"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
-                  </button>
+                  <span className="text-xs text-slate-400">● Beli & Langsung Terhubung</span>
                 </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
-                  <span className="text-slate-500">Pemilik Akun:</span>
-                  <span className="font-bold text-slate-200">{currentUser.name}</span>
-                  <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
-                    {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
-                  </span>
-                </div>
+                <h2 className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  {hotspotName}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400 font-medium">
+                  {tagline}
+                </p>
               </div>
-
-              {/* Right Side: Action Buttons Grid (Super Compact & Touch-Friendly on HP) */}
-              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => setShowTopupModal(true)}
-                  className="col-span-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-xs rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                  onClick={() => setActiveTab('buy')}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Top Up Saldo</span>
-                </button>
-
-                <button
-                  onClick={() => setShowProfileModal(true)}
-                  className="col-span-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs sm:text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <UserCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Profil Saya</span>
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>Pilih Paket Voucher</span>
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ==================== WALLET WIDGET SECTION ==================== */}
+        {isSectionEnabled('wallet_widget') && (
+          currentUser ? (
+            /* Logged in: Responsive Fintech Card */
+            <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/70 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
+              {/* Ambient Lighting & Pattern Overlay */}
+              <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
+
+              <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+                {/* Left Side: Wallet Chip Header & Big Balance */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between sm:justify-start gap-2">
+                    <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
+                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>SALDO ARABPAY WALLET</span>
+                    </div>
+                    <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      <span>SSE Synced</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
+                      {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                    </span>
+                    <button
+                      onClick={fetchLiveArabPayBalance}
+                      className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
+                      title="Refresh Saldo Live"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                    <span className="text-slate-500">Pemilik Akun:</span>
+                    <span className="font-bold text-slate-200">{currentUser.name}</span>
+                    <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
+                      {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right Side: Action Buttons Grid */}
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
+                  <button
+                    onClick={() => setShowTopupModal(true)}
+                    className="col-span-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-xs rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Top Up Saldo</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="col-span-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs sm:text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Profil Saya</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Visitor / Guest: ArabPay Wallet Teaser */
+            <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+              isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
+            }`}>
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <span>Pembayaran Voucher Otomatis via ArabPay</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Gunakan e-wallet ArabPay untuk transaksi secepat kilat tanpa repot transfer berulang kali.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20 shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                <span>Login / Hubungkan Wallet</span>
+              </button>
+            </div>
+          )
+        )}
+
+        {/* ==================== QUICK BILLING CHECK SECTION ==================== */}
+        {isSectionEnabled('quick_billing') && (
+          <div className={`p-5 sm:p-6 rounded-3xl border shadow-lg ${
+            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/90 border-slate-800 text-white'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base">Cek & Bayar Tagihan Internet</h3>
+                  <p className="text-xs text-slate-400">Masukkan No. HP atau Username PPPoE Anda</p>
+                </div>
+              </div>
+              <span className="px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-bold">
+                Pelanggan Rumah
+              </span>
+            </div>
+
+            <form onSubmit={handleQuickCheckBill} className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text"
+                  value={searchIdentity}
+                  onChange={(e) => setSearchIdentity(e.target.value)}
+                  placeholder="Contoh: 08123456789 atau user_pppoe"
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-xs sm:text-sm font-medium outline-none transition ${
+                    isLight 
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500' 
+                      : 'bg-slate-950 border-slate-800 text-white focus:border-blue-500'
+                  }`}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={quickCheckLoading || !searchIdentity.trim()}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 cursor-pointer"
+              >
+                {quickCheckLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                <span>Cek Tagihan</span>
+              </button>
+            </form>
+
+            {/* Quick Check Bill Results */}
+            {quickCheckResult && (
+              <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-3 animate-fade-in">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300">{quickCheckResult.customer?.name} ({quickCheckResult.customer?.phone_number || quickCheckResult.customer?.username})</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
+                    {quickCheckResult.invoices?.length || 0} Tagihan
+                  </span>
+                </div>
+                {quickCheckResult.invoices?.length > 0 ? (
+                  <div className="space-y-2">
+                    {quickCheckResult.invoices.map((inv: any) => (
+                      <div key={inv.id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
+                        <div>
+                          <p className="font-bold text-white">{inv.invoice_number || 'Tagihan Bulanan'}</p>
+                          <p className="text-slate-500 text-[11px]">Jatuh Tempo: {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-emerald-400">{formatRupiah(Number(inv.amount || 0))}</p>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            inv.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                          }`}>
+                            {inv.status === 'paid' ? 'LUNAS' : 'BELUM DIBAYAR'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">Tidak ada tagihan tertunggak untuk akun ini.</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1537,6 +1776,79 @@ export default function CustomerPortal({
                 <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
                 <h3 className="text-lg font-bold text-slate-300">Belum Ada Voucher Tersedia</h3>
                 <p className="text-sm text-slate-500">Stok voucher hotspot sedang kosong. Hubungi admin.</p>
+              </div>
+            ) : voucherVariant === 'list' ? (
+              <div className="space-y-3">
+                {voucherGroups.map((pkg: any, idx: number) => {
+                  const price = Number(pkg.price || 0);
+                  const parsedV = parseIso8601(pkg.validity_iso);
+                  const validity = parsedV.val || pkg.validity_value || 1;
+                  const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
+                  const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
+
+                  return (
+                    <div
+                      key={pkg.profile_id || idx}
+                      className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                          color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
+                          color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
+                          color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
+                          color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
+                          color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
+                          'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          <Zap className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className={`font-bold text-sm sm:text-base ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
+                              {pkg.package_name || pkg.profile_name}
+                            </h4>
+                            {pkg.popular && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
+                                Populer
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5 font-medium">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-slate-500" /> {validity} {unit}
+                            </span>
+                            {pkg.rate_limit && (
+                              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                                <Zap className="w-3.5 h-3.5" /> {pkg.rate_limit}
+                              </span>
+                            )}
+                            <span className="hidden sm:inline text-slate-500">
+                              DNS: {pkg.dns_name || pkg.isp_name || 'arab.net'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">
+                        <div className="text-left sm:text-right">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
+                          <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono">
+                            {price === 0 ? 'GRATIS' : formatRupiah(price)}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleBuyVoucher(pkg)}
+                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
+                        >
+                          <ShoppingCart className="w-4 h-4" />
+                          <span>Beli Voucher</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
@@ -2146,15 +2458,31 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* ==================== FOOTER (Persis arbiljs) ==================== */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-8 px-4 sm:px-6 text-center space-y-3">
+      {/* ==================== FOOTER ==================== */}
+      <footer className={`border-t py-8 px-4 sm:px-6 text-center space-y-3 ${
+        isLight ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-900 bg-slate-950 text-slate-400'
+      }`}>
         <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1"><Shield className="w-3.5 h-3.5 text-indigo-400" /> OAuth 2.0</span>
           <span className="flex items-center gap-1"><Wallet className="w-3.5 h-3.5 text-emerald-400" /> ArabPay Wallet</span>
           <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-amber-400" /> Voucher Instan</span>
         </div>
-        <p className="text-xs text-slate-600">© 2026 Arbil WiFi & Broadband Ecosystem. Powered by ArabPay E-Wallet — arabpay.my.id</p>
+        <p className="text-xs text-slate-600">© 2026 {hotspotName} & Broadband Ecosystem. Powered by ArabPay E-Wallet — arabpay.my.id</p>
       </footer>
+
+      {/* Floating WhatsApp Customer Support Button */}
+      {contactPhone && isSectionEnabled('contact_footer') && (
+        <a
+          href={`https://wa.me/${contactPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Halo Admin, saya ingin bertanya seputar layanan WiFi ' + hotspotName)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="fixed bottom-6 right-6 z-40 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-full shadow-2xl hover:shadow-emerald-500/40 transition-all duration-300 flex items-center gap-2.5 font-bold text-xs group cursor-pointer border border-emerald-400/40"
+          title="Hubungi Admin CS via WhatsApp"
+        >
+          <MessageCircle className="w-5 h-5 fill-white text-emerald-600" />
+          <span className="hidden sm:inline">Bantuan CS</span>
+        </a>
+      )}
 
       {/* ==================== ARBILJS PAYMENT MODAL (Persis arbiljs) ==================== */}
       {showPaymentModal && selectedPackage && (

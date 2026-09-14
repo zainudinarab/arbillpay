@@ -73,6 +73,7 @@ import { formatCurrency, formatDate } from './utils';
 import LoginModal from './components/LoginModal';
 import PublicVoucherStore from './components/PublicVoucherStore';
 import CustomerPortal from './components/CustomerPortal';
+import PortalTemplateEditor from './components/PortalTemplateEditor';
 import SetupWizard from './components/SetupWizard';
 import { UserAccount } from './types';
 
@@ -1058,6 +1059,12 @@ const safeFormatDate = (val: any): string => {
             onUpdateProfile={handleUpdateProfile}
             t={t}
             onLogout={handleLogout}
+          />
+        );
+      case 'portal-editor':
+        return (
+          <PortalTemplateEditor
+            profile={profile}
           />
         );
       case 'notifications':

@@ -94,3 +94,29 @@ export interface BusinessProfile {
   storageUsed: number; // in GB
   storageMax: number; // in GB
 }
+
+export interface CustomerPortalSection {
+  id: 'announcement' | 'hero' | 'wallet_widget' | 'quick_billing' | 'vouchers' | 'monthly_packages' | 'contact_footer';
+  label: string;
+  enabled: boolean;
+  order: number;
+  variant?: 'grid' | 'list' | 'carousel';
+}
+
+export interface CustomerPortalConfig {
+  template_theme: 'dark_glass' | 'clean_light' | 'mikhmon_compact' | 'voucher_store';
+  primary_color: 'emerald' | 'indigo' | 'rose' | 'sky' | 'amber';
+  branding: {
+    hotspot_name: string;
+    tagline: string;
+    contact_phone: string;
+    logo_url?: string;
+    banner_url?: string;
+  };
+  announcement: {
+    enabled: boolean;
+    text: string;
+    type: 'info' | 'promo' | 'warning';
+  };
+  sections: CustomerPortalSection[];
+}
