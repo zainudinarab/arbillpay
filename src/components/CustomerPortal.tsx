@@ -1516,281 +1516,300 @@ export default function CustomerPortal({
           </div>
         )}
 
-        {/* ==================== HERO SECTION (BRANDING & WIFI WELCOME) ==================== */}
-        {isSectionEnabled('hero') && (
-          <div className={`relative overflow-hidden p-6 sm:p-7 rounded-3xl border shadow-xl backdrop-blur-xl ${
-            isLight
-              ? 'bg-gradient-to-br from-indigo-50/90 via-white to-sky-50/60 border-slate-200 text-slate-800'
-              : 'bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border-slate-800 text-white'
-          }`}>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="space-y-2 max-w-xl">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                    Hotspot Online
-                  </span>
-                  <span className="text-xs text-slate-400">● Beli & Langsung Terhubung</span>
-                </div>
-                <h2 className={`text-2xl sm:text-3xl font-black tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {hotspotName}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-400 font-medium">
-                  {tagline}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setActiveTab('buy')}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  <span>Pilih Paket Voucher</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* ==================== TOP 3-CARD DASHBOARD ROW (PC: 3 COLUMNS, HP: STACKED) ==================== */}
+        {(() => {
+          const showHero = isSectionEnabled('hero');
+          const showFlashSale = isSectionEnabled('flash_sale') && portalConfig?.flash_sale?.enabled;
+          const showWallet = isSectionEnabled('wallet_widget');
+          const activeCardsCount = (showHero ? 1 : 0) + (showFlashSale ? 1 : 0) + (showWallet ? 1 : 0);
 
-        {/* ==================== FLASH SALE & COUNTDOWN TIMER BANNER ==================== */}
-        {isSectionEnabled('flash_sale') && portalConfig?.flash_sale?.enabled && (
-          <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/30 shadow-lg shadow-rose-950/20 backdrop-blur-xl">
-            {/* Subtle glow */}
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-36 h-36 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 -mb-6 -ml-6 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          if (activeCardsCount === 0) return null;
 
-            <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 sm:gap-4">
-              {/* Left Details: Compact & Integrated */}
-              <div className="flex-1 min-w-0 space-y-2">
-                {/* Top Micro-Badges */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                    <Flame className="w-3 h-3 animate-bounce" />
-                    <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
-                  </span>
+          return (
+            <div className={`grid grid-cols-1 ${
+              activeCardsCount === 3 
+                ? 'lg:grid-cols-3' 
+                : activeCardsCount === 2 
+                  ? 'md:grid-cols-2' 
+                  : 'grid-cols-1'
+            } gap-4 sm:gap-5 items-stretch`}>
 
-                  <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>{portalConfig.flash_sale.discount_text || 'Diskon Terbatas'}</span>
-                  </span>
+              {/* CARD 1: HERO (BRANDING & WIFI WELCOME) */}
+              {showHero && (
+                <div className={`relative overflow-hidden p-5 sm:p-6 rounded-3xl border shadow-xl backdrop-blur-xl flex flex-col justify-between h-full ${
+                  isLight
+                    ? 'bg-gradient-to-br from-indigo-50/90 via-white to-sky-50/60 border-slate-200 text-slate-800'
+                    : 'bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border-slate-800 text-white'
+                }`}>
+                  {/* Subtle lighting glow */}
+                  <div className="absolute top-0 right-0 -mt-8 -mr-8 w-36 h-36 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
 
-                  {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                    <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
-                      Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
-                    </span>
-                  )}
-
-                  <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
-                    🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
-                  </span>
-                </div>
-
-                {/* Title & Product Info in sleek inline flow */}
-                <div className="flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-                  <h3 className="text-sm sm:text-base font-black text-white tracking-tight flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span>{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
-                  </h3>
-                  <span className="text-xs text-rose-200/90 font-medium truncate">
-                    {portalConfig.flash_sale.target_package_name ? `• ${portalConfig.flash_sale.target_package_name}` : (portalConfig.flash_sale.subtitle || '')}
-                  </span>
-                </div>
-
-                {/* Pricing & Mini Quota Bar */}
-                <div className="flex items-center gap-3 sm:gap-4 flex-wrap pt-0.5">
-                  <div className="flex items-baseline gap-2">
-                    {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                      <span className="text-xs text-slate-400 line-through font-mono">
-                        {formatRupiah(Number(portalConfig.flash_sale.original_price))}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        Hotspot Online
                       </span>
-                    )}
-                    <span className="text-base sm:text-lg font-black text-amber-300 font-mono">
-                      {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
-                    </span>
-                  </div>
-
-                  <div className="h-3 w-px bg-slate-700 hidden sm:block" />
-
-                  {/* Mini Quota indicator */}
-                  <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-slate-400">
-                    <span>Kuota:</span>
-                    <div className="w-20 sm:w-28 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
-                      <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                        style={{
-                          width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
-                        }}
-                      />
+                      <span className="text-[11px] text-slate-400">● Beli & Langsung Terhubung</span>
                     </div>
-                    <span className="font-mono text-slate-300 font-semibold">
-                      {portalConfig.flash_sale.quota_sold || 0}/{portalConfig.flash_sale.quota_limit || 100}
-                    </span>
-                    <span className="text-[10px] text-amber-400/80">
-                      ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: Compact Countdown & Action Button */}
-              <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-rose-500/20 shrink-0">
-                {/* Compact Countdown */}
-                <div className="flex items-center gap-1 sm:gap-1.5">
-                  {countdown.days > 0 && (
-                    <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
-                      <span className="text-xs sm:text-sm font-black font-mono text-white leading-none">
-                        {String(countdown.days).padStart(2, '0')}
-                      </span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Hari</span>
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
-                    <span className="text-xs sm:text-sm font-black font-mono text-amber-300 leading-none">
-                      {String(countdown.hours).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Jam</span>
-                  </div>
-                  <span className="text-xs font-bold text-rose-400 font-mono">:</span>
-                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
-                    <span className="text-xs sm:text-sm font-black font-mono text-amber-300 leading-none">
-                      {String(countdown.minutes).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Mnt</span>
-                  </div>
-                  <span className="text-xs font-bold text-rose-400 font-mono">:</span>
-                  <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-lg min-w-[34px] sm:min-w-[38px]">
-                    <span className="text-xs sm:text-sm font-black font-mono text-rose-400 leading-none animate-pulse">
-                      {String(countdown.seconds).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase leading-none mt-0.5">Dtk</span>
-                  </div>
-                </div>
-
-                {/* Compact Action CTA Button */}
-                {userHasClaimedFlashSale ? (
-                  <button
-                    disabled
-                    className="px-3.5 py-2 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="whitespace-nowrap">Sudah Diklaim</span>
-                  </button>
-                ) : isFlashSaleSoldOut ? (
-                  <button
-                    disabled
-                    className="px-3.5 py-2 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
-                  >
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span className="whitespace-nowrap">Habis</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleBuyFlashSale}
-                    className="px-4 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-rose-600/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95 whitespace-nowrap"
-                  >
-                    <Flame className="w-3.5 h-3.5 shrink-0" />
-                    <span>{portalConfig.flash_sale.button_text || 'Beli Promo'}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ==================== WALLET WIDGET SECTION ==================== */}
-        {isSectionEnabled('wallet_widget') && (
-          currentUser ? (
-            /* Logged in: Responsive Fintech Card */
-            <div className="relative overflow-hidden p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/70 border border-emerald-500/30 shadow-2xl shadow-emerald-500/10 backdrop-blur-xl">
-              {/* Ambient Lighting & Pattern Overlay */}
-              <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
-
-              <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
-                {/* Left Side: Wallet Chip Header & Big Balance */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between sm:justify-start gap-2">
-                    <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
-                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>SALDO ARABPAY WALLET</span>
-                    </div>
-                    <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      <span>SSE Synced</span>
+                    <div>
+                      <h2 className={`text-xl sm:text-2xl font-black tracking-tight leading-snug ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {hotspotName}
+                      </h2>
+                      <p className="text-xs text-slate-400 font-medium mt-1 line-clamp-2">
+                        {tagline}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                      {formatRupiah(currentUser.arabpay_balance ?? 150000)}
-                    </span>
+                  <div className="pt-4 mt-auto">
                     <button
-                      onClick={fetchLiveArabPayBalance}
-                      className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
-                      title="Refresh Saldo Live"
+                      onClick={() => setActiveTab('buy')}
+                      className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
                     >
-                      <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+                      <ShoppingCart className="w-4 h-4" />
+                      <span>Pilih Paket Voucher</span>
                     </button>
                   </div>
+                </div>
+              )}
 
-                  <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
-                    <span className="text-slate-500">Pemilik Akun:</span>
-                    <span className="font-bold text-slate-200">{currentUser.name}</span>
-                    <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
-                      {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
-                    </span>
+              {/* CARD 2: FLASH SALE & COUNTDOWN TIMER */}
+              {showFlashSale && (
+                <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/30 shadow-xl shadow-rose-950/20 backdrop-blur-xl flex flex-col justify-between h-full">
+                  {/* Glowing accents */}
+                  <div className="absolute top-0 right-0 -mt-8 -mr-8 w-36 h-36 bg-rose-500/15 rounded-full blur-2xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                  <div className="space-y-2.5">
+                    {/* Micro Badges */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                        <Flame className="w-3 h-3 animate-bounce" />
+                        <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
+                      </span>
+
+                      {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                        <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
+                          Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
+                        </span>
+                      )}
+
+                      <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
+                        🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
+                      </span>
+                    </div>
+
+                    {/* Title & Product Info */}
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-1.5">
+                        <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="truncate">{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
+                      </h3>
+                      <p className="text-xs text-rose-200/90 font-medium truncate mt-0.5">
+                        {portalConfig.flash_sale.target_package_name || portalConfig.flash_sale.subtitle || 'Voucher Hotspot Pilihan'}
+                      </p>
+                    </div>
+
+                    {/* Pricing & Quota */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-baseline gap-2">
+                        {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                          <span className="text-xs text-slate-400 line-through font-mono">
+                            {formatRupiah(Number(portalConfig.flash_sale.original_price))}
+                          </span>
+                        )}
+                        <span className="text-lg sm:text-xl font-black text-amber-300 font-mono">
+                          {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
+                        </span>
+                      </div>
+
+                      {/* Quota indicator */}
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] font-semibold text-slate-300">
+                          <span className="text-slate-400">Kuota Terjual</span>
+                          <span className="font-mono text-amber-300">
+                            {portalConfig.flash_sale.quota_sold || 0} / {portalConfig.flash_sale.quota_limit || 100}
+                            <span className="text-slate-400 ml-1">
+                              ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
+                            </span>
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom: Countdown & Action Button */}
+                  <div className="pt-3 mt-auto space-y-2.5 border-t border-rose-500/20">
+                    {/* Mini Countdown */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Berakhir Dalam:</span>
+                      <div className="flex items-center gap-1">
+                        {countdown.days > 0 && (
+                          <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded-lg min-w-[28px]">
+                            <span className="text-xs font-black font-mono text-white leading-none">
+                              {String(countdown.days).padStart(2, '0')}
+                            </span>
+                            <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mt-0.5">Hari</span>
+                          </div>
+                        )}
+                        <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded-lg min-w-[28px]">
+                          <span className="text-xs font-black font-mono text-amber-300 leading-none">
+                            {String(countdown.hours).padStart(2, '0')}
+                          </span>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mt-0.5">Jam</span>
+                        </div>
+                        <span className="text-xs font-bold text-rose-400 font-mono">:</span>
+                        <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded-lg min-w-[28px]">
+                          <span className="text-xs font-black font-mono text-amber-300 leading-none">
+                            {String(countdown.minutes).padStart(2, '0')}
+                          </span>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mt-0.5">Mnt</span>
+                        </div>
+                        <span className="text-xs font-bold text-rose-400 font-mono">:</span>
+                        <div className="flex flex-col items-center justify-center bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded-lg min-w-[28px]">
+                          <span className="text-xs font-black font-mono text-rose-400 leading-none animate-pulse">
+                            {String(countdown.seconds).padStart(2, '0')}
+                          </span>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mt-0.5">Dtk</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CTA Action Button */}
+                    {userHasClaimedFlashSale ? (
+                      <button
+                        disabled
+                        className="w-full py-2.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Sudah Diklaim (Maks. 1)</span>
+                      </button>
+                    ) : isFlashSaleSoldOut ? (
+                      <button
+                        disabled
+                        className="w-full py-2.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        <span>Kuota Promo Habis</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleBuyFlashSale}
+                        className="w-full py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 active:scale-[0.98] text-white font-extrabold text-xs rounded-xl shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Flame className="w-3.5 h-3.5 shrink-0" />
+                        <span>{portalConfig.flash_sale.button_text || 'Beli Promo'}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
+              )}
 
-                {/* Right Side: Action Buttons Grid */}
-                <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
-                  <button
-                    onClick={() => setShowTopupModal(true)}
-                    className="col-span-1 px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs sm:text-xs rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Top Up Saldo</span>
-                  </button>
+              {/* CARD 3: WALLET WIDGET */}
+              {showWallet && (
+                currentUser ? (
+                  /* Logged in: Responsive Fintech Card */
+                  <div className="relative overflow-hidden p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/70 border border-emerald-500/30 shadow-xl shadow-emerald-500/10 backdrop-blur-xl flex flex-col justify-between h-full">
+                    {/* Ambient Lighting */}
+                    <div className="absolute top-0 right-0 -mt-8 -mr-8 w-36 h-36 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-36 h-36 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
 
-                  <button
-                    onClick={() => setShowProfileModal(true)}
-                    className="col-span-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs sm:text-xs rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
-                  >
-                    <UserCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Profil Saya</span>
-                  </button>
-                </div>
-              </div>
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="px-2.5 py-0.5 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-[10px] font-black text-emerald-300">
+                          <Wallet className="w-3 h-3 text-emerald-400" />
+                          <span>SALDO ARABPAY</span>
+                        </div>
+                        <div className="px-2 py-0.5 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1 text-[10px] font-bold text-slate-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                          <span>SSE Synced</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent truncate">
+                          {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                        </span>
+                        <button
+                          onClick={fetchLiveArabPayBalance}
+                          className="p-1.5 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-lg text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
+                          title="Refresh Saldo Live"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap">
+                        <span className="text-slate-500">Akun:</span>
+                        <span className="font-bold text-slate-200 truncate">{currentUser.name}</span>
+                        <span className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-[9px] text-slate-400 font-mono">
+                          {currentUser.phone_number || currentUser.email || 'Aktif'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-4 mt-auto">
+                      <button
+                        onClick={() => setShowTopupModal(true)}
+                        className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.98] text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Top Up</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowProfileModal(true)}
+                        className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 active:scale-[0.98] border border-slate-700 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Profil</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Visitor / Guest: ArabPay Wallet Teaser */
+                  <div className={`p-5 sm:p-6 rounded-3xl border shadow-xl flex flex-col justify-between h-full ${
+                    isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
+                  }`}>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                          <Wallet className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">ArabPay E-Wallet</span>
+                      </div>
+                      <h4 className="font-extrabold text-sm sm:text-base">
+                        Bayar Otomatis & Instan
+                      </h4>
+                      <p className="text-xs text-slate-400">
+                        Gunakan e-wallet ArabPay untuk beli voucher instan tanpa repot transfer.
+                      </p>
+                    </div>
+                    <div className="pt-4 mt-auto">
+                      <button
+                        onClick={() => setShowLoginModal(true)}
+                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>Hubungkan Wallet</span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
+
             </div>
-          ) : (
-            /* Visitor / Guest: ArabPay Wallet Teaser */
-            <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-              isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
-            }`}>
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
-                  <Wallet className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-sm flex items-center gap-2">
-                    <span>Pembayaran Voucher Otomatis via ArabPay</span>
-                  </h4>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Gunakan e-wallet ArabPay untuk transaksi secepat kilat tanpa repot transfer berulang kali.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowLoginModal(true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20 shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <Wallet className="w-3.5 h-3.5" />
-                <span>Login / Hubungkan Wallet</span>
-              </button>
-            </div>
-          )
-        )}
+          );
+        })()}
 
         {/* ==================== QUICK BILLING CHECK SECTION ==================== */}
         {isSectionEnabled('quick_billing') && (
