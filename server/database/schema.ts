@@ -28,6 +28,7 @@ export async function initDatabaseSchema() {
         username VARCHAR(64) DEFAULT 'admin',
         password VARCHAR(255) DEFAULT '',
         dns_name VARCHAR(255) DEFAULT 'arab.net',
+        hotspot_ip VARCHAR(64) DEFAULT '10.0.0.1',
         status VARCHAR(32) DEFAULT 'online',
         last_synced TIMESTAMP WITH TIME ZONE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -258,7 +259,8 @@ export async function initDatabaseSchema() {
       DROP COLUMN IF EXISTS grace_period_days;
 
       ALTER TABLE routers
-      ADD COLUMN IF NOT EXISTS dns_name VARCHAR(255) DEFAULT 'arab.net';
+      ADD COLUMN IF NOT EXISTS dns_name VARCHAR(255) DEFAULT 'arab.net',
+      ADD COLUMN IF NOT EXISTS hotspot_ip VARCHAR(64) DEFAULT '10.0.0.1';
 
       -- Pastikan default validity_iso dan grace_period_iso terisi jika masih NULL
       UPDATE packages SET validity_iso = 'P1M' WHERE validity_iso IS NULL;

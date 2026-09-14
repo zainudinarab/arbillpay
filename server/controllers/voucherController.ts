@@ -245,6 +245,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         r.id as router_id,
         r.name as router_name,
         COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
         COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
         COALESCE(p.name, rp.name) as package_name,
         COALESCE(p.price, 0)::int as price,
@@ -259,7 +260,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       WHERE rp.package_id IS NOT NULL
         AND COALESCE(rp.is_active, true) = true
         AND COALESCE(p.is_active, true) = true
-      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, p.name, p.price, p.validity_iso, p.quota_mb
+      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb
       ORDER BY COALESCE(p.price, 0) ASC
     `);
 
@@ -277,6 +278,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         COALESCE(r.id, 'rtr-pusat-01') as router_id,
         COALESCE(r.name, 'Router Utama') as router_name,
         COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
         COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
         999 as stock,
         'ondemand' as mode
@@ -587,13 +589,32 @@ export async function buyVoucher(req: Request, res: Response) {
       voucherCode
     ]);
 
+    // Cari hotspot_ip dan dns_name router terkait
+    let targetHotspotIp = '10.0.0.1';
+    let targetDnsName = 'arab.net';
+    try {
+      const rInfo = await pool.query(`
+        SELECT COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip, COALESCE(r.dns_name, 'arab.net') as dns_name
+        FROM router_profiles rp
+        JOIN routers r ON rp.router_id = r.id
+        WHERE rp.id = $1 OR rp.package_id = $1
+        LIMIT 1
+      `, [profile_id]);
+      if (rInfo.rows.length > 0) {
+        targetHotspotIp = rInfo.rows[0].hotspot_ip || '10.0.0.1';
+        targetDnsName = rInfo.rows[0].dns_name || 'arab.net';
+      }
+    } catch (_) {}
+
     res.json({
       success: true,
       message: `✅ Voucher berhasil ${isFromPreGenerated ? 'diambil dari stok' : 'dibuat instan'}! Gunakan kode di bawah untuk login ke WiFi Hotspot.${!isFromPreGenerated && !livePushSuccess ? ` (Perhatian MikroTik: ${livePushError})` : ''}`,
       voucher: {
         id: voucherId,
         code: voucherCode,
-        password: voucherPass
+        password: voucherPass,
+        hotspot_ip: targetHotspotIp,
+        dns_name: targetDnsName
       },
       mikrotik_synced: isFromPreGenerated ? true : livePushSuccess,
       mikrotik_error: livePushError || undefined,
@@ -635,10 +656,13 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         COALESCE(p.name, rp.name, 'Voucher Hotspot') as package_name,
         p.validity_iso,
         p.speed_limit as rate_limit,
+        COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
+        COALESCE(r.dns_name, 'arab.net') as dns_name,
         COALESCE(i.amount, p.price, 0)::int as price,
         COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel
       FROM hotspot_vouchers v
       LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN routers r ON (v.router_id = r.id OR rp.router_id = r.id)
       LEFT JOIN packages p ON rp.package_id = p.id
       LEFT JOIN invoices i ON (v.invoice_id = i.id OR i.voucher_id = v.id OR (v.invoice_number IS NOT NULL AND i.invoice_number = v.invoice_number))
       WHERE (
@@ -660,6 +684,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       price: Number(row.price || 0),
       username: row.username,
       password: row.password,
+      hotspot_ip: row.hotspot_ip || '10.0.0.1',
+      dns_name: row.dns_name || 'arab.net',
       status: row.status === 'sold' || row.status === 'active' ? 'SUCCESS' : row.status,
       paymentChannel: row.payment_channel
     }));

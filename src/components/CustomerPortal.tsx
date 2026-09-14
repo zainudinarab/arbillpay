@@ -146,7 +146,7 @@ export default function CustomerPortal({
   const [paymentMethod, setPaymentMethod] = useState<'balance' | 'direct'>('balance');
   const [checkoutId, setCheckoutId] = useState('');
   const [directCheckoutInfo, setDirectCheckoutInfo] = useState<any>(null);
-  const [voucherResult, setVoucherResult] = useState<{ code: string; password: string; invoice: string } | null>(null);
+  const [voucherResult, setVoucherResult] = useState<{ code: string; password: string; invoice: string; hotspot_ip?: string; dns_name?: string } | null>(null);
 
   // Status Check State for History
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -978,7 +978,9 @@ export default function CustomerPortal({
         setVoucherResult({
           code: buyData.voucher.code,
           password: buyData.voucher.password,
-          invoice: buyData.invoice_number
+          invoice: buyData.invoice_number,
+          hotspot_ip: buyData.voucher.hotspot_ip || selectedPackage?.hotspot_ip || '10.0.0.1',
+          dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'arab.net'
         });
         setPaymentStep('success');
         fetchAvailableVouchers();
@@ -1212,7 +1214,9 @@ export default function CustomerPortal({
       setVoucherResult({
         code: finalVoucherCode,
         password: finalVoucherPass,
-        invoice: invoiceNum
+        invoice: invoiceNum,
+        hotspot_ip: selectedPackage?.hotspot_ip || '10.0.0.1',
+        dns_name: selectedPackage?.dns_name || 'arab.net'
       });
       setPaymentStep('success');
       fetchAvailableVouchers();
@@ -2298,7 +2302,7 @@ export default function CustomerPortal({
                         </div>
                       )}
                       <a
-                        href={`http://10.0.0.1/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                        href={`http://${item.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2"
@@ -3175,7 +3179,7 @@ export default function CustomerPortal({
 
                   <div className="space-y-2">
                     <a
-                      href={`http://10.0.0.1/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password)}`}
+                      href={`http://${voucherResult.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"

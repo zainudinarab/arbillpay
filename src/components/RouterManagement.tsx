@@ -36,6 +36,7 @@ export interface RouterItem {
   username: string;
   password?: string;
   dns_name?: string;
+  hotspot_ip?: string;
   status: 'online' | 'offline' | 'testing';
   last_synced?: string;
   profile_count?: number;
@@ -80,6 +81,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   // Form State
   const [name, setName] = useState('');
   const [dnsName, setDnsName] = useState('arab.net');
+  const [hotspotIp, setHotspotIp] = useState('10.0.0.1');
   const [ipAddress, setIpAddress] = useState('30.30.0.1');
   const [apiPort, setApiPort] = useState('8728');
   const [username, setUsername] = useState('admin');
@@ -174,6 +176,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const resetForm = () => {
     setName('');
     setDnsName('arab.net');
+    setHotspotIp('10.0.0.1');
     setIpAddress('30.30.0.1');
     setApiPort('8728');
     setUsername('admin');
@@ -241,6 +244,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       const routerPayload = {
         name: name.trim(),
         dns_name: (dnsName || 'arab.net').trim(),
+        hotspot_ip: (hotspotIp || '10.0.0.1').trim(),
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
         username: username.trim(),
@@ -287,6 +291,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setEditingRouter(rtr);
     setName(rtr.name);
     setDnsName(rtr.dns_name || 'arab.net');
+    setHotspotIp(rtr.hotspot_ip || '10.0.0.1');
     setIpAddress(rtr.ip_address);
     setApiPort(rtr.api_port.toString());
     setUsername(rtr.username);
@@ -312,6 +317,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         id: editingRouter.id,
         name: name.trim(),
         dns_name: (dnsName || 'arab.net').trim(),
+        hotspot_ip: (hotspotIp || '10.0.0.1').trim(),
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
         username: username.trim(),
@@ -548,10 +554,20 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
                     <span className="text-slate-500 font-medium flex items-center gap-1.5">
                       <Globe size={14} className="text-sky-500" />
-                      ISP / Domain Voucher
+                      Domain Hotspot
                     </span>
                     <span className="font-mono font-extrabold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 text-xs">
                       {rtr.dns_name || 'arab.net'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Wifi size={14} className="text-emerald-500" />
+                      IP Hotspot (Login)
+                    </span>
+                    <span className="font-mono font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs">
+                      {rtr.hotspot_ip || '10.0.0.1'}
                     </span>
                   </div>
 
@@ -730,7 +746,20 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain Router</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway Login)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: 10.0.0.1"
+                    value={hotspotIp}
+                    onChange={(e) => setHotspotIp(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                  />
+                  <span className="text-[10px] text-slate-400">IP Host login voucher langsung (cth: 10.0.0.1)</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
                   <input
                     type="text"
                     required
@@ -739,8 +768,11 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     onChange={(e) => setIpAddress(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                   />
+                  <span className="text-[10px] text-slate-400">Host untuk socket RouterOS API</span>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Port API (Default: 8728)</label>
                   <input
@@ -752,9 +784,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Username Login Router</label>
                   <input
@@ -766,17 +796,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Login Router</label>
-                  <input
-                    type="password"
-                    placeholder="Password Mikrotik..."
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password Login Router</label>
+                <input
+                  type="password"
+                  placeholder="Password Mikrotik..."
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                />
               </div>
 
               {/* TEST CONNECTION BUTTON & STATUS BANNER */}
@@ -858,7 +888,20 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway Login)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: 10.0.0.1"
+                    value={hotspotIp}
+                    onChange={(e) => setHotspotIp(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                  />
+                  <span className="text-[10px] text-slate-400">IP Host login voucher langsung (cth: 10.0.0.1)</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
                   <input
                     type="text"
                     required
@@ -866,10 +909,13 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     onChange={(e) => setIpAddress(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
+                  <span className="text-[10px] text-slate-400">Host untuk socket RouterOS API</span>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">API Port</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">API Port (Default: 8728)</label>
                   <input
                     type="number"
                     required
@@ -878,9 +924,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
                   <input
@@ -891,17 +935,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional)</label>
-                  <input
-                    type="password"
-                    placeholder="Kosongkan jika tidak diubah..."
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional)</label>
+                <input
+                  type="password"
+                  placeholder="Kosongkan jika tidak diubah..."
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                />
               </div>
 
               {/* TEST CONNECTION BUTTON & STATUS BANNER */}

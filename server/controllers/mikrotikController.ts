@@ -27,11 +27,13 @@ export async function listRouters(req: Request, res: Response) {
   try {
     const result = await pool.query(`
       SELECT r.id, r.name, r.ip_address, r.api_port, r.username, r.password, r.status, 
-             COALESCE(r.dns_name, 'arab.net') as dns_name, r.last_synced, r.created_at,
+             COALESCE(r.dns_name, 'arab.net') as dns_name,
+             COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
+             r.last_synced, r.created_at,
              COUNT(rp.id)::int as profile_count
       FROM routers r
       LEFT JOIN router_profiles rp ON r.id = rp.router_id
-      GROUP BY r.id, r.dns_name
+      GROUP BY r.id, r.dns_name, r.hotspot_ip
       ORDER BY r.created_at DESC
     `);
     res.json({ success: true, routers: result.rows });
@@ -136,7 +138,7 @@ export async function testConnection(req: Request, res: Response) {
 }
 
 export async function addRouter(req: Request, res: Response) {
-  const { name, ip_address, api_port, username, password, dns_name } = req.body;
+  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -145,11 +147,12 @@ export async function addRouter(req: Request, res: Response) {
   try {
     const routerId = `rtr-${Date.now().toString(36)}`;
     const cleanDns = (dns_name || 'arab.net').trim();
+    const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
     const result = await pool.query(`
-      INSERT INTO routers (id, name, ip_address, api_port, username, password, status, dns_name)
-      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7)
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, created_at
-    `, [routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '', cleanDns]);
+      INSERT INTO routers (id, name, ip_address, api_port, username, password, status, dns_name, hotspot_ip)
+      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8)
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, created_at
+    `, [routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '', cleanDns, cleanHotspotIp]);
 
     const p1 = `rp-${Date.now().toString(36)}-1`;
     const p2 = `rp-${Date.now().toString(36)}-2`;
@@ -171,7 +174,7 @@ export async function addRouter(req: Request, res: Response) {
 
 export async function editRouter(req: Request, res: Response) {
   const { id } = req.params;
-  const { name, ip_address, api_port, username, password, dns_name, status } = req.body;
+  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, status } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -179,6 +182,7 @@ export async function editRouter(req: Request, res: Response) {
 
   try {
     const cleanDns = (dns_name || 'arab.net').trim();
+    const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
     const result = await pool.query(`
       UPDATE routers
       SET name = $1,
@@ -187,10 +191,11 @@ export async function editRouter(req: Request, res: Response) {
           username = $4,
           password = COALESCE($5, password),
           status = $6,
-          dns_name = $7
-      WHERE id = $8
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, last_synced
-    `, [name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null, status || 'online', cleanDns, id]);
+          dns_name = $7,
+          hotspot_ip = $8
+      WHERE id = $9
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, last_synced
+    `, [name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null, status || 'online', cleanDns, cleanHotspotIp, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
