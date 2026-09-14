@@ -172,6 +172,12 @@ export default function CustomerPortal({
     }
   });
 
+  const isSectionEnabled = (sectionId: string) => {
+    if (!portalConfig?.sections) return true;
+    const found = portalConfig.sections.find(s => s.id === sectionId);
+    return found ? found.enabled : true;
+  };
+
   const fetchPortalConfig = async () => {
     try {
       const res = await fetch('/api/portal-config', { cache: 'no-store' });
@@ -1411,12 +1417,6 @@ export default function CustomerPortal({
   const tagline = portalConfig?.branding?.tagline || 'Hotspot & Broadband Portal';
   const contactPhone = portalConfig?.branding?.contact_phone || '';
   const announcement = portalConfig?.announcement;
-
-  const isSectionEnabled = (sectionId: string) => {
-    if (!portalConfig?.sections) return true;
-    const found = portalConfig.sections.find(s => s.id === sectionId);
-    return found ? found.enabled : true;
-  };
 
   const voucherVariant = portalConfig?.sections?.find(s => s.id === 'vouchers')?.variant || 'grid';
   const voucherColumns = Number(portalConfig?.voucher_columns || portalConfig?.sections?.find(s => s.id === 'vouchers')?.columns || 2);
