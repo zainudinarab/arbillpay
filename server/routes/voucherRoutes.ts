@@ -6,6 +6,7 @@ import {
   listAvailableVouchers,
   buyVoucher,
   listMyPurchasedVouchers,
+  getFlashSaleBuyers,
   handleVoucherFirstLogin,
   syncVouchersToMikrotik,
   inspectMikrotikStatus
@@ -20,6 +21,7 @@ router.post('/first-login', handleVoucherFirstLogin);
 router.get('/', listVouchers);
 router.get('/available', listAvailableVouchers);
 router.get('/my-vouchers', listMyPurchasedVouchers);
+router.get('/flash-sale/buyers', getFlashSaleBuyers);
 router.post('/buy', buyVoucher);
 router.post('/generate', generateBatchVouchers);
 router.post('/sync', syncVouchersToMikrotik);

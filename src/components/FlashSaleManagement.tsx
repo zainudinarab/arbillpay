@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Flame, Sparkles, Clock, Calendar, CheckCircle2, AlertCircle,
   Save, RefreshCw, Zap, Shield, ShoppingCart, Tag, ExternalLink,
-  ChevronRight, ArrowRight, Eye, Smartphone, Monitor, Info, RotateCcw
+  ChevronRight, ArrowRight, Eye, Smartphone, Monitor, Info, RotateCcw,
+  Database, Users, Search, Copy, Check, Filter, Wifi, Radio, UserCheck
 } from 'lucide-react';
 import { BusinessProfile, CustomerPortalConfig } from '../types';
 
@@ -21,7 +22,7 @@ const defaultFlashSale = {
   target_package_name: '',
   original_price: 5000,
   promo_price: 2500,
-  quota_limit: 100,
+  quota_limit: 50,
   quota_sold: 0,
   max_per_user: 1,
   end_time: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
@@ -37,6 +38,19 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'desktop'>('mobile');
+
+  // Database Buyers State
+  const [buyers, setBuyers] = useState<any[]>([]);
+  const [buyersLoading, setBuyersLoading] = useState(false);
+  const [buyersStats, setBuyersStats] = useState({
+    total_buyers: 0,
+    used_count: 0,
+    unused_count: 0,
+    total_revenue: 0
+  });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'unused' | 'expired'>('all');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Countdown timer for live preview
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false });
@@ -88,10 +102,40 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
       if (pkgData.success && Array.isArray(pkgData.groups)) {
         setAvailablePackages(pkgData.groups);
       }
+
+      // 3. Fetch real database buyers from PostgreSQL
+      await fetchBuyers();
     } catch (err) {
       console.warn('Gagal memuat data Flash Sale:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchBuyers = async () => {
+    setBuyersLoading(true);
+    try {
+      const res = await fetch('/api/vouchers/flash-sale/buyers');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.buyers)) {
+        setBuyers(data.buyers);
+        const stats = {
+          total_buyers: data.total_buyers ?? data.buyers.length,
+          used_count: data.used_count ?? 0,
+          unused_count: data.unused_count ?? 0,
+          total_revenue: data.total_revenue ?? 0
+        };
+        setBuyersStats(stats);
+        // Automatically sync actual database buyers count into quota_sold
+        setFlashSale(prev => ({
+          ...prev,
+          quota_sold: stats.total_buyers
+        }));
+      }
+    } catch (e) {
+      console.warn('Gagal memuat pembeli flash sale:', e);
+    } finally {
+      setBuyersLoading(false);
     }
   };
 
@@ -116,7 +160,6 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     }
   };
 
-  // Quick preset end times
   const applyPresetEndTime = (hoursFromNow: number) => {
     const target = new Date(Date.now() + hoursFromNow * 3600 * 1000);
     setFlashSale(prev => ({ ...prev, end_time: target.toISOString() }));
@@ -124,7 +167,7 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
 
   const applyWeekendPreset = () => {
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 is Sunday, 6 is Saturday
+    const dayOfWeek = now.getDay();
     const daysUntilSunday = (7 - dayOfWeek) % 7;
     const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday, 23, 59, 59);
     setFlashSale(prev => ({ ...prev, end_time: sunday.toISOString() }));
@@ -141,7 +184,7 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
           ...flashSale,
           original_price: Number(flashSale.original_price) || 0,
           promo_price: Number(flashSale.promo_price) || 0,
-          quota_limit: Number(flashSale.quota_limit) || 100,
+          quota_limit: Number(flashSale.quota_limit) || 50,
           quota_sold: Number(flashSale.quota_sold) || 0,
           max_per_user: Number(flashSale.max_per_user) || 1
         }
@@ -177,6 +220,12 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     setFlashSale(prev => ({ ...prev, quota_sold: 0 }));
   };
 
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
   };
@@ -185,7 +234,24 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     ? Math.max(1, Math.round((1 - (flashSale.promo_price / flashSale.original_price)) * 100))
     : 0;
 
-  const quotaProgress = Math.min(100, Math.round(((flashSale.quota_sold || 0) / (flashSale.quota_limit || 100)) * 100));
+  const actualSold = buyersStats.total_buyers || flashSale.quota_sold || 0;
+  const quotaProgress = Math.min(100, Math.round((actualSold / (flashSale.quota_limit || 50)) * 100));
+
+  // Filtered buyers list
+  const filteredBuyers = buyers.filter(b => {
+    const q = searchTerm.toLowerCase();
+    const matchesSearch =
+      !searchTerm ||
+      (b.customer_name && b.customer_name.toLowerCase().includes(q)) ||
+      (b.customer_phone && b.customer_phone.includes(q)) ||
+      (b.voucher_code && b.voucher_code.toLowerCase().includes(q)) ||
+      (b.invoice_number && b.invoice_number.toLowerCase().includes(q));
+
+    const matchesStatus =
+      statusFilter === 'all' ? true : b.usage_status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="space-y-6 pb-20 max-w-7xl mx-auto animate-fade-in text-slate-100">
@@ -201,8 +267,8 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
               <span className="px-3 py-1 bg-rose-500/20 border border-rose-500/40 rounded-full text-rose-300 text-xs font-black uppercase tracking-wider">
                 Manajemen Promo Khusus
               </span>
-              <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-300 text-xs font-bold flex items-center gap-1">
-                <Shield className="w-3.5 h-3.5" /> Limit 1 Per Akun
+              <span className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-300 text-xs font-bold flex items-center gap-1">
+                <Database className="w-3.5 h-3.5" /> Database Synced
               </span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
@@ -236,7 +302,7 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
         </div>
       </div>
 
-      {/* KPI Overview Strip */}
+      {/* KPI Overview Strip (Real Database Counters) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Promo</span>
@@ -252,37 +318,40 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Paket Sasaran</span>
-          <p className="text-sm sm:text-base font-black text-white truncate">
-            {flashSale.target_package_name || 'Belum Dipilih'}
-          </p>
-          <p className="text-[10px] text-amber-400 font-bold truncate">
-            {discountPercent > 0 ? `Hemat ${discountPercent}% Diskon` : 'Harga Normal'}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kuota Terjual (DB)</span>
+            <span className="text-[10px] font-mono text-emerald-400 font-bold">{quotaProgress}%</span>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-sm sm:text-base font-black text-rose-400 font-mono">
+              {actualSold}
+            </p>
+            <span className="text-xs text-slate-400 font-mono">/ {flashSale.quota_limit || 50} User</span>
+          </div>
+          <p className="text-[10px] text-slate-400 block">
+            {actualSold >= (flashSale.quota_limit || 50) ? '❌ Kuota Habis' : `Sisa ${Math.max(0, (flashSale.quota_limit || 50) - actualSold)} voucher`}
           </p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Harga Promo</span>
-          <div className="flex items-baseline gap-1.5 truncate">
-            {flashSale.original_price > flashSale.promo_price && (
-              <span className="text-xs text-slate-500 line-through font-mono">
-                {formatRupiah(flashSale.original_price)}
-              </span>
-            )}
-            <span className="text-sm sm:text-base font-black text-amber-300 font-mono">
-              {formatRupiah(flashSale.promo_price)}
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Penggunaan WiFi</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5" /> {buyersStats.used_count} Aktif/Login
             </span>
           </div>
-          <span className="text-[10px] text-slate-400 block">Server-Enforced</span>
+          <span className="text-[10px] text-amber-400 block">
+            {buyersStats.unused_count} Belum Dipakai
+          </span>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kuota Stok</span>
-          <p className="text-sm sm:text-base font-black text-rose-300 font-mono">
-            {flashSale.quota_sold || 0} / {flashSale.quota_limit || 100}
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Omset Promo</span>
+          <p className="text-sm sm:text-base font-black text-amber-300 font-mono">
+            {formatRupiah(buyersStats.total_revenue)}
           </p>
           <p className="text-[10px] text-slate-400 block">
-            {flashSale.quota_sold >= flashSale.quota_limit ? '❌ Kuota Habis' : `Sisa ${Math.max(0, (flashSale.quota_limit || 100) - (flashSale.quota_sold || 0))} voucher`}
+            Dari {actualSold} transaksi database
           </p>
         </div>
       </div>
@@ -536,14 +605,14 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
                   value={flashSale.quota_limit}
                   onChange={e => setFlashSale({ ...flashSale, quota_limit: Number(e.target.value) || 1 })}
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  placeholder="100"
+                  placeholder="50"
                 />
-                <p className="text-[11px] text-slate-400">Jumlah maksimal voucher promo yang dilepas ke publik.</p>
+                <p className="text-[11px] text-slate-400">Jumlah kuota yang ingin dilepas ke publik (misal: 50 user).</p>
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-300">Kuota Terjual Saat Ini</label>
+                  <label className="text-xs font-bold text-slate-300">Kuota Terjual di Database</label>
                   <button
                     type="button"
                     onClick={handleResetQuotaSold}
@@ -555,11 +624,11 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
                 <input
                   type="number"
                   min={0}
-                  value={flashSale.quota_sold}
-                  onChange={e => setFlashSale({ ...flashSale, quota_sold: Number(e.target.value) || 0 })}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-rose-300 font-mono focus:border-emerald-500 focus:outline-none"
+                  value={actualSold}
+                  readOnly
+                  className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs sm:text-sm text-rose-300 font-mono focus:outline-none"
                 />
-                <p className="text-[11px] text-slate-400">Otomatis bertambah setiap ada pembelian sukses.</p>
+                <p className="text-[11px] text-slate-400">Tersinkron otomatis dengan jumlah transaksi di tabel database.</p>
               </div>
 
               <div className="sm:col-span-2 space-y-1.5">
@@ -697,7 +766,7 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
                     <div className="flex justify-between text-[10px] font-semibold">
                       <span className="text-slate-400">Kuota Promo</span>
                       <span className="text-rose-300 font-mono">
-                        {flashSale.quota_sold || 0} / {flashSale.quota_limit || 100}
+                        {actualSold} / {flashSale.quota_limit || 50}
                       </span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -762,6 +831,223 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* FULL-WIDTH SECTION: DAFTAR TRANSAKSI & PEMBELI FLASH SALE (POSTGRESQL DB) */}
+      {/* ========================================================================= */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                <span>Daftar Pembeli Flash Sale</span>
+                <span className="px-2.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded-full text-xs font-bold">
+                  {actualSold} dari {flashSale.quota_limit || 50} Kuota
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Data transaksi riil tersimpan di database PostgreSQL beserta status pemakaian login di router MikroTik.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={fetchBuyers}
+              disabled={buyersLoading}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Perbarui Data dari Database"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${buyersLoading ? 'animate-spin text-rose-400' : ''}`} />
+              <span>{buyersLoading ? 'Memuat...' : 'Segarkan Data'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Cari nama, no HP, kode voucher, atau invoice..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-bold flex items-center gap-1 shrink-0">
+              <Filter className="w-3.5 h-3.5" /> Status:
+            </span>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value as any)}
+              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-rose-500 focus:outline-none cursor-pointer"
+            >
+              <option value="all">Semua Status ({buyers.length})</option>
+              <option value="active">Sedang Digunakan ({buyersStats.used_count})</option>
+              <option value="unused">Belum Dipakai ({buyersStats.unused_count})</option>
+              <option value="expired">Masa Aktif Habis</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Table Content */}
+        {buyersLoading && buyers.length === 0 ? (
+          <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
+            <RefreshCw className="w-8 h-8 animate-spin text-rose-500" />
+            <span className="text-xs font-bold">Mengambil data pembeli dari database...</span>
+          </div>
+        ) : filteredBuyers.length === 0 ? (
+          <div className="py-16 text-center bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-3">
+            <Users className="w-12 h-12 text-slate-600 mx-auto" />
+            <h4 className="text-base font-bold text-slate-300">
+              {searchTerm ? 'Tidak ada data pembeli yang cocok dengan pencarian' : 'Belum Ada Transaksi Flash Sale'}
+            </h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              {searchTerm
+                ? 'Coba gunakan kata kunci lain (nama pembeli, nomor HP, atau nomor invoice).'
+                : 'Saat pelanggan membeli voucher promo lewat Customer Portal, riwayat transaksi otomatis tersimpan di sini secara real-time.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-slate-800">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-950 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800">
+                <tr>
+                  <th className="py-3.5 px-4"># Invoice & Waktu</th>
+                  <th className="py-3.5 px-4">Pembeli (User)</th>
+                  <th className="py-3.5 px-4">Voucher Hotspot</th>
+                  <th className="py-3.5 px-4">Nominal</th>
+                  <th className="py-3.5 px-4">Status Pemakaian MikroTik</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 font-medium">
+                {filteredBuyers.map((b, idx) => {
+                  const isUsed = b.usage_status === 'active' || b.usage_status === 'expired';
+                  return (
+                    <tr key={b.invoice_id || idx} className="hover:bg-slate-800/40 transition">
+                      {/* Invoice & Time */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-bold text-slate-200 block">
+                          #{b.invoice_number || b.invoice_id}
+                        </span>
+                        <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3" /> {b.purchased_at}
+                        </span>
+                      </td>
+
+                      {/* Buyer Name & Phone */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-white block text-sm">
+                            {b.customer_name || 'Pelanggan Hotspot'}
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono block">
+                            {b.customer_phone || 'Tanpa No. HP'}
+                          </span>
+                          {b.arabpay_user_id && (
+                            <span className="text-[9px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-md inline-block font-mono">
+                              ArabPay ID: {b.arabpay_user_id}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Voucher Credentials */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400 text-[10px]">User:</span>
+                            <span className="font-mono font-bold text-amber-300 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
+                              {b.voucher_code || '-'}
+                            </span>
+                            {b.voucher_code && (
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard(b.voucher_code, `code-${b.invoice_id}`)}
+                                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition cursor-pointer"
+                                title="Salin Kode Voucher"
+                              >
+                                {copiedId === `code-${b.invoice_id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+
+                          {b.voucher_password && b.voucher_password !== b.voucher_code && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-400 text-[10px]">Pass:</span>
+                              <span className="font-mono text-slate-300 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 text-[11px]">
+                                {b.voucher_password}
+                              </span>
+                            </div>
+                          )}
+
+                          <span className="text-[10px] text-slate-500 block truncate">
+                            {b.package_name}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Nominal & Channel */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-black text-amber-300 block text-sm">
+                          {formatRupiah(b.amount)}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          {b.payment_method || 'ArabPay E-Wallet'}
+                        </span>
+                      </td>
+
+                      {/* MikroTik Usage Status */}
+                      <td className="py-3.5 px-4">
+                        {isUsed ? (
+                          <div className="space-y-1">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 inline-flex items-center gap-1">
+                              <Wifi className="w-3 h-3 text-emerald-400" />
+                              {b.usage_label}
+                            </span>
+                            {b.first_login_at && (
+                              <p className="text-[10px] text-slate-400">
+                                Login pertama: <strong className="text-slate-200">{b.first_login_at}</strong>
+                              </p>
+                            )}
+                            {b.mac_address && (
+                              <p className="text-[10px] text-slate-400 font-mono">
+                                MAC HP: <strong className="text-slate-300">{b.mac_address}</strong>
+                              </p>
+                            )}
+                            {b.ip_address && (
+                              <p className="text-[10px] text-slate-400 font-mono">
+                                IP: {b.ip_address}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-400" />
+                              Belum Dipakai (Siap Login)
+                            </span>
+                            <p className="text-[10px] text-slate-500">
+                              Voucher belum pernah diinput login ke hotspot MikroTik
+                            </p>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

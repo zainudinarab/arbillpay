@@ -1231,5 +1231,120 @@ export async function inspectMikrotikStatus(req: Request, res: Response) {
   }
 }
 
+/**
+ * Mengambil daftar pembeli voucher promo Flash Sale langsung dari database PostgreSQL
+ * beserta status pemakaian login di router MikroTik
+ */
+export async function getFlashSaleBuyers(req: Request, res: Response) {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        i.id as invoice_id,
+        i.invoice_number,
+        COALESCE(i.customer_name, 'Pelanggan Hotspot') as customer_name,
+        COALESCE(i.customer_phone, '') as customer_phone,
+        i.user_id as arabpay_user_id,
+        COALESCE(i.package_name, 'Voucher Flash Sale') as package_name,
+        COALESCE(i.amount, 0)::int as amount,
+        COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_method,
+        i.status as payment_status,
+        COALESCE(i.paid_at, i.created_at) as purchased_at,
+        i.notes,
+        v.id as voucher_id,
+        COALESCE(v.code, i.voucher_code, '') as voucher_code,
+        COALESCE(v.password, '') as voucher_password,
+        v.status as voucher_status,
+        v.first_login_at,
+        v.mac_address,
+        v.ip_address,
+        v.expired_at,
+        r.name as router_name,
+        r.hotspot_ip,
+        r.dns_name
+      FROM invoices i
+      LEFT JOIN hotspot_vouchers v ON (
+        i.voucher_id = v.id 
+        OR (i.voucher_code IS NOT NULL AND i.voucher_code <> '' AND v.code = i.voucher_code) 
+        OR i.invoice_number = v.invoice_number
+      )
+      LEFT JOIN routers r ON v.router_id = r.id
+      WHERE (
+        i.notes ILIKE '%FLASH SALE%' 
+        OR (v.comment IS NOT NULL AND v.comment ILIKE '%FLASH SALE%')
+      )
+      ORDER BY COALESCE(i.paid_at, i.created_at) DESC
+    `);
+
+    const buyers = result.rows.map(row => {
+      const isUsed = Boolean(row.first_login_at || row.mac_address || row.voucher_status === 'used');
+      const isExpired = row.expired_at ? new Date(row.expired_at).getTime() < Date.now() : false;
+      let usageStatus = 'unused';
+      let usageLabel = 'Belum Dipakai (Siap Login)';
+      if (isUsed && !isExpired) {
+        usageStatus = 'active';
+        usageLabel = 'Sedang Digunakan di WiFi';
+      } else if (isUsed && isExpired) {
+        usageStatus = 'expired';
+        usageLabel = 'Masa Aktif Habis (Selesai)';
+      }
+
+      return {
+        invoice_id: row.invoice_id,
+        invoice_number: row.invoice_number,
+        customer_name: row.customer_name,
+        customer_phone: row.customer_phone,
+        arabpay_user_id: row.arabpay_user_id,
+        package_name: row.package_name,
+        amount: Number(row.amount) || 0,
+        payment_method: row.payment_method,
+        payment_status: row.payment_status,
+        purchased_at: row.purchased_at ? new Date(row.purchased_at).toLocaleString('id-ID') : '-',
+        voucher_code: row.voucher_code,
+        voucher_password: row.voucher_password || row.voucher_code,
+        usage_status: usageStatus,
+        usage_label: usageLabel,
+        first_login_at: row.first_login_at ? new Date(row.first_login_at).toLocaleString('id-ID') : null,
+        mac_address: row.mac_address || null,
+        ip_address: row.ip_address || null,
+        expired_at: row.expired_at ? new Date(row.expired_at).toLocaleString('id-ID') : null,
+        router_name: row.router_name || 'Router MikroTik',
+        hotspot_ip: row.hotspot_ip || '10.0.0.1',
+        dns_name: row.dns_name || 'arab.net'
+      };
+    });
+
+    const totalBuyers = buyers.length;
+    const usedCount = buyers.filter(b => b.usage_status === 'active' || b.usage_status === 'expired').length;
+    const unusedCount = totalBuyers - usedCount;
+    const totalRevenue = buyers.reduce((sum, b) => sum + b.amount, 0);
+
+    // Sync quota_sold back to customer_portal_config if out of sync
+    try {
+      const cfgRes = await pool.query(`SELECT value FROM system_settings WHERE key = 'customer_portal_config'`);
+      if (cfgRes.rows.length > 0) {
+        const portalConfig = JSON.parse(cfgRes.rows[0].value);
+        if (portalConfig.flash_sale && portalConfig.flash_sale.quota_sold !== totalBuyers) {
+          portalConfig.flash_sale.quota_sold = totalBuyers;
+          await pool.query(
+            `UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = 'customer_portal_config'`,
+            [JSON.stringify(portalConfig)]
+          );
+        }
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      total_buyers: totalBuyers,
+      used_count: usedCount,
+      unused_count: unusedCount,
+      total_revenue: totalRevenue,
+      buyers
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal memuat pembeli flash sale: ${err.message}`, buyers: [] });
+  }
+}
+
 
 
