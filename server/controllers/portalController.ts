@@ -5,6 +5,7 @@ import { redisGet, redisSet, redisDel } from '../config/redis.js';
 export const defaultPortalConfig = {
   template_theme: 'dark_glass', // 'dark_glass' | 'clean_light' | 'mikhmon_compact' | 'voucher_store'
   primary_color: 'emerald', // 'emerald' | 'indigo' | 'rose' | 'sky' | 'amber'
+  voucher_columns: 2, // 1 | 2 | 3
   branding: {
     hotspot_name: 'ARBILL Hotspot & Internet',
     tagline: 'Internet Cepat, Beli Voucher Instan & Bayar Tagihan Mudah',
@@ -32,7 +33,7 @@ export const defaultPortalConfig = {
     { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
     { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
     { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
-    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid' },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
     { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
     { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 8 }
   ]
@@ -62,6 +63,7 @@ export async function getPortalConfig(req: Request, res: Response) {
         const merged = {
           ...defaultPortalConfig,
           ...parsed,
+          voucher_columns: parsed.voucher_columns || 2,
           branding: { ...defaultPortalConfig.branding, ...(parsed.branding || {}) },
           announcement: { ...defaultPortalConfig.announcement, ...(parsed.announcement || {}) },
           flash_sale: { ...defaultPortalConfig.flash_sale, ...(parsed.flash_sale || {}) },
@@ -101,6 +103,7 @@ export async function savePortalConfig(req: Request, res: Response) {
     const cleanConfig = {
       template_theme: config.template_theme || 'dark_glass',
       primary_color: config.primary_color || 'emerald',
+      voucher_columns: Number(config.voucher_columns) || 2,
       branding: {
         hotspot_name: (config.branding?.hotspot_name || 'ARBILL Hotspot & Internet').trim(),
         tagline: (config.branding?.tagline || 'Internet Cepat & Hemat').trim(),

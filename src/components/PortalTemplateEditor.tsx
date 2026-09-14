@@ -35,6 +35,7 @@ import { BusinessProfile, CustomerPortalConfig, CustomerPortalSection } from '..
 const defaultEditorConfig: CustomerPortalConfig = {
   template_theme: 'dark_glass',
   primary_color: 'emerald',
+  voucher_columns: 2,
   branding: {
     hotspot_name: 'ARBILL Hotspot & Internet',
     tagline: 'Internet Cepat, Beli Voucher Instan & Bayar Tagihan Mudah',
@@ -62,7 +63,7 @@ const defaultEditorConfig: CustomerPortalConfig = {
     { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
     { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
     { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
-    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid' },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
     { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
     { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 8 }
   ]
@@ -230,6 +231,16 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
       return s;
     });
     setConfig(prev => ({ ...prev, sections: newSections }));
+  };
+
+  const setVoucherColumns = (cols: 1 | 2 | 3) => {
+    const newSections = config.sections.map(s => {
+      if (s.id === 'vouchers') {
+        return { ...s, columns: cols };
+      }
+      return s;
+    });
+    setConfig(prev => ({ ...prev, voucher_columns: cols, sections: newSections }));
   };
 
   const sortedSections = [...config.sections].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -563,28 +574,68 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
 
                           {/* Specific sub-options for vouchers */}
                           {section.id === 'vouchers' && section.enabled && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[11px] text-slate-500">Model Tampilan Paket:</span>
-                              <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white text-[10px]">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleVoucherVariant('grid')}
-                                  className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer ${
-                                    section.variant !== 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  <Grid size={11} /> Grid Kotak
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleVoucherVariant('list')}
-                                  className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer ${
-                                    section.variant === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
-                                  }`}
-                                >
-                                  <List size={11} /> List Ringkas
-                                </button>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 pt-2 border-t border-slate-200/60 flex-wrap">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-bold text-slate-600">Model:</span>
+                                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white text-[10px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleVoucherVariant('grid')}
+                                    className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer ${
+                                      section.variant !== 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <Grid size={11} /> Grid
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleVoucherVariant('list')}
+                                    className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 cursor-pointer ${
+                                      section.variant === 'list' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <List size={11} /> List
+                                  </button>
+                                </div>
                               </div>
+
+                              {section.variant !== 'list' && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] font-bold text-slate-600">Jumlah Kolom:</span>
+                                  <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-white text-[10px]">
+                                    <button
+                                      type="button"
+                                      onClick={() => setVoucherColumns(1)}
+                                      className={`px-2 py-0.5 rounded-md font-bold cursor-pointer transition-all ${
+                                        (config.voucher_columns || 2) === 1 ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                                      }`}
+                                      title="1 Kolom Penuh (Besar, Nyaman di HP)"
+                                    >
+                                      📱 1 Kolom
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setVoucherColumns(2)}
+                                      className={`px-2 py-0.5 rounded-md font-bold cursor-pointer transition-all ${
+                                        (config.voucher_columns || 2) === 2 ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                                      }`}
+                                      title="2 Kolom Berdampingan (Kompak ala E-Commerce)"
+                                    >
+                                      🛍️ 2 Kolom
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setVoucherColumns(3)}
+                                      className={`px-2 py-0.5 rounded-md font-bold cursor-pointer transition-all ${
+                                        (config.voucher_columns || 2) === 3 ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                                      }`}
+                                      title="3 Kolom (Desktop Lebar)"
+                                    >
+                                      💻 3 Kolom
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1031,7 +1082,13 @@ export default function PortalTemplateEditor({ profile }: PortalTemplateEditorPr
                         </div>
 
                         {isGrid ? (
-                          <div className="grid grid-cols-2 gap-1.5">
+                          <div className={`grid gap-1.5 ${
+                            (config.voucher_columns || 2) === 1
+                              ? 'grid-cols-1'
+                              : (config.voucher_columns || 2) === 3
+                              ? 'grid-cols-3'
+                              : 'grid-cols-2'
+                          }`}>
                             <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
                               <span className="text-[10px] font-bold block text-white">1 Hari (24 Jam)</span>
                               <span className="text-[9px] text-emerald-400 font-mono font-bold block">Rp 5.000</span>

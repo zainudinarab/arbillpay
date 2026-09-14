@@ -1310,6 +1310,7 @@ export default function CustomerPortal({
   };
 
   const voucherVariant = portalConfig?.sections?.find(s => s.id === 'vouchers')?.variant || 'grid';
+  const voucherColumns = Number(portalConfig?.voucher_columns || portalConfig?.sections?.find(s => s.id === 'vouchers')?.columns || 2);
 
   const getThemeContainerClass = () => {
     switch (currentTheme) {
@@ -1976,7 +1977,13 @@ export default function CustomerPortal({
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              <div className={`grid gap-3 sm:gap-5 ${
+                voucherColumns === 1
+                  ? 'grid-cols-1 max-w-xl mx-auto'
+                  : voucherColumns === 2
+                  ? 'grid-cols-2 max-w-4xl mx-auto'
+                  : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+              }`}>
                 {voucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
                   const parsedV = parseIso8601(pkg.validity_iso);
@@ -1991,10 +1998,10 @@ export default function CustomerPortal({
                     >
                       {/* Popular Badge */}
                       {pkg.popular && (
-                        <div className="absolute top-3 right-3 z-10">
-                          <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full">
-                            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                            <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Populer</span>
+                        <div className="absolute top-2.5 right-2.5 z-10">
+                          <div className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full">
+                            <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400 fill-amber-400" />
+                            <span className="text-[9px] sm:text-[10px] font-bold text-amber-300 uppercase tracking-wider">Populer</span>
                           </div>
                         </div>
                       )}
@@ -2008,58 +2015,67 @@ export default function CustomerPortal({
                                   'bg-gradient-to-r from-amber-500 to-amber-400'
                         }`} />
 
-                      <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                      <div className={`flex-1 flex flex-col justify-between ${
+                        voucherColumns === 2 ? 'p-3.5 sm:p-5 space-y-3 sm:space-y-4' : 'p-5 space-y-4'
+                      }`}>
                         {/* Icon + Title */}
                         <div>
-                          <div className="flex items-start gap-3.5 mb-3">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
+                          <div className="flex items-start gap-2.5 sm:gap-3.5 mb-2 sm:mb-3">
+                            <div className={`rounded-xl flex items-center justify-center shrink-0 ${
+                              voucherColumns === 2 ? 'w-9 h-9 sm:w-12 sm:h-12' : 'w-12 h-12'
+                            } ${color === 'cyan' ? 'bg-cyan-500/10 text-cyan-400' :
                                 color === 'blue' ? 'bg-blue-500/10 text-blue-400' :
                                   color === 'violet' ? 'bg-violet-500/10 text-violet-400' :
                                     color === 'indigo' ? 'bg-indigo-500/10 text-indigo-400' :
                                       color === 'emerald' ? 'bg-emerald-500/10 text-emerald-400' :
                                         'bg-amber-500/10 text-amber-400'
                               }`}>
-                              <Zap className="w-6 h-6" />
+                              <Zap className={voucherColumns === 2 ? 'w-4 h-4 sm:w-6 sm:h-6' : 'w-6 h-6'} />
                             </div>
-                            <div>
-                              <h3 className="font-bold text-lg text-slate-100 leading-tight">
+                            <div className="min-w-0">
+                              <h3 className={`font-bold text-slate-100 leading-tight truncate ${
+                                voucherColumns === 2 ? 'text-sm sm:text-lg' : 'text-lg'
+                              }`}>
                                 {pkg.package_name || pkg.profile_name}
                               </h3>
-                              <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5 font-medium">
-                                <Globe className="w-3.5 h-3.5 text-sky-400" />
-                                <span>ISP: <strong className="text-slate-200">{pkg.dns_name || pkg.isp_name || 'arab.net'}</strong></span>
+                              <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 flex items-center gap-1 font-medium truncate">
+                                <Globe className="w-3 h-3 text-sky-400 shrink-0" />
+                                <span className="truncate">ISP: <strong className="text-slate-200">{pkg.dns_name || pkg.isp_name || 'arab.net'}</strong></span>
                               </p>
                             </div>
                           </div>
 
                           {/* Specs */}
-                          <div className="flex items-center gap-4 text-xs text-slate-400 mt-2 font-medium">
+                          <div className="flex items-center gap-2.5 sm:gap-4 text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2 font-medium flex-wrap">
                             <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5 text-slate-500" /> {validity} {unit}
+                              <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500" /> {validity} {unit}
                             </span>
                             {pkg.rate_limit && (
                               <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                                <Zap className="w-3.5 h-3.5" /> {pkg.rate_limit}
+                                <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {pkg.rate_limit}
                               </span>
                             )}
                           </div>
                         </div>
 
                         {/* Price + Buy Button */}
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-800/60">
-                          <div>
-                            <p className="text-xs text-slate-500 font-bold uppercase">Harga</p>
-                            <p className="text-xl font-black text-emerald-400 font-mono">
+                        <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-slate-800/60 gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[9px] sm:text-xs text-slate-500 font-bold uppercase">Harga</p>
+                            <p className={`font-black text-emerald-400 font-mono truncate ${
+                              voucherColumns === 2 ? 'text-sm sm:text-xl' : 'text-xl'
+                            }`}>
                               {price === 0 ? 'GRATIS' : formatRupiah(price)}
                             </p>
                           </div>
                           <button
                             onClick={() => handleBuyVoucher(pkg)}
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 cursor-pointer active:scale-95"
+                            className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
+                              voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
+                            }`}
                           >
-                            <ShoppingCart className="w-4 h-4" />
+                            <ShoppingCart className="w-3.5 h-3.5" />
                             <span>Beli</span>
-                            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
                           </button>
                         </div>
                       </div>

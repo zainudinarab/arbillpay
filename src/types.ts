@@ -101,11 +101,13 @@ export interface CustomerPortalSection {
   enabled: boolean;
   order: number;
   variant?: 'grid' | 'list' | 'carousel';
+  columns?: 1 | 2 | 3;
 }
 
 export interface CustomerPortalConfig {
   template_theme: 'dark_glass' | 'clean_light' | 'mikhmon_compact' | 'voucher_store';
   primary_color: 'emerald' | 'indigo' | 'rose' | 'sky' | 'amber';
+  voucher_columns?: 1 | 2 | 3;
   branding: {
     hotspot_name: string;
     tagline: string;
@@ -130,4 +132,5 @@ export interface CustomerPortalConfig {
   };
   sections: CustomerPortalSection[];
 }
+
 
