@@ -5,7 +5,7 @@ import {
   CheckCircle2, Lock, ArrowRight, Loader2, AlertCircle,
   Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft, ChevronDown,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
-  QrCode, Copy, FileText, Search, Ticket, UserCheck, Info,
+  QrCode, Copy, FileText, Search, Ticket, UserCheck, Info, Smartphone, Database,
   MessageCircle, Megaphone, Flame
 } from 'lucide-react';
 import LoginModal from './LoginModal';
@@ -94,6 +94,17 @@ export default function CustomerPortal({
   const setShowLoginModal = propSetShowLoginModal ?? setLocalShowLoginModal;
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [monthlyPackages, setMonthlyPackages] = useState<any[]>([]);
+
+  // Filter Durasi Voucher & Modals untuk 4 Stat Card
+  const [durationFilter, setDurationFilter] = useState<'all' | '1h' | '3h' | '1d' | '7d' | '30d'>('all');
+  const [showVoucherSayaModal, setShowVoucherSayaModal] = useState(false);
+  const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'active' | 'used'>('all');
+  const [showLanggananModal, setShowLanggananModal] = useState(false);
+  const [showTagihanModal, setShowTagihanModal] = useState(false);
+  const [tagihanModalTab, setTagihanModalTab] = useState<'all' | 'unpaid' | 'paid'>('all');
+  const [copiedVoucherCode, setCopiedVoucherCode] = useState<string | null>(null);
+  const [selectedDetailPackage, setSelectedDetailPackage] = useState<any>(null);
+  const [showDetailPackageModal, setShowDetailPackageModal] = useState(false);
 
   // Member Registration Modal State
   const [showMemberRegisterModal, setShowMemberRegisterModal] = useState(false);
@@ -253,6 +264,45 @@ export default function CustomerPortal({
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
   };
+
+  // Kalkulasi data riil untuk Stat Card Tagihan
+  const unpaidInvoices = useMemo(() => {
+    return invoices.filter((inv: any) => inv.status !== 'paid');
+  }, [invoices]);
+
+  const totalUnpaidAmount = useMemo(() => {
+    return unpaidInvoices.reduce((acc: number, inv: any) => acc + Number(inv.amount || 0), 0);
+  }, [unpaidInvoices]);
+
+  // Filter durasi voucher hotspot
+  const matchesDuration = (pkg: any, filter: string) => {
+    if (filter === 'all') return true;
+    const name = (pkg.package_name || pkg.profile_name || pkg.name || '').toLowerCase();
+    const parsedV = parseIso8601(pkg.validity_iso);
+    const val = Number(parsedV.val || pkg.validity_value || 0);
+    const unit = (parsedV.unit || pkg.validity_unit || '').toLowerCase();
+
+    if (filter === '1h') {
+      return (val === 1 && (unit.includes('h') || unit.includes('jam'))) || name.includes('1 jam') || name.includes('1jam') || name.includes('1 hour');
+    }
+    if (filter === '3h') {
+      return (val === 3 && (unit.includes('h') || unit.includes('jam'))) || name.includes('3 jam') || name.includes('3jam') || name.includes('3 hour');
+    }
+    if (filter === '1d') {
+      return (val === 1 && (unit.includes('d') || unit.includes('hari') || unit.includes('day'))) || (val === 24 && (unit.includes('h') || unit.includes('jam'))) || name.includes('1 hari') || name.includes('1hari') || name.includes('24 jam') || name.includes('1 day');
+    }
+    if (filter === '7d') {
+      return (val === 7 && (unit.includes('d') || unit.includes('hari') || unit.includes('day'))) || name.includes('7 hari') || name.includes('minggu') || name.includes('week');
+    }
+    if (filter === '30d') {
+      return (val === 30 && (unit.includes('d') || unit.includes('hari') || unit.includes('day'))) || name.includes('30 hari') || name.includes('bulan') || name.includes('month');
+    }
+    return true;
+  };
+
+  const filteredVoucherGroups = useMemo(() => {
+    return voucherGroups.filter((pkg: any) => matchesDuration(pkg, durationFilter));
+  }, [voucherGroups, durationFilter]);
 
   // --- INITIAL & LIVE AUTO-REFRESH DATA FETCHING ---
   useEffect(() => {
@@ -871,6 +921,25 @@ export default function CustomerPortal({
     setShowPaymentModal(true);
   };
 
+  const handleInitiatePayInvoice = (inv: any) => {
+    if (!currentUser) {
+      setShowLoginModal(true);
+      return;
+    }
+    setSelectedPackage({
+      is_invoice: true,
+      invoice_id: inv.id,
+      package_name: inv.package_name || inv.invoice_number || 'Tagihan Internet',
+      price: Number(inv.amount || 0)
+    });
+    setPaymentStep('confirm');
+    setPinCode('');
+    setPinError('');
+    setPaymentMethod('balance');
+    fetchCheckoutInit();
+    setShowPaymentModal(true);
+  };
+
   const userHasClaimedFlashSale = useMemo(() => {
     if (!currentUser) return false;
     return localPurchasedVouchers.some((v: any) => Boolean(v.is_flash_sale));
@@ -1411,6 +1480,105 @@ export default function CustomerPortal({
       default:
         return 'sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 text-white';
     }
+  };
+
+  // --- 4 STAT CARDS (Dashboard Stats terhubung ke database riil) ---
+  const renderDashboardStats = () => {
+    const balance = currentUser?.arabpay_balance ?? 0;
+    const voucherCount = localPurchasedVouchers.length;
+    const regCount = allRegs.length;
+
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        {/* Stat 1: Saldo Dompet */}
+        <div
+          onClick={() => {
+            if (!currentUser) setShowLoginModal(true);
+            else setShowTopupModal(true);
+          }}
+          className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm"
+        >
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:scale-105 transition">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+              <span>Saldo Dompet</span>
+              <span className="text-[10px] text-emerald-400 font-bold sm:hidden">+TopUp</span>
+            </p>
+            <strong className="font-heading font-bold text-sm sm:text-base text-white block truncate">
+              {currentUser ? formatRupiah(balance) : 'Login'}
+            </strong>
+          </div>
+        </div>
+
+        {/* Stat 2: Voucher Aktif */}
+        <div
+          onClick={() => {
+            if (!currentUser) setShowLoginModal(true);
+            else setShowVoucherSayaModal(true);
+          }}
+          className="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm"
+        >
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20 group-hover:scale-105 transition">
+            <Ticket className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+              <span>Voucher Aktif</span>
+              <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-300">Lihat</span>
+            </p>
+            <strong className="font-heading font-bold text-sm sm:text-base text-indigo-400 block truncate">
+              {voucherCount > 0 ? `${voucherCount} Voucher` : '0 Voucher'}
+            </strong>
+          </div>
+        </div>
+
+        {/* Stat 3: Langganan */}
+        <div
+          onClick={() => {
+            if (!currentUser) setShowLoginModal(true);
+            else setShowLanggananModal(true);
+          }}
+          className="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm"
+        >
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/20 group-hover:scale-105 transition">
+            <Signal className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+              <span>Langganan</span>
+              <span className="text-[9px] px-1 rounded bg-cyan-500/20 text-cyan-300">Detail</span>
+            </p>
+            <strong className="font-heading font-bold text-sm sm:text-base text-cyan-400 block truncate">
+              {regCount > 0 ? `${regCount} Layanan` : '0 Layanan'}
+            </strong>
+          </div>
+        </div>
+
+        {/* Stat 4: Tagihan */}
+        <div
+          onClick={() => {
+            if (!currentUser) setShowLoginModal(true);
+            else setShowTagihanModal(true);
+          }}
+          className="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm"
+        >
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20 group-hover:scale-105 transition">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+              <span>Tagihan</span>
+              <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300">Bayar</span>
+            </p>
+            <strong className="font-heading font-bold text-sm sm:text-base text-amber-400 block truncate">
+              {unpaidInvoices.length > 0 ? formatRupiah(totalUnpaidAmount) : 'Rp 0'}
+            </strong>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // --- MODULAR SECTION RENDERERS (Driven strictly by Layout Builder order) ---
@@ -2045,7 +2213,7 @@ export default function CustomerPortal({
                           <p className="text-[10px] text-slate-400 truncate">{currentUser?.phone || currentUser?.email || 'Akun Terhubung'}</p>
                           <div className="mt-2 flex items-center justify-between pt-1.5 border-t border-slate-800/80">
                             <span className="text-[10px] text-slate-400 font-medium">Saldo ArabPay</span>
-                            <span className="font-mono font-bold text-xs text-emerald-400">{formatRupiah(balance || 0)}</span>
+                            <span className="font-mono font-bold text-xs text-emerald-400">{formatRupiah(currentUser?.arabpay_balance || 0)}</span>
                           </div>
                         </div>
 
@@ -2330,7 +2498,8 @@ export default function CustomerPortal({
         {/* ==================== TAB 1: MODULAR CUSTOMER PORTAL (Driven by Layout Builder order) ==================== */}
         {activeTab === 'buy' && (
           <div className="space-y-6">
-            {sortedSections.filter(s => s.enabled).map((section) => {
+            {renderDashboardStats()}
+            {sortedSections.filter(s => s.enabled && s.id !== 'wallet_widget').map((section) => {
               switch (section.id) {
                 case 'announcement':
                   return renderAnnouncementSection(section);
@@ -2338,8 +2507,6 @@ export default function CustomerPortal({
                   return renderHeroSection(section);
                 case 'flash_sale':
                   return renderFlashSaleSection(section);
-                case 'wallet_widget':
-                  return renderWalletSection(section);
                 case 'quick_billing':
                   return renderQuickBillingSection(section);
                 case 'monthly_packages':
@@ -2348,23 +2515,67 @@ export default function CustomerPortal({
                   return renderContactFooterSection(section);
                 case 'vouchers':
                   return (
-                    <div key={section.id} id="voucher-catalog-section" className="space-y-6">
-                      {/* Navigasi Tab menyatu dalam 1 frame dengan daftar voucher */}
-                      {renderPortalNavigationTabs()}
-            {voucherLoading ? (
-              <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
-                <RefreshCw size={28} className="animate-spin text-indigo-500" />
-                <span className="text-xs font-bold">Memuat daftar paket voucher...</span>
-              </div>
-            ) : voucherGroups.length === 0 ? (
-              <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
-                <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
-                <h3 className="text-lg font-bold text-slate-300">Belum Ada Voucher Tersedia</h3>
-                <p className="text-sm text-slate-500">Stok voucher hotspot sedang kosong. Hubungi admin.</p>
-              </div>
-            ) : voucherVariant === 'list' ? (
-              <div className="space-y-3">
-                {voucherGroups.map((pkg: any, idx: number) => {
+                    <div key={section.id} id="voucher-catalog-section" className="bg-slate-900/90 border border-slate-800 rounded-3xl p-3.5 sm:p-6 space-y-4">
+                      {/* Header Katalog Voucher */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1">
+                        <div>
+                          <h3 className="font-heading font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+                            <ShoppingCart className="w-4 h-4 text-indigo-400" />
+                            <span>Pilihan Paket Voucher Hotspot</span>
+                          </h3>
+                          <p className="text-xs text-slate-400">Pilih paket voucher dan bayar instan via Saldo ArabPay / QRIS</p>
+                        </div>
+                        <span className="self-start sm:self-auto text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+                          ⚡ Aktif Otomatis 24 Jam
+                        </span>
+                      </div>
+
+                      {/* Filter Durasi Paket (Wrap ke bawah jika di layar HP tidak cukup) */}
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-1">
+                        {[
+                          { id: 'all', label: 'Semua Paket' },
+                          { id: '1h', label: '1 Jam' },
+                          { id: '3h', label: '3 Jam' },
+                          { id: '1d', label: '1 Hari' },
+                          { id: '7d', label: '7 Hari' },
+                          { id: '30d', label: '30 Hari' }
+                        ].map((btn) => (
+                          <button
+                            key={btn.id}
+                            type="button"
+                            onClick={() => setDurationFilter(btn.id as any)}
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border ${
+                              durationFilter === btn.id
+                                ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500 font-bold'
+                                : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+                            }`}
+                          >
+                            {btn.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {voucherLoading ? (
+                        <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
+                          <RefreshCw size={28} className="animate-spin text-indigo-500" />
+                          <span className="text-xs font-bold">Memuat daftar paket voucher...</span>
+                        </div>
+                      ) : filteredVoucherGroups.length === 0 ? (
+                        <div className="text-center py-12 bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-2">
+                          <Ticket className="w-10 h-10 text-slate-600 mx-auto" />
+                          <h3 className="text-sm font-bold text-slate-300">Tidak Ada Paket Dalam Kategori Ini</h3>
+                          <p className="text-xs text-slate-500">Silakan pilih durasi lain atau reset ke "Semua Paket".</p>
+                          <button
+                            type="button"
+                            onClick={() => setDurationFilter('all')}
+                            className="px-3 py-1.5 bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold hover:bg-indigo-600/50 transition cursor-pointer"
+                          >
+                            Tampilkan Semua Paket
+                          </button>
+                        </div>
+                      ) : voucherVariant === 'list' ? (
+                        <div className="space-y-3">
+                          {filteredVoucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
                   const parsedV = parseIso8601(pkg.validity_iso);
                   const validity = parsedV.val || pkg.validity_value || 1;
@@ -2417,15 +2628,18 @@ export default function CustomerPortal({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-slate-400 mt-0.5 font-medium">
-                            <span className="flex items-center gap-1">
+                          <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 mt-1 font-medium flex-wrap">
+                            <span className="flex items-center gap-1 bg-slate-950/60 px-2 py-0.5 rounded-lg border border-slate-800">
                               <Clock className="w-3.5 h-3.5 text-slate-500" /> {validity} {unit}
                             </span>
                             {pkg.rate_limit && (
-                              <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                              <span className="flex items-center gap-1 text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
                                 <Zap className="w-3.5 h-3.5" /> {pkg.rate_limit}
                               </span>
                             )}
+                            <span className="flex items-center gap-1 text-sky-400 font-medium bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
+                              <Smartphone className="w-3.5 h-3.5 text-sky-400" /> {pkg.shared_users || 1} Device
+                            </span>
                             <span className="hidden sm:inline text-slate-500">
                               DNS: {pkg.dns_name || pkg.isp_name || 'arab.net'}
                             </span>
@@ -2433,7 +2647,7 @@ export default function CustomerPortal({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60 flex-wrap sm:flex-nowrap">
                         <div className="text-left sm:text-right">
                           <span className="text-[10px] text-slate-500 font-bold uppercase block">
                             {canBuyFlashSale ? 'Harga Flash Sale' : 'Harga'}
@@ -2452,23 +2666,39 @@ export default function CustomerPortal({
                             <span className="text-[9px] text-slate-400 block sm:text-right">Maks. 1 promo sudah diklaim</span>
                           )}
                         </div>
-                        {canBuyFlashSale ? (
+
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={handleBuyFlashSale}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
+                            type="button"
+                            onClick={() => {
+                              setSelectedDetailPackage({ ...pkg, type: 'hotspot_voucher', price, validity, unit, isFlashSale: true, promoPrice: fsPromoPrice });
+                              setShowDetailPackageModal(true);
+                            }}
+                            className="px-3 py-2.5 rounded-xl text-xs font-bold transition bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer flex items-center gap-1.5 shrink-0"
+                            title="Lihat Rincian Detail Paket"
                           >
-                            <Flame className="w-4 h-4" />
-                            <span>Beli Flash Sale</span>
+                            <Info className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Detail</span>
                           </button>
-                        ) : (
-                          <button
-                            onClick={() => handleBuyVoucher(pkg)}
-                            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
-                          >
-                            <ShoppingCart className="w-4 h-4" />
-                            <span>Beli Voucher</span>
-                          </button>
-                        )}
+
+                          {canBuyFlashSale ? (
+                            <button
+                              onClick={handleBuyFlashSale}
+                              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
+                            >
+                              <Flame className="w-4 h-4" />
+                              <span>Beli Flash Sale</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleBuyVoucher(pkg)}
+                              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
+                            >
+                              <ShoppingCart className="w-4 h-4" />
+                              <span>Beli</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -2482,7 +2712,7 @@ export default function CustomerPortal({
                   ? 'grid-cols-2 max-w-4xl mx-auto'
                   : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
               }`}>
-                {voucherGroups.map((pkg: any, idx: number) => {
+                {filteredVoucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
                   const parsedV = parseIso8601(pkg.validity_iso);
                   const validity = parsedV.val || pkg.validity_value || 1;
@@ -2580,6 +2810,9 @@ export default function CustomerPortal({
                                 <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {pkg.rate_limit}
                               </span>
                             )}
+                            <span className="flex items-center gap-1 text-indigo-300 font-medium">
+                              <Smartphone className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-indigo-400" /> {pkg.shared_users || 1} Device
+                            </span>
                           </div>
                         </div>
 
@@ -2607,27 +2840,51 @@ export default function CustomerPortal({
                               <p className="text-[9px] text-slate-400 truncate">Maks. 1 promo dipakai</p>
                             )}
                           </div>
-                          {canBuyFlashSale ? (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              onClick={handleBuyFlashSale}
-                              className={`flex items-center justify-center gap-1 sm:gap-1.5 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse ${
-                                voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs' : 'px-3.5 py-2 text-xs'
+                              type="button"
+                              onClick={() => {
+                                setSelectedDetailPackage({
+                                  ...pkg,
+                                  type: 'hotspot_voucher',
+                                  price,
+                                  validity,
+                                  unit,
+                                  isFlashSale: canBuyFlashSale,
+                                  promoPrice: fsPromoPrice
+                                });
+                                setShowDetailPackageModal(true);
+                              }}
+                              className={`rounded-xl font-bold transition-all duration-200 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer flex items-center gap-1 shrink-0 ${
+                                voucherColumns === 2 ? 'px-2 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs' : 'px-3 py-2 text-xs'
                               }`}
+                              title="Lihat Detail Paket"
                             >
-                              <Flame className="w-3.5 h-3.5" />
-                              <span>Beli Promo</span>
+                              <Info className="w-3.5 h-3.5 text-sky-400" />
+                              <span>Detail</span>
                             </button>
-                          ) : (
-                            <button
-                              onClick={() => handleBuyVoucher(pkg)}
-                              className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
-                                voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
-                              }`}
-                            >
-                              <ShoppingCart className="w-3.5 h-3.5" />
-                              <span>Beli</span>
-                            </button>
-                          )}
+                            {canBuyFlashSale ? (
+                              <button
+                                onClick={handleBuyFlashSale}
+                                className={`flex items-center justify-center gap-1 sm:gap-1.5 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse ${
+                                  voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs' : 'px-3.5 py-2 text-xs'
+                                }`}
+                              >
+                                <Flame className="w-3.5 h-3.5" />
+                                <span>Beli Promo</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleBuyVoucher(pkg)}
+                                className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
+                                  voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
+                                }`}
+                              >
+                                <ShoppingCart className="w-3.5 h-3.5" />
+                                <span>Beli</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2887,38 +3144,83 @@ export default function CustomerPortal({
                         <div className="text-2xl font-black text-amber-400 font-mono">
                           {formatRupiah(price)}<span className="text-xs text-slate-500 font-normal"> /bulan</span>
                         </div>
+
+                        {/* Specs Badges */}
+                        <div className="grid grid-cols-2 gap-2 pt-2.5 pb-2 border-y border-slate-800/80 text-xs">
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span className="font-semibold text-emerald-400">{pkg.speed_limit || pkg.rate_limit || '10 Mbps'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Smartphone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>{pkg.shared_users || 1} Device</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span>30 Hari Aktif</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-slate-400">
+                            <Database className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                            <span>{pkg.quota_bytes ? `${Math.round(pkg.quota_bytes / (1024 * 1024 * 1024))} GB` : 'Unlimited FUP'}</span>
+                          </div>
+                        </div>
+
                         <p className="text-xs text-slate-400">
                           {pkg.description || 'Akun dedicated aktif 24 jam dengan tagihan otomatis bulanan.'}
                         </p>
                       </div>
 
-                      <button
-                        onClick={() => {
-                          setRegisterPkg(pkg);
-                          const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                          const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
-                          const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+                      <div className="mt-6 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDetailPackage({
+                              ...pkg,
+                              type: 'monthly_package',
+                              price,
+                              validity: 30,
+                              unit: 'Hari',
+                              speed: pkg.speed_limit || pkg.rate_limit || '10 Mbps',
+                              shared_users: pkg.shared_users || 1,
+                              quota: pkg.quota_bytes ? `${Math.round(pkg.quota_bytes / (1024 * 1024 * 1024))} GB` : 'Unlimited FUP'
+                            });
+                            setShowDetailPackageModal(true);
+                          }}
+                          className="px-3.5 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                          title="Lihat Detail Paket Bulanan"
+                        >
+                          <Info className="w-4 h-4 text-sky-400" />
+                          <span>Detail</span>
+                        </button>
 
-                          setRegForm({
-                            name: currentUser?.name || '',
-                            phone_number: currentUser?.phone_number || '',
-                            username: defaultUser,
-                            password: defaultPass,
-                            dusun: '',
-                            desa: '',
-                            kecamatan: '',
-                            kabupaten: '',
-                            provinsi: ''
-                          });
-                          setRegError('');
-                          setRegSuccess(false);
-                          setShowMemberRegisterModal(true);
-                        }}
-                        className="mt-6 w-full py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10 active:scale-95"
-                      >
-                        <span>Formulir Pendaftaran Member</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
+                        <button
+                          onClick={() => {
+                            setRegisterPkg(pkg);
+                            const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                            const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
+                            const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+
+                            setRegForm({
+                              name: currentUser?.name || '',
+                              phone_number: currentUser?.phone_number || '',
+                              username: defaultUser,
+                              password: defaultPass,
+                              dusun: '',
+                              desa: '',
+                              kecamatan: '',
+                              kabupaten: '',
+                              provinsi: ''
+                            });
+                            setRegError('');
+                            setRegSuccess(false);
+                            setShowMemberRegisterModal(true);
+                          }}
+                          className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10 active:scale-95"
+                        >
+                          <span>Daftar Member</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -3834,6 +4136,877 @@ export default function CustomerPortal({
                 <span>Keluar Akun (Logout)</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL VOUCHER SAYA (RESPONSIF & BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== */}
+      {showVoucherSayaModal && (() => {
+        const isVoucherUsed = (v: any) => {
+          const st = (v.status || '').toLowerCase();
+          return st === 'used' || st === 'expired' || st === 'terpakai' || Boolean(v.is_used) || Boolean(v.used_at) || Boolean(v.expired_at && new Date(v.expired_at).getTime() < Date.now());
+        };
+
+        const activeList = localPurchasedVouchers.filter((v: any) => !isVoucherUsed(v));
+        const usedList = localPurchasedVouchers.filter((v: any) => isVoucherUsed(v));
+        const displayedList = voucherModalTab === 'active' ? activeList : voucherModalTab === 'used' ? usedList : [...activeList, ...usedList];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={() => setShowVoucherSayaModal(false)} />
+            <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden text-slate-100 animate-fade-in flex flex-col max-h-[90vh]">
+              
+              {/* Header Modal */}
+              <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                    <Ticket className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+                      <span>Daftar Voucher Saya</span>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                        {localPurchasedVouchers.length} Total
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">Pilih dan gunakan kode voucher untuk terhubung ke jaringan hotspot</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherSayaModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Filter Tabs: Semua, Aktif/Belum Pakai, Sudah Terpakai */}
+              <div className="px-4 sm:px-6 pt-3 pb-1 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setVoucherModalTab('all')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    voucherModalTab === 'all'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>Semua Voucher</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {localPurchasedVouchers.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVoucherModalTab('active')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    voucherModalTab === 'active'
+                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20'
+                      : 'bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Belum Terpakai (Siap Pakai)</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {activeList.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVoucherModalTab('used')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    voucherModalTab === 'used'
+                      ? 'bg-slate-700 border-slate-600 text-white'
+                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  <span>Sudah Terpakai</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {usedList.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Voucher Cards Grid (3 Kolom di PC, 2 di Tablet, 1 di HP) */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                {displayedList.length === 0 ? (
+                  <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80">
+                    <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
+                    <p className="text-sm text-slate-300 font-bold">Tidak Ada Voucher Pada Kategori Ini</p>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      {voucherModalTab === 'active'
+                        ? 'Semua voucher yang Anda miliki telah digunakan. Silakan beli voucher baru di katalog!'
+                        : 'Belum ada riwayat voucher terpakai.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+                    {displayedList.map((v: any, idx: number) => {
+                      const code = v.code || v.voucher_code || v.username;
+                      const pass = v.password;
+                      const used = isVoucherUsed(v);
+                      const isCopied = copiedVoucherCode === code;
+
+                      return (
+                        <div
+                          key={v.id || idx}
+                          className={`rounded-2xl p-4 flex flex-col justify-between transition border relative overflow-hidden ${
+                            used
+                              ? 'bg-slate-950/40 border-slate-800/80 opacity-60 hover:opacity-85'
+                              : 'bg-gradient-to-b from-slate-900/90 to-slate-950 border-emerald-500/30 hover:border-emerald-500/60 shadow-lg shadow-emerald-950/20'
+                          }`}
+                        >
+                          {/* Top Header Card */}
+                          <div className="space-y-2.5">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+                                  used ? 'text-slate-500' : 'text-emerald-400'
+                                }`}>
+                                  {used ? 'Riwayat Voucher' : 'Voucher Aktif'}
+                                </span>
+                                <h4 className={`font-heading font-bold text-sm truncate ${
+                                  used ? 'text-slate-400' : 'text-white'
+                                }`}>
+                                  {v.package_name || v.profile_name || 'Voucher Hotspot'}
+                                </h4>
+                              </div>
+
+                              <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
+                                used
+                                  ? 'bg-slate-800 text-slate-400 border-slate-700'
+                                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-xs'
+                              }`}>
+                                {used ? (
+                                  <><span>✓</span> SUDAH TERPAKAI</>
+                                ) : (
+                                  <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> SIAP PAKAI</>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Kode Voucher & Copy */}
+                            <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                              used
+                                ? 'bg-slate-900/50 border-slate-800'
+                                : 'bg-slate-950 border-dashed border-emerald-500/40'
+                            }`}>
+                              <div className="min-w-0">
+                                <span className="text-[9px] text-slate-500 uppercase font-semibold block">
+                                  {pass && pass !== code ? 'Username' : 'Kode Voucher'}
+                                </span>
+                                <span className={`font-mono font-black text-sm tracking-wider truncate block ${
+                                  used ? 'text-slate-500 line-through' : 'text-emerald-300'
+                                }`}>
+                                  {code}
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(code);
+                                  setCopiedVoucherCode(code);
+                                  setTimeout(() => setCopiedVoucherCode(null), 2000);
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
+                                  used
+                                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-400'
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/30'
+                                }`}
+                                title="Salin kode voucher"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>{isCopied ? 'Tersalin!' : 'Salin'}</span>
+                              </button>
+                            </div>
+
+                            {/* Password jika ada dan berbeda dari kode */}
+                            {pass && pass !== code && (
+                              <div className="px-2.5 py-1.5 bg-slate-900/60 rounded-lg border border-slate-800 text-xs flex items-center justify-between">
+                                <span className="text-slate-400 text-[11px]">Password:</span>
+                                <strong className="font-mono text-slate-200">{pass}</strong>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Footer Card */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                            <span className="truncate">DNS: <strong className="text-slate-300">{v.dns_name || 'arab.net'}</strong></span>
+                            {!used ? (
+                              <button
+                                type="button"
+                                onClick={() => window.open(v.hotspot_ip ? `http://${v.hotspot_ip}` : 'http://arab.net', '_blank')}
+                                className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
+                              >
+                                <span>Login WiFi</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </button>
+                            ) : (
+                              <span className="text-slate-500 italic">Hangus</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Button */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  Klik tombol <strong>Salin</strong> lalu masukkan ke halaman login WiFi Anda
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowVoucherSayaModal(false)}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==================== MODAL LANGGANAN INTERNET (BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== */}
+      {showLanggananModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={() => setShowLanggananModal(false)} />
+          <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden text-slate-100 animate-fade-in flex flex-col max-h-[90vh]">
+            
+            {/* Header Modal */}
+            <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center shrink-0">
+                  <Signal className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+                    <span>Langganan Internet Saya</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                      {allRegs.length} Layanan
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Rincian akun & status koneksi PPPoE / Dedicated</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLanggananModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* List Grid: 3 Kolom di PC (lg:grid-cols-3), 2 di Tablet (sm:grid-cols-2), 1 di HP (grid-cols-1) */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              {allRegs.length === 0 ? (
+                <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80">
+                  <Signal className="w-12 h-12 text-slate-600 mx-auto" />
+                  <p className="text-sm text-slate-300 font-bold">Belum Ada Layanan Berlangganan</p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Anda belum mendaftar paket internet bulanan rumah (RT/RW Net).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowLanggananModal(false);
+                      setActiveTab('register_member');
+                      fetchMonthlyMemberPackages();
+                    }}
+                    className="mt-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    Daftar Langganan Bulanan
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+                  {allRegs.map((reg: any, idx: number) => {
+                    const isActive = reg.status === 'active' || reg.status === 'on';
+                    const isIsolated = reg.status === 'isolated' || reg.status === 'isolir';
+                    return (
+                      <div
+                        key={reg.id || idx}
+                        className={`rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition border relative overflow-hidden ${
+                          isActive
+                            ? 'bg-gradient-to-b from-slate-900/90 to-slate-950 border-cyan-500/30 hover:border-cyan-500/60 shadow-lg shadow-cyan-950/20'
+                            : isIsolated
+                            ? 'bg-rose-950/20 border-rose-500/40'
+                            : 'bg-amber-950/20 border-amber-500/40'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block truncate">
+                                PPPoE Home Broadband
+                              </span>
+                              <h4 className="font-heading font-bold text-sm text-white truncate">
+                                {reg.package_name || reg.package?.name || 'Home BroadBand 10 Mbps'}
+                              </h4>
+                            </div>
+
+                            <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
+                              isActive
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                : isIsolated
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            }`}>
+                              {isActive ? (
+                                <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> AKTIF</>
+                              ) : isIsolated ? (
+                                'TERISOLIR'
+                              ) : (
+                                'PENGAJUAN'
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Username PPPoE:</span>
+                              <strong className="text-slate-200 font-mono">{reg.pppoe_username || reg.username || reg.name}</strong>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-400">Kecepatan:</span>
+                              <strong className="text-cyan-400 font-mono font-bold">{reg.speed_limit || '10 Mbps'}</strong>
+                            </div>
+                            {reg.customer_code && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400">ID Pelanggan:</span>
+                                <strong className="text-slate-300 font-mono">{reg.customer_code}</strong>
+                              </div>
+                            )}
+                            {reg.static_ip && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400">IP Address:</span>
+                                <strong className="text-slate-300 font-mono">{reg.static_ip}</strong>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-500 truncate">Status realtime aktif</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowLanggananModal(false);
+                              setShowTagihanModal(true);
+                            }}
+                            className="px-3.5 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/60 text-cyan-200 border border-cyan-500/30 rounded-xl text-xs font-bold transition cursor-pointer shrink-0"
+                          >
+                            Lihat Tagihan →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Button */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+              <span className="text-xs text-slate-400 hidden sm:inline">
+                Layanan internet bulanan Anda terhubung ke router MikroTik secara realtime
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowLanggananModal(false)}
+                className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL TAGIHAN INTERNET (BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== */}
+      {showTagihanModal && (() => {
+        const paidInvoices = invoices.filter((inv: any) => inv.status === 'paid');
+        const displayedInvoices = tagihanModalTab === 'unpaid'
+          ? unpaidInvoices
+          : tagihanModalTab === 'paid'
+          ? paidInvoices
+          : [...unpaidInvoices, ...paidInvoices];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={() => setShowTagihanModal(false)} />
+            <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden text-slate-100 animate-fade-in flex flex-col max-h-[90vh]">
+              
+              {/* Header Modal */}
+              <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+                      <span>Tagihan Internet Saya</span>
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                        {unpaidInvoices.length} Tertunggak
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">Bayar instan tagihan bulanan via Saldo ArabPay / QRIS</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTagihanModal(false)}
+                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Ringkasan Total Tagihan Banner */}
+              <div className="px-4 sm:px-6 py-3 bg-amber-950/20 border-b border-amber-500/20 shrink-0 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                  <div>
+                    <span className="text-[10px] text-amber-300/80 font-bold uppercase tracking-wider block">TOTAL BELUM DIBAYAR</span>
+                    <strong className="font-heading font-black text-xl text-amber-400 font-mono">
+                      {formatRupiah(totalUnpaidAmount)}
+                    </strong>
+                  </div>
+                </div>
+                <span className="text-xs text-slate-300 font-semibold px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800">
+                  {unpaidInvoices.length} invoice aktif belum diselesaikan
+                </span>
+              </div>
+
+              {/* Filter Tabs Tagihan: Semua, Belum Dibayar, Lunas */}
+              <div className="px-4 sm:px-6 pt-3 pb-2 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setTagihanModalTab('all')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    tagihanModalTab === 'all'
+                      ? 'bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-600/20'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>Semua Tagihan</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {invoices.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTagihanModalTab('unpaid')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    tagihanModalTab === 'unpaid'
+                      ? 'bg-rose-600 border-rose-500 text-white shadow-md shadow-rose-600/20'
+                      : 'bg-slate-900 border-slate-800 text-rose-400 hover:text-rose-300'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
+                  <span>Belum Dibayar</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {unpaidInvoices.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTagihanModalTab('paid')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                    tagihanModalTab === 'paid'
+                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20'
+                      : 'bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300'
+                  }`}
+                >
+                  <span>Sudah Lunas</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
+                    {paidInvoices.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Grid Tagihan: 3 Kolom di PC (lg:grid-cols-3), 2 di Tablet (sm:grid-cols-2), 1 di HP (grid-cols-1) */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+                {displayedInvoices.length === 0 ? (
+                  <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
+                    <p className="text-sm text-slate-300 font-bold">Tidak Ada Tagihan Pada Kategori Ini</p>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      {tagihanModalTab === 'unpaid'
+                        ? 'Semua tagihan Anda sudah lunas! Tidak ada pembayaran yang tertunggak.'
+                        : 'Belum ada riwayat tagihan.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+                    {displayedInvoices.map((inv: any, idx: number) => {
+                      const isPaid = inv.status === 'paid';
+                      const amount = Number(inv.amount || 0);
+                      return (
+                        <div
+                          key={inv.id || idx}
+                          className={`rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition border relative overflow-hidden ${
+                            !isPaid
+                              ? 'bg-gradient-to-b from-amber-950/20 to-slate-950 border-amber-500/40 hover:border-amber-500/70 shadow-lg shadow-amber-950/20'
+                              : 'bg-slate-950/60 border-slate-800/80 opacity-75 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
+                                  {inv.invoice_number || 'Tagihan Bulanan'}
+                                </span>
+                                <h4 className="font-heading font-bold text-sm text-white truncate">
+                                  {inv.package_name || 'Paket Internet PPPoE'}
+                                </h4>
+                              </div>
+
+                              <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
+                                isPaid
+                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                  : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
+                              }`}>
+                                {isPaid ? '✓ LUNAS' : 'BELUM DIBAYAR'}
+                              </span>
+                            </div>
+
+                            {/* Nominal Box */}
+                            <div className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
+                              !isPaid
+                                ? 'bg-slate-950 border-amber-500/30'
+                                : 'bg-slate-900/60 border-slate-800'
+                            }`}>
+                              <span className="text-xs text-slate-400 font-semibold">Total Tagihan:</span>
+                              <strong className={`font-heading font-black text-base font-mono ${
+                                !isPaid ? 'text-amber-400' : 'text-emerald-400'
+                              }`}>
+                                {formatRupiah(amount)}
+                              </strong>
+                            </div>
+
+                            {/* Tanggal & Info */}
+                            <div className="space-y-1 text-xs text-slate-400">
+                              <div className="flex justify-between">
+                                <span>Jatuh Tempo:</span>
+                                <strong className="text-slate-300">
+                                  {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}
+                                </strong>
+                              </div>
+                              {inv.payment_method && (
+                                <div className="flex justify-between">
+                                  <span>Metode:</span>
+                                  <strong className="text-slate-300">{inv.payment_method}</strong>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Footer Box & Action */}
+                          <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-slate-500 truncate">
+                              {isPaid ? 'Sudah diselesaikan' : 'Siap dibayar online'}
+                            </span>
+                            {!isPaid ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowTagihanModal(false);
+                                  handleInitiatePayInvoice(inv);
+                                }}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/30 shrink-0"
+                              >
+                                Bayar Sekarang
+                              </button>
+                            ) : (
+                              <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
+                                <span>✓</span> Lunas
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Button */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+                <span className="text-xs text-slate-400 hidden sm:inline">
+                  Pembayaran diproses otomatis dan realtime melalui gerbang pembayaran ArabPay
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowTagihanModal(false)}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ==================== MODAL DETAIL PAKET ==================== */}
+      {showDetailPackageModal && selectedDetailPackage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden text-slate-100 flex flex-col max-h-[90vh]">
+            
+            {/* Header Modal */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-950/40">
+              <div className="flex items-center gap-3">
+                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  selectedDetailPackage.isFlashSale
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                    : selectedDetailPackage.type === 'monthly_package'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                }`}>
+                  {selectedDetailPackage.isFlashSale ? (
+                    <Flame className="w-5 h-5 text-rose-400 animate-pulse" />
+                  ) : selectedDetailPackage.type === 'monthly_package' ? (
+                    <Zap className="w-5 h-5 text-amber-400" />
+                  ) : (
+                    <Wifi className="w-5 h-5 text-indigo-400" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-heading font-extrabold text-base sm:text-lg text-white">
+                      {selectedDetailPackage.package_name || selectedDetailPackage.profile_name || selectedDetailPackage.name || 'Detail Paket Internet'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    {selectedDetailPackage.type === 'monthly_package'
+                      ? 'Paket Berlangganan Dedicated RT/RW Net'
+                      : 'Voucher Internet Hotspot Prabayar'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDetailPackageModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body Scrollable */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4">
+              
+              {/* Harga & Status Box */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                    {selectedDetailPackage.isFlashSale ? 'Harga Promo Flash Sale' : 'Biaya Layanan'}
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    {selectedDetailPackage.isFlashSale && selectedDetailPackage.promoPrice ? (
+                      <>
+                        <span className="text-sm text-slate-500 line-through font-mono">
+                          {formatRupiah(selectedDetailPackage.price)}
+                        </span>
+                        <span className="text-2xl font-black text-amber-300 font-mono">
+                          {formatRupiah(selectedDetailPackage.promoPrice)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className={`text-2xl font-black font-mono ${
+                        selectedDetailPackage.type === 'monthly_package' ? 'text-amber-400' : 'text-emerald-400'
+                      }`}>
+                        {selectedDetailPackage.price === 0 ? 'GRATIS' : formatRupiah(selectedDetailPackage.price)}
+                      </span>
+                    )}
+                    {selectedDetailPackage.type === 'monthly_package' && (
+                      <span className="text-xs text-slate-400">/ bulan</span>
+                    )}
+                  </div>
+                </div>
+
+                <span className={`text-xs px-3 py-1 rounded-full font-bold border ${
+                  selectedDetailPackage.isFlashSale
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : selectedDetailPackage.type === 'monthly_package'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                }`}>
+                  {selectedDetailPackage.isFlashSale ? '🔥 Flash Sale' : '✓ Tersedia'}
+                </span>
+              </div>
+
+              {/* Grid 4 Spesifikasi Utama */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* 1. Device Limit */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+                    <Smartphone className="w-4 h-4" />
+                    <span>Batas Perangkat</span>
+                  </div>
+                  <p className="text-base font-extrabold text-white">
+                    {selectedDetailPackage.shared_users || 1} Device
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {(selectedDetailPackage.shared_users || 1) > 1 ? 'Dapat dipakai bersamaan' : 'Khusus 1 HP / Laptop'}
+                  </p>
+                </div>
+
+                {/* 2. Kecepatan / Bandwidth */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
+                    <Zap className="w-4 h-4" />
+                    <span>Kecepatan</span>
+                  </div>
+                  <p className="text-base font-extrabold text-emerald-400">
+                    {selectedDetailPackage.rate_limit || selectedDetailPackage.speed_limit || selectedDetailPackage.speed || 'Up to 10M'}
+                  </p>
+                  <p className="text-[10px] text-slate-400">Download & upload stabil</p>
+                </div>
+
+                {/* 3. Masa Aktif */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-sky-400 text-xs font-bold">
+                    <Clock className="w-4 h-4" />
+                    <span>Masa Aktif</span>
+                  </div>
+                  <p className="text-base font-extrabold text-white">
+                    {selectedDetailPackage.validity || 1} {selectedDetailPackage.unit || 'Hari'}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {selectedDetailPackage.type === 'monthly_package' ? 'Siklus tagihan 30 hari' : 'Mulai sejak login pertama'}
+                  </p>
+                </div>
+
+                {/* 4. Kuota / FUP */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-indigo-400 text-xs font-bold">
+                    <Database className="w-4 h-4" />
+                    <span>Kuota Data</span>
+                  </div>
+                  <p className="text-base font-extrabold text-white">
+                    {selectedDetailPackage.quota || 'Unlimited FUP'}
+                  </p>
+                  <p className="text-[10px] text-slate-400">Tanpa batas kuota harian</p>
+                </div>
+              </div>
+
+              {/* Rincian Fitur & Keunggulan */}
+              <div className="p-4 rounded-2xl bg-slate-950/40 border border-slate-800/80 space-y-2.5">
+                <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  <span>Fasilitas & Keuntungan Paket</span>
+                </h4>
+                <div className="space-y-1.5 text-xs text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Koneksi prioritas latency rendah (lancar game & streaming)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Domain ISP Server Resmi: <strong className="text-sky-300 font-mono">{selectedDetailPackage.dns_name || selectedDetailPackage.isp_name || 'arab.net'}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Bebas login ulang pada jaringan yang sama hingga masa berlaku habis</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Dukungan CS teknis lokal via WhatsApp jika kendala jaringan</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deskripsi Paket bila ada */}
+              {selectedDetailPackage.description && (
+                <p className="text-xs text-slate-400 italic bg-slate-950/20 p-3 rounded-xl border border-slate-800/50">
+                  "{selectedDetailPackage.description}"
+                </p>
+              )}
+
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDetailPackageModal(false)}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Tutup
+              </button>
+
+              {selectedDetailPackage.type === 'monthly_package' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDetailPackageModal(false);
+                    setRegisterPkg(selectedDetailPackage);
+                    const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                    const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
+                    const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+
+                    setRegForm({
+                      name: currentUser?.name || '',
+                      phone_number: currentUser?.phone_number || '',
+                      username: defaultUser,
+                      password: defaultPass,
+                      dusun: '',
+                      desa: '',
+                      kecamatan: '',
+                      kabupaten: '',
+                      provinsi: ''
+                    });
+                    setRegError('');
+                    setRegSuccess(false);
+                    setShowMemberRegisterModal(true);
+                  }}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 active:scale-95"
+                >
+                  <span>Daftar Member Sekarang</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : selectedDetailPackage.isFlashSale ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDetailPackageModal(false);
+                    handleBuyFlashSale();
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-rose-600/30 active:scale-95 animate-pulse"
+                >
+                  <Flame className="w-4 h-4" />
+                  <span>Beli Flash Sale</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDetailPackageModal(false);
+                    handleBuyVoucher(selectedDetailPackage);
+                  }}
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/20 active:scale-95"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>Beli Voucher Ini</span>
+                </button>
+              )}
+            </div>
+
           </div>
         </div>
       )}

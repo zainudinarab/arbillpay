@@ -1519,8 +1519,14 @@ const safeFormatDate = (val: any): string => {
     return <IsolirNoticePage profile={profile} />;
   }
 
-  // 1. CUSTOMER PORTAL (Untuk Pengunjung Belum Login ATAU Role Pelanggan)
-  if (!currentUser || currentUser.role === 'pelanggan') {
+  // 1. CUSTOMER PORTAL (Untuk Pengunjung Belum Login, Role Pelanggan, atau Rute Portal #/portal)
+  const isPortalRoute = 
+    window.location.hash === '#/portal' || 
+    window.location.hash.startsWith('#/portal?') || 
+    window.location.hash === '#/customer-portal' ||
+    currentView === 'portal';
+
+  if (!currentUser || currentUser.role === 'pelanggan' || isPortalRoute) {
     return (
       <CustomerPortal
         currentUser={currentUser}

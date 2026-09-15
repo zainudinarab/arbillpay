@@ -149,46 +149,58 @@
   <!-- Dashboard Stats (2 Kolom Mobile, 4 Kolom PC) -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
     <!-- Stat 1: Saldo -->
-    <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition">
-      <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
+    <div onclick="openTopupModal()" class="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm">
+      <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:scale-105 transition">
         <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Saldo Dompet</p>
+        <p class="text-[11px] text-slate-400 truncate flex items-center gap-1">
+          <span>Saldo Dompet</span>
+          <span class="text-[10px] text-emerald-400 font-bold sm:hidden">+TopUp</span>
+        </p>
         <strong class="font-heading font-bold text-sm sm:text-base text-white block truncate" id="statBalance">Rp 50.000</strong>
       </div>
     </div>
 
     <!-- Stat 2: Voucher Aktif -->
-    <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition">
-      <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
+    <div onclick="openModalVoucherSaya()" class="bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm">
+      <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20 group-hover:scale-105 transition">
         <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Voucher Aktif</p>
-        <strong class="font-heading font-bold text-sm sm:text-base text-white block truncate">3 Voucher</strong>
+        <p class="text-[11px] text-slate-400 truncate flex items-center gap-1">
+          <span>Voucher Aktif</span>
+          <span class="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-300">Lihat</span>
+        </p>
+        <strong class="font-heading font-bold text-sm sm:text-base text-indigo-400 block truncate" id="statVoucherCount">3 Voucher</strong>
       </div>
     </div>
 
     <!-- Stat 3: Langganan -->
-    <div onclick="switchMainTab('invoices')" class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group">
+    <div onclick="openModalLangganan()" class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm">
       <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/20 group-hover:scale-105 transition">
         <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Langganan</p>
+        <p class="text-[11px] text-slate-400 truncate flex items-center gap-1">
+          <span>Langganan</span>
+          <span class="text-[9px] px-1 rounded bg-cyan-500/20 text-cyan-300">Detail</span>
+        </p>
         <strong class="font-heading font-bold text-sm sm:text-base text-cyan-400 block truncate">1 Layanan</strong>
       </div>
     </div>
 
     <!-- Stat 4: Tagihan -->
-    <div onclick="switchMainTab('invoices')" class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group">
+    <div onclick="openModalTagihan()" class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm">
       <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20 group-hover:scale-105 transition">
         <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Tagihan</p>
-        <strong class="font-heading font-bold text-sm sm:text-base text-amber-400 block truncate">Rp 150.000</strong>
+        <p class="text-[11px] text-slate-400 truncate flex items-center gap-1">
+          <span>Tagihan</span>
+          <span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300">Bayar</span>
+        </p>
+        <strong class="font-heading font-bold text-sm sm:text-base text-amber-400 block truncate" id="statTagihanVal">Rp 150.000</strong>
       </div>
     </div>
   </div>
@@ -296,53 +308,44 @@
     </div>
   </div>
 
-  <!-- ==================== UNIFIED FRAME (TOMBOL & DAFTAR DALAM 1 FRAME) ==================== -->
-  <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-3.5 sm:p-6 space-y-5" id="catalogUnifiedFrame">
+  <!-- ==================== VOUCHER CATALOG FRAME ==================== -->
+  <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-3.5 sm:p-6 space-y-4" id="catalogUnifiedFrame">
     
-    <!-- 3 TOMBOL UTAMA (Sangat Responsif di HP: Grid 3 Kolom pas 100% Layar tanpa Scrollbar Kasar) -->
-    <div class="grid grid-cols-3 gap-1.5 sm:flex sm:justify-center sm:gap-3">
-      <!-- 1. Beli Voucher -->
-      <button id="tabBtnBuy" onclick="switchMainTab('buy')" class="tab-btn active px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20">
-        <svg class="w-4 h-4 stroke-current fill-none stroke-2 shrink-0" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-        <span class="truncate">Beli Voucher</span>
-      </button>
-
-      <!-- 2. Voucher Saya -->
-      <button id="tabBtnHistory" onclick="switchMainTab('history')" class="tab-btn px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80">
-        <svg class="w-4 h-4 stroke-current fill-none stroke-2 shrink-0" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
-        <span class="truncate">Voucher Saya</span>
-        <span class="tab-badge px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black bg-slate-800 text-indigo-400 border border-indigo-500/30" id="myVoucherBadge">3</span>
-      </button>
-
-      <!-- 3. Tagihan & Langganan -->
-      <button id="tabBtnInvoices" onclick="switchMainTab('invoices')" class="tab-btn px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80">
-        <svg class="w-4 h-4 stroke-current fill-none stroke-2 shrink-0" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-        <span class="truncate">Tagihan</span>
-        <span class="tab-badge px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black bg-slate-800 text-emerald-400 border border-emerald-500/30">1</span>
-      </button>
+    <!-- Header Katalog Voucher -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1">
+      <div>
+        <h3 class="font-heading font-extrabold text-sm sm:text-base text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-400 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+          <span>Pilihan Paket Voucher Hotspot</span>
+        </h3>
+        <p class="text-xs text-slate-400">Pilih paket voucher dan bayar instan via Saldo ArabPay / QRIS</p>
+      </div>
+      <span class="self-start sm:self-auto text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+        ⚡ Aktif Otomatis 24 Jam
+      </span>
     </div>
 
-    <!-- ==================== TAB 1: BELI VOUCHER ==================== -->
+    <!-- ==================== KATALOG VOUCHER ==================== -->
     <div id="tabViewBuy" class="space-y-4">
       
-      <!-- Filter Durasi Paket (Scroll Horizontal Halus Tanpa Scrollbar Kasar) -->
-      <div class="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1">
-        <button onclick="filterPackages('all', this)" class="pill-filter active px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-indigo-600/20 text-indigo-300 border-indigo-500">
+      <!-- Filter Durasi Paket (Wrap ke bawah jika di layar HP tidak cukup) -->
+      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 pb-1">
+        <button onclick="filterPackages('all', this)" class="pill-filter active px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-indigo-600/20 text-indigo-300 border-indigo-500">
           Semua Paket
         </button>
-        <button onclick="filterPackages('1h', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
+        <button onclick="filterPackages('1h', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
           1 Jam
         </button>
-        <button onclick="filterPackages('3h', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
+        <button onclick="filterPackages('3h', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
           3 Jam
         </button>
-        <button onclick="filterPackages('1d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
+        <button onclick="filterPackages('1d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
           1 Hari
         </button>
-        <button onclick="filterPackages('7d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
+        <button onclick="filterPackages('7d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
           7 Hari
         </button>
-        <button onclick="filterPackages('30d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
+        <button onclick="filterPackages('30d', this)" class="pill-filter px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition border bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200">
           30 Hari
         </button>
       </div>
@@ -364,17 +367,24 @@
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">⏱ 1 Jam</span>
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/30">⚡ 3 Mbps</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 font-medium border border-indigo-500/20">📱 1 Device</span>
             </div>
           </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div>
               <span class="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
               <span class="font-heading font-black text-lg text-emerald-400 font-mono">Rp 2.000</span>
             </div>
-            <button onclick="openBuyModal('Voucher 1 Jam', 'Rp 2.000', '1 Jam', '3 Mbps')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
-              <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              <span>Beli</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="openModalDetailPaket('Voucher 1 Jam', 'Rp 2.000', '1 Jam', '3 Mbps', '1 Device', 'Unlimited FUP', 'arab.net', 'voucher')" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1 shrink-0" title="Lihat Detail Paket">
+                <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Detail</span>
+              </button>
+              <button onclick="openBuyModal('Voucher 1 Jam', 'Rp 2.000', '1 Jam', '3 Mbps')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                <span>Beli</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -393,17 +403,24 @@
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">⏱ 3 Jam</span>
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/30">⚡ 5 Mbps</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 font-medium border border-indigo-500/20">📱 1 Device</span>
             </div>
           </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div>
               <span class="text-[10px] text-rose-400 font-bold uppercase block">Flash Sale</span>
               <span class="font-heading font-black text-lg text-amber-400 font-mono">Rp 1.000</span>
             </div>
-            <button onclick="openBuyModal('Voucher 3 Jam Flash', 'Rp 1.000', '3 Jam', '5 Mbps')" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-rose-600/30">
-              <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-              <span>Beli Promo</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="openModalDetailPaket('Voucher 3 Jam Flash', 'Rp 1.000', '3 Jam', '5 Mbps', '1 Device', 'Unlimited FUP', 'arab.net', 'flash_sale')" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1 shrink-0" title="Lihat Detail Paket">
+                <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Detail</span>
+              </button>
+              <button onclick="openBuyModal('Voucher 3 Jam Flash', 'Rp 1.000', '3 Jam', '5 Mbps')" class="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-rose-600/30">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                <span>Beli</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -422,17 +439,24 @@
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">⏱ 24 Jam</span>
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/30">⚡ 5 Mbps</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 font-medium border border-indigo-500/20">📱 1 Device</span>
             </div>
           </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div>
               <span class="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
               <span class="font-heading font-black text-lg text-emerald-400 font-mono">Rp 5.000</span>
             </div>
-            <button onclick="openBuyModal('Paket 1 Hari Full', 'Rp 5.000', '24 Jam', '5 Mbps')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
-              <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              <span>Beli</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="openModalDetailPaket('Paket 1 Hari Full', 'Rp 5.000', '24 Jam', '5 Mbps', '1 Device', 'Unlimited FUP', 'arab.net', 'voucher')" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1 shrink-0" title="Lihat Detail Paket">
+                <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Detail</span>
+              </button>
+              <button onclick="openBuyModal('Paket 1 Hari Full', 'Rp 5.000', '24 Jam', '5 Mbps')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                <span>Beli</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -450,17 +474,24 @@
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">⏱ 7 Hari</span>
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/30">⚡ 7 Mbps</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 font-medium border border-indigo-500/20">📱 1 Device</span>
             </div>
           </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div>
               <span class="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
               <span class="font-heading font-black text-lg text-emerald-400 font-mono">Rp 25.000</span>
             </div>
-            <button onclick="openBuyModal('Paket 7 Hari Mingguan', 'Rp 25.000', '7 Hari', '7 Mbps')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
-              <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              <span>Beli</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="openModalDetailPaket('Paket 7 Hari Mingguan', 'Rp 25.000', '7 Hari', '7 Mbps', '1 Device', 'Unlimited FUP', 'arab.net', 'voucher')" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1 shrink-0" title="Lihat Detail Paket">
+                <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Detail</span>
+              </button>
+              <button onclick="openBuyModal('Paket 7 Hari Mingguan', 'Rp 25.000', '7 Hari', '7 Mbps')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                <span>Beli</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -479,135 +510,29 @@
             <div class="flex items-center gap-2 mt-3 flex-wrap">
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">⏱ 30 Hari</span>
               <span class="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/30">⚡ 10 Mbps</span>
+              <span class="text-[11px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 font-medium border border-indigo-500/20">📱 2 Device</span>
             </div>
           </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
             <div>
               <span class="text-[10px] text-slate-500 font-bold uppercase block">Harga</span>
               <span class="font-heading font-black text-lg text-emerald-400 font-mono">Rp 75.000</span>
             </div>
-            <button onclick="openBuyModal('Paket 30 Hari Bulanan', 'Rp 75.000', '30 Hari', '10 Mbps')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
-              <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
-              <span>Beli</span>
-            </button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button onclick="openModalDetailPaket('Paket 30 Hari Bulanan', 'Rp 75.000', '30 Hari', '10 Mbps', '2 Device', 'Unlimited FUP', 'arab.net', 'monthly')" class="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition cursor-pointer flex items-center gap-1 shrink-0" title="Lihat Detail Paket">
+                <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Detail</span>
+              </button>
+              <button onclick="openBuyModal('Paket 30 Hari Bulanan', 'Rp 75.000', '30 Hari', '10 Mbps')" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-md shadow-indigo-600/20">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                <span>Beli</span>
+              </button>
+            </div>
           </div>
         </div>
 
       </div>
     </div>
-
-    <!-- ==================== TAB 2: VOUCHER SAYA ==================== -->
-    <div id="tabViewHistory" class="hidden space-y-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h4 class="font-heading font-bold text-sm sm:text-base text-white">Daftar Voucher Saya</h4>
-          <p class="text-xs text-slate-400">Voucher aktif tersimpan otomatis dan siap digunakan</p>
-        </div>
-        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-          Tersimpan
-        </span>
-      </div>
-
-      <div id="myVouchersList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-        <!-- Item 1 -->
-        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-          <div class="flex items-start justify-between">
-            <div>
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">VOUCHER AKTIF</span>
-              <h5 class="font-bold text-sm text-white mt-0.5">Paket 1 Hari Full</h5>
-            </div>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-              ● Terhubung
-            </span>
-          </div>
-          <div class="bg-slate-900 border border-dashed border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
-            <span class="font-mono text-sm sm:text-base font-bold text-indigo-300 tracking-wider">ARB-9921-XK</span>
-            <button onclick="copyVoucherCode('ARB-9921-XK')" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold transition cursor-pointer">
-              Salin
-            </button>
-          </div>
-          <div class="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/80">
-            <span>Sisa: <strong class="text-white">18 Jam 42 Mnt</strong></span>
-            <span>Speed: <strong class="text-emerald-400">5 Mbps</strong></span>
-          </div>
-        </div>
-
-        <!-- Item 2 -->
-        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-          <div class="flex items-start justify-between">
-            <div>
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">BELUM DIPAKAI</span>
-              <h5 class="font-bold text-sm text-white mt-0.5">Voucher 3 Jam Flash</h5>
-            </div>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-              Siap Pakai
-            </span>
-          </div>
-          <div class="bg-slate-900 border border-dashed border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
-            <span class="font-mono text-sm sm:text-base font-bold text-indigo-300 tracking-wider">ARB-7742-PL</span>
-            <button onclick="copyVoucherCode('ARB-7742-PL')" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold transition cursor-pointer">
-              Salin
-            </button>
-          </div>
-          <div class="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/80">
-            <span>Masa Tunggu: <strong class="text-white">30 Hari</strong></span>
-            <span>Speed: <strong class="text-emerald-400">5 Mbps</strong></span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== TAB 3: TAGIHAN & LANGGANAN ==================== -->
-    <div id="tabViewInvoices" class="hidden space-y-4">
-      <div>
-        <h4 class="font-heading font-bold text-sm sm:text-base text-white">Layanan & Tagihan Internet</h4>
-        <p class="text-xs text-slate-400">Detail akun langganan rumah Anda dan tagihan yang perlu diselesaikan</p>
-      </div>
-
-      <!-- Subscription Detail -->
-      <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-              <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-            </div>
-            <div>
-              <h5 class="font-bold text-xs sm:text-sm text-white">PPPoE Rumah - Paket Family 20 Mbps</h5>
-              <p class="text-[11px] text-slate-400">ID: ARB-CUST-8831 • User: user_zainudin</p>
-            </div>
-          </div>
-          <span class="self-start sm:self-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-            ● Status: Aktif Normal
-          </span>
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-400 pt-2 border-t border-slate-800">
-          <div>IP: <strong class="text-white block sm:inline">192.168.88.25</strong></div>
-          <div>Speed: <strong class="text-emerald-400 block sm:inline">20 Mbps</strong></div>
-          <div class="col-span-2 sm:col-span-1">Tempo: <strong class="text-white block sm:inline">Tgl 20 / Bulan</strong></div>
-        </div>
-      </div>
-
-      <!-- Tagihan Belum Lunas -->
-      <div class="bg-slate-950/80 border border-amber-500/40 rounded-2xl p-4 space-y-3">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <span class="text-[9px] font-bold text-amber-400 uppercase tracking-wider block">TAGIHAN BULAN SEPTEMBER 2026</span>
-            <h5 class="font-bold text-sm text-white">Invoice #INV-2026-09-0831</h5>
-            <p class="text-xs text-slate-400">Jatuh Tempo: 20 September 2026</p>
-          </div>
-          <div class="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 border-slate-800 pt-2 sm:pt-0">
-            <div class="text-left sm:text-right">
-              <span class="text-[10px] text-slate-400 block">Total:</span>
-              <strong class="font-mono text-base text-amber-400 font-bold">Rp 150.000</strong>
-            </div>
-            <button onclick="openPayInvoiceModal('Tagihan Internet 20 Mbps', 'Rp 150.000')" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer">
-              Bayar 1-Klik
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <!-- Cara Beli (3 Langkah) -->
@@ -818,6 +743,704 @@
   </div>
 </div>
 
+<!-- ==================== MODAL DAFTAR VOUCHER SAYA (3 KOLOM PC, 1 KOLOM HP) ==================== -->
+<div id="modalVoucherSaya" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+  <div class="bg-slate-900 border border-slate-800 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col text-slate-100">
+    
+    <!-- Header Modal -->
+    <div class="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        </div>
+        <div>
+          <h3 class="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+            <span>Daftar Voucher Saya</span>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+              6 Total
+            </span>
+          </h3>
+          <p class="text-xs text-slate-400">Pilih dan gunakan kode voucher untuk terhubung ke jaringan hotspot</p>
+        </div>
+      </div>
+      <button onclick="closeModal('modalVoucherSaya')" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition">✕</button>
+    </div>
+
+    <!-- Filter Pills: Semua, Belum Terpakai, Sudah Terpakai -->
+    <div class="px-4 sm:px-6 pt-3 pb-2 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto">
+      <button type="button" onclick="filterTesuiVouchers('all', this)" id="tabVcAll" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20">
+        <span>Semua Voucher</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">6</span>
+      </button>
+
+      <button type="button" onclick="filterTesuiVouchers('active', this)" id="tabVcActive" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Belum Terpakai (Siap Pakai)</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">4</span>
+      </button>
+
+      <button type="button" onclick="filterTesuiVouchers('used', this)" id="tabVcUsed" class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300">
+        <span>Sudah Terpakai</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">2</span>
+      </button>
+    </div>
+
+    <!-- Voucher Cards Grid (3 Kolom di PC, 2 di Tablet, 1 di HP) -->
+    <div class="p-4 sm:p-6 overflow-y-auto flex-1">
+      <div id="modalVouchersList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+        
+        <!-- Voucher 1 (Aktif) -->
+        <div class="vc-card-item vc-active bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">Voucher Aktif</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Paket 1 Hari Full</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SIAP PAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-950 border border-dashed border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-emerald-300 tracking-wider truncate block">vclug1ar</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('vclug1ar')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm shadow-emerald-600/30 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span class="truncate">DNS: <strong class="text-slate-300">arab.net</strong></span>
+            <button type="button" onclick="window.open('http://arab.net', '_blank')" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0">
+              <span>Login Hotspot</span>
+              <svg class="w-3 h-3 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Voucher 2 (Aktif) -->
+        <div class="vc-card-item vc-active bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">Voucher Aktif</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Voucher 3 Jam Flash</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SIAP PAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-950 border border-dashed border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-emerald-300 tracking-wider truncate block">vczicajp</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('vczicajp')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm shadow-emerald-600/30 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span class="truncate">DNS: <strong class="text-slate-300">arab.net</strong></span>
+            <button type="button" onclick="window.open('http://arab.net', '_blank')" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0">
+              <span>Login Hotspot</span>
+              <svg class="w-3 h-3 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Voucher 3 (Aktif) -->
+        <div class="vc-card-item vc-active bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">Voucher Aktif</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Paket 7 Hari Unlimited</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SIAP PAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-950 border border-dashed border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-emerald-300 tracking-wider truncate block">vca7x3pl</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('vca7x3pl')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm shadow-emerald-600/30 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span class="truncate">DNS: <strong class="text-slate-300">arab.net</strong></span>
+            <button type="button" onclick="window.open('http://arab.net', '_blank')" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0">
+              <span>Login Hotspot</span>
+              <svg class="w-3 h-3 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Voucher 4 (Aktif) -->
+        <div class="vc-card-item vc-active bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/30 hover:border-emerald-500/60 rounded-2xl p-4 flex flex-col justify-between shadow-lg shadow-emerald-950/20 transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block truncate">Voucher Aktif</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Paket Malam Begadang</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> SIAP PAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-950 border border-dashed border-emerald-500/40 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-emerald-300 tracking-wider truncate block">vc7xa7vf</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('vc7xa7vf')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm shadow-emerald-600/30 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+            <span class="truncate">DNS: <strong class="text-slate-300">arab.net</strong></span>
+            <button type="button" onclick="window.open('http://arab.net', '_blank')" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0">
+              <span>Login Hotspot</span>
+              <svg class="w-3 h-3 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Voucher 5 (Sudah Terpakai) -->
+        <div class="vc-card-item vc-used bg-slate-950/50 border border-slate-800/80 opacity-60 hover:opacity-85 rounded-2xl p-4 flex flex-col justify-between transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">Riwayat Voucher</span>
+                <h4 class="font-heading font-bold text-sm text-slate-400 truncate">Voucher 3 Jam Flash</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1 shrink-0">
+                <span>✓</span> SUDAH TERPAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-slate-500 line-through tracking-wider truncate block">vcenhn6i</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('vcenhn6i')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+            <span class="truncate">DNS: <strong>arab.net</strong></span>
+            <span class="italic">Hangus (14 Sep 2026)</span>
+          </div>
+        </div>
+
+        <!-- Voucher 6 (Sudah Terpakai) -->
+        <div class="vc-card-item vc-used bg-slate-950/50 border border-slate-800/80 opacity-60 hover:opacity-85 rounded-2xl p-4 flex flex-col justify-between transition">
+          <div class="space-y-2.5">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">Riwayat Voucher</span>
+                <h4 class="font-heading font-bold text-sm text-slate-400 truncate">Paket 1 Hari Full</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1 shrink-0">
+                <span>✓</span> SUDAH TERPAKAI
+              </span>
+            </div>
+
+            <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[9px] text-slate-500 uppercase font-semibold block">Kode Voucher</span>
+                <span class="font-mono font-black text-sm text-slate-500 line-through tracking-wider truncate block">8tb99r</span>
+              </div>
+              <button type="button" onclick="copyVoucherCode('8tb99r')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                <span>Salin</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+            <span class="truncate">DNS: <strong>arab.net</strong></span>
+            <span class="italic">Hangus (14 Sep 2026)</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal Footer Button -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+      <span class="text-xs text-slate-400 hidden sm:inline">
+        Klik tombol <strong>Salin</strong> lalu masukkan ke halaman login WiFi Anda
+      </span>
+      <button onclick="closeModal('modalVoucherSaya')" class="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer">
+        Tutup
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== MODAL DAFTAR LANGGANAN (BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== -->
+<div id="modalLangganan" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+  <div class="bg-slate-900 border border-slate-800 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col text-slate-100">
+    
+    <!-- Header Modal -->
+    <div class="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        </div>
+        <div>
+          <h3 class="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+            <span>Langganan Internet Saya</span>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+              3 Layanan
+            </span>
+          </h3>
+          <p class="text-xs text-slate-400">Rincian akun & status koneksi PPPoE / Dedicated</p>
+        </div>
+      </div>
+      <button onclick="closeModal('modalLangganan')" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition">✕</button>
+    </div>
+
+    <!-- Grid List Layanan: 3 Kolom di PC, 1 Kolom di HP -->
+    <div class="p-4 sm:p-6 overflow-y-auto flex-1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+        
+        <!-- Layanan 1 -->
+        <div class="bg-gradient-to-b from-slate-900/90 to-slate-950 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg shadow-cyan-950/20 transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block truncate">PPPoE Home Broadband</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Home BroadBand 10 Mbps</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> AKTIF
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Username PPPoE:</span>
+                <strong class="text-slate-200 font-mono">Zainudin Arab</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Kecepatan:</span>
+                <strong class="text-cyan-400 font-mono font-bold">10 Mbps</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Biaya Bulanan:</span>
+                <strong class="text-amber-400 font-mono">Rp 150.000</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Status realtime terhubung</span>
+            <button onclick="closeModal('modalLangganan'); openModalTagihan();" class="px-3.5 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/60 text-cyan-200 border border-cyan-500/30 rounded-xl text-xs font-bold transition cursor-pointer shrink-0">
+              Lihat Tagihan →
+            </button>
+          </div>
+        </div>
+
+        <!-- Layanan 2 -->
+        <div class="bg-gradient-to-b from-slate-900/90 to-slate-950 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg shadow-cyan-950/20 transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block truncate">PPPoE Rumah RT/RW</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">paket 10mb</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> AKTIF
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Username PPPoE:</span>
+                <strong class="text-slate-200 font-mono">zainudinarab67</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Kecepatan:</span>
+                <strong class="text-cyan-400 font-mono font-bold">10M/10M</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">ID Pelanggan:</span>
+                <strong class="text-slate-300 font-mono">CUST-ZTNUT</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Status realtime terhubung</span>
+            <button onclick="closeModal('modalLangganan'); openModalTagihan();" class="px-3.5 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/60 text-cyan-200 border border-cyan-500/30 rounded-xl text-xs font-bold transition cursor-pointer shrink-0">
+              Lihat Tagihan →
+            </button>
+          </div>
+        </div>
+
+        <!-- Layanan 3 -->
+        <div class="bg-gradient-to-b from-slate-900/90 to-slate-950 border border-cyan-500/30 hover:border-cyan-500/60 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg shadow-cyan-950/20 transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block truncate">Dedicated Bisnis</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Office Pro 20 Mbps</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> AKTIF
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Username PPPoE:</span>
+                <strong class="text-slate-200 font-mono">arab_office</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Kecepatan:</span>
+                <strong class="text-cyan-400 font-mono font-bold">20M/20M</strong>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">IP Statis:</span>
+                <strong class="text-slate-300 font-mono">192.168.88.25</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Status realtime terhubung</span>
+            <button onclick="closeModal('modalLangganan'); openModalTagihan();" class="px-3.5 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/60 text-cyan-200 border border-cyan-500/30 rounded-xl text-xs font-bold transition cursor-pointer shrink-0">
+              Lihat Tagihan →
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal Footer Button -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+      <span class="text-xs text-slate-400 hidden sm:inline">
+        Layanan internet bulanan Anda terhubung ke router MikroTik secara realtime
+      </span>
+      <button onclick="closeModal('modalLangganan')" class="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer">
+        Tutup
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== MODAL DAFTAR TAGIHAN (BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== -->
+<div id="modalTagihan" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+  <div class="bg-slate-900 border border-slate-800 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col text-slate-100">
+    
+    <!-- Header Modal -->
+    <div class="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        </div>
+        <div>
+          <h3 class="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+            <span>Tagihan Internet Saya</span>
+            <span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+              1 Tertunggak
+            </span>
+          </h3>
+          <p class="text-xs text-slate-400">Bayar instan tagihan bulanan via Saldo ArabPay / QRIS</p>
+        </div>
+      </div>
+      <button onclick="closeModal('modalTagihan')" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition">✕</button>
+    </div>
+
+    <!-- Ringkasan Total Tagihan Banner -->
+    <div class="px-4 sm:px-6 py-3 bg-amber-950/20 border-b border-amber-500/20 shrink-0 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></div>
+        <div>
+          <span class="text-[10px] text-amber-300/80 font-bold uppercase tracking-wider block">TOTAL BELUM DIBAYAR</span>
+          <strong id="modalTagihanTotalText" class="font-heading font-black text-xl text-amber-400 font-mono">Rp 150.000</strong>
+        </div>
+      </div>
+      <span class="text-xs text-slate-300 font-semibold px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800">
+        1 invoice aktif belum diselesaikan
+      </span>
+    </div>
+
+    <!-- Grid List Tagihan: 3 Kolom di PC, 1 Kolom di HP -->
+    <div class="p-4 sm:p-6 overflow-y-auto flex-1">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+        
+        <!-- Tagihan 1 (Tertunggak) -->
+        <div id="modalTagihanCardBox" class="bg-gradient-to-b from-amber-950/20 to-slate-950 border border-amber-500/40 hover:border-amber-500/70 rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg shadow-amber-950/20 transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">INV-2026-09-0831</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">PPPoE Rumah - Paket Family</h4>
+              </div>
+              <span id="modalTagihanStatusBadge" class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1 shrink-0">
+                BELUM DIBAYAR
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-950 border border-amber-500/30 rounded-xl flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-400 font-semibold">Total Tagihan:</span>
+              <strong class="font-heading font-black text-base text-amber-400 font-mono">Rp 150.000</strong>
+            </div>
+
+            <div class="space-y-1 text-xs text-slate-400">
+              <div class="flex justify-between">
+                <span>Jatuh Tempo:</span>
+                <strong class="text-slate-300">20/9/2026</strong>
+              </div>
+              <div class="flex justify-between">
+                <span>Kecepatan:</span>
+                <strong class="text-slate-300">20 Mbps</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Siap dibayar online</span>
+            <button id="btnPayModalTagihan" onclick="processMockPayInvoice()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-md shadow-emerald-600/30 shrink-0">
+              Bayar Sekarang
+            </button>
+          </div>
+        </div>
+
+        <!-- Tagihan 2 (Lunas) -->
+        <div class="bg-slate-950/60 border border-slate-800/80 opacity-75 hover:opacity-100 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">INV-VC-20260915-MU22IEZ3</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Paket: barutes</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                ✓ LUNAS
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-400 font-semibold">Total Tagihan:</span>
+              <strong class="font-heading font-black text-base text-emerald-400 font-mono">Rp 2.000</strong>
+            </div>
+
+            <div class="space-y-1 text-xs text-slate-400">
+              <div class="flex justify-between">
+                <span>Jatuh Tempo:</span>
+                <strong class="text-slate-300">15/9/2026</strong>
+              </div>
+              <div class="flex justify-between">
+                <span>Metode:</span>
+                <strong class="text-slate-300">ArabPay E-Wallet</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Sudah diselesaikan</span>
+            <span class="text-xs text-emerald-400 font-bold flex items-center gap-1">
+              <span>✓</span> Lunas
+            </span>
+          </div>
+        </div>
+
+        <!-- Tagihan 3 (Lunas) -->
+        <div class="bg-slate-950/60 border border-slate-800/80 opacity-75 hover:opacity-100 rounded-2xl p-4 sm:p-5 flex flex-col justify-between transition">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 block truncate">INV-VC-20260915-MU22H1T2</span>
+                <h4 class="font-heading font-bold text-sm text-white truncate">Paket: barutes</h4>
+              </div>
+              <span class="text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                ✓ LUNAS
+              </span>
+            </div>
+
+            <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-400 font-semibold">Total Tagihan:</span>
+              <strong class="font-heading font-black text-base text-emerald-400 font-mono">Rp 2.000</strong>
+            </div>
+
+            <div class="space-y-1 text-xs text-slate-400">
+              <div class="flex justify-between">
+                <span>Jatuh Tempo:</span>
+                <strong class="text-slate-300">15/9/2026</strong>
+              </div>
+              <div class="flex justify-between">
+                <span>Metode:</span>
+                <strong class="text-slate-300">ArabPay E-Wallet</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <span class="text-[11px] text-slate-500 truncate">Sudah diselesaikan</span>
+            <span class="text-xs text-emerald-400 font-bold flex items-center gap-1">
+              <span>✓</span> Lunas
+            </span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal Footer Button -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+      <span class="text-xs text-slate-400 hidden sm:inline">
+        Pembayaran diproses otomatis dan realtime melalui gerbang pembayaran ArabPay
+      </span>
+      <button onclick="closeModal('modalTagihan')" class="w-full sm:w-auto px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl transition cursor-pointer">
+        Tutup
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== MODAL DETAIL PAKET (VOUCHER & BULANAN) ==================== -->
+<div id="modalDetailPaket" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+  <div class="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col text-slate-100 animate-fade-in">
+    
+    <!-- Header Modal -->
+    <div class="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-950/40">
+      <div class="flex items-center gap-3">
+        <div id="detailPkgIconBox" class="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+          <svg class="w-6 h-6 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        </div>
+        <div>
+          <h3 id="detailPkgName" class="font-heading font-extrabold text-base sm:text-lg text-white">Detail Paket Internet</h3>
+          <p id="detailPkgType" class="text-xs text-slate-400">Voucher Internet Hotspot Prabayar</p>
+        </div>
+      </div>
+      <button onclick="closeModal('modalDetailPaket')" class="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition">✕</button>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="p-4 sm:p-6 overflow-y-auto space-y-4">
+      
+      <!-- Harga Box -->
+      <div class="p-4 rounded-2xl bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 flex items-center justify-between">
+        <div>
+          <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Harga Paket</span>
+          <span id="detailPkgPrice" class="text-2xl font-black text-emerald-400 font-mono">Rp 0</span>
+        </div>
+        <span id="detailPkgBadge" class="text-xs px-3 py-1 rounded-full font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+          ✓ Tersedia
+        </span>
+      </div>
+
+      <!-- 4 Spesifikasi Card (Batas Perangkat, Kecepatan, Masa Aktif, Kuota) -->
+      <div class="grid grid-cols-2 gap-3">
+        <!-- 1. Batas Perangkat -->
+        <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+          <div class="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
+            <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            <span>Batas Perangkat</span>
+          </div>
+          <p id="detailPkgDevices" class="text-base font-extrabold text-white">1 Device</p>
+          <p class="text-[10px] text-slate-400">Bisa dipakai bersamaan</p>
+        </div>
+
+        <!-- 2. Kecepatan -->
+        <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+          <div class="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
+            <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Kecepatan</span>
+          </div>
+          <p id="detailPkgSpeed" class="text-base font-extrabold text-emerald-400">Up to 10 Mbps</p>
+          <p class="text-[10px] text-slate-400">Download & upload stabil</p>
+        </div>
+
+        <!-- 3. Masa Aktif -->
+        <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+          <div class="flex items-center gap-1.5 text-sky-400 text-xs font-bold">
+            <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>Masa Aktif</span>
+          </div>
+          <p id="detailPkgDur" class="text-base font-extrabold text-white">1 Jam</p>
+          <p class="text-[10px] text-slate-400">Dihitung sejak login pertama</p>
+        </div>
+
+        <!-- 4. Kuota / FUP -->
+        <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+          <div class="flex items-center gap-1.5 text-indigo-400 text-xs font-bold">
+            <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <span>Kuota Data</span>
+          </div>
+          <p id="detailPkgQuota" class="text-base font-extrabold text-white">Unlimited FUP</p>
+          <p class="text-[10px] text-slate-400">Tanpa batas kuota harian</p>
+        </div>
+      </div>
+
+      <!-- Fitur & Fasilitas -->
+      <div class="p-4 rounded-2xl bg-slate-950/40 border border-slate-800/80 space-y-2 text-xs text-slate-300">
+        <h4 class="font-bold text-slate-200 flex items-center gap-1.5">
+          <svg class="w-4 h-4 text-emerald-400 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          <span>Fasilitas & Keuntungan Paket</span>
+        </h4>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span>
+            <span>Koneksi latency rendah, nyaman untuk game online & streaming HD</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span>
+            <span>Domain ISP MikroTik: <strong id="detailPkgIsp" class="text-sky-300 font-mono">arab.net</strong></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-emerald-400 font-bold">✓</span>
+            <span>Bebas login ulang pada jaringan yang sama selama masa aktif belum habis</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer Actions -->
+    <div class="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
+      <button onclick="closeModal('modalDetailPaket')" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs rounded-xl transition cursor-pointer">
+        Tutup
+      </button>
+      <button id="detailActionBtn" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 active:scale-95">
+        <span id="detailActionBtnText">Beli Voucher Ini</span>
+        <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+      </button>
+    </div>
+
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div id="toastContainer" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none space-y-2"></div>
 
@@ -826,6 +1449,29 @@
   let currentBalance = 50000;
   let activeTopupNominal = 20000;
   let currentBuyPkg = { name: '', price: '', dur: '', speed: '' };
+  let currentVoucherCount = 3;
+  let isInvoicePaid = false;
+
+  function openModalDetailPaket(name, price, dur, speed, devices, quota, isp, type) {
+    document.getElementById('detailPkgName').textContent = name;
+    document.getElementById('detailPkgType').textContent = type === 'monthly' ? 'Paket Berlangganan Dedicated RT/RW Net' : 'Voucher Internet Hotspot Prabayar';
+    document.getElementById('detailPkgPrice').textContent = price;
+    document.getElementById('detailPkgSpeed').textContent = speed || 'Up to 10 Mbps';
+    document.getElementById('detailPkgDevices').textContent = devices || '1 Device';
+    document.getElementById('detailPkgDur').textContent = dur || '1 Hari';
+    document.getElementById('detailPkgQuota').textContent = quota || 'Unlimited FUP';
+    document.getElementById('detailPkgIsp').textContent = isp || 'arab.net';
+    document.getElementById('detailActionBtnText').textContent = type === 'monthly' ? 'Daftar Paket Ini' : 'Beli Voucher Ini';
+    document.getElementById('detailActionBtn').onclick = function() {
+      closeModal('modalDetailPaket');
+      if (type === 'monthly') {
+        openModalTagihan();
+      } else {
+        openBuyModal(name, price, dur, speed);
+      }
+    };
+    document.getElementById('modalDetailPaket').classList.remove('hidden');
+  }
 
   // Countdown Timer Flash Sale
   let totalSeconds = 1 * 86400 + 4 * 3600 + 28 * 60 + 45;
@@ -843,38 +1489,39 @@
   }
   setInterval(updateCountdown, 1000);
 
-  // Switch Main 3 Tabs
-  function switchMainTab(tab) {
-    const tabBtns = ['tabBtnBuy', 'tabBtnHistory', 'tabBtnInvoices'];
-    const tabViews = ['tabViewBuy', 'tabViewHistory', 'tabViewInvoices'];
+  // Modal Open Functions for Stat Cards
+  function openModalVoucherSaya() {
+    document.getElementById('modalVoucherSaya').classList.remove('hidden');
+  }
 
-    tabBtns.forEach(id => {
-      const btn = document.getElementById(id);
-      btn.className = "tab-btn px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80";
-    });
+  function openModalLangganan() {
+    document.getElementById('modalLangganan').classList.remove('hidden');
+  }
 
-    tabViews.forEach(id => {
-      document.getElementById(id).classList.add('hidden');
-    });
+  function openModalTagihan() {
+    document.getElementById('modalTagihan').classList.remove('hidden');
+  }
 
-    if (tab === 'buy') {
-      const activeBtn = document.getElementById('tabBtnBuy');
-      activeBtn.className = "tab-btn active px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20";
-      document.getElementById('tabViewBuy').classList.remove('hidden');
-    } else if (tab === 'history') {
-      const activeBtn = document.getElementById('tabBtnHistory');
-      activeBtn.className = "tab-btn active px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20";
-      document.getElementById('tabViewHistory').classList.remove('hidden');
-    } else if (tab === 'invoices') {
-      const activeBtn = document.getElementById('tabBtnInvoices');
-      activeBtn.className = "tab-btn active px-2 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-[11px] sm:text-sm font-bold transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border cursor-pointer bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20";
-      document.getElementById('tabViewInvoices').classList.remove('hidden');
-    }
+  function openBuyModal(name, price, dur, speed) {
+    currentBuyPkg = { name, price, dur, speed };
+    document.getElementById('modalPkgTitle').textContent = `Beli ${name}`;
+    document.getElementById('modalSummaryName').textContent = name;
+    document.getElementById('modalSummaryDur').textContent = dur;
+    document.getElementById('modalSummarySpeed').textContent = speed;
+    document.getElementById('modalSummaryPrice').textContent = price;
+    document.getElementById('buyModal').classList.remove('hidden');
+  }
 
-    const frame = document.getElementById('catalogUnifiedFrame');
-    if (frame) {
-      frame.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+  function openPayInvoiceModal(title, price) {
+    openModalTagihan();
+  }
+
+  function openTopupModal() {
+    document.getElementById('topupModal').classList.remove('hidden');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
   }
 
   // Filter Paket Voucher
@@ -934,29 +1581,6 @@
     showToast('Data tagihan ditemukan!');
   }
 
-  // Modal Functions
-  function openBuyModal(name, price, dur, speed) {
-    currentBuyPkg = { name, price, dur, speed };
-    document.getElementById('modalPkgTitle').textContent = `Beli ${name}`;
-    document.getElementById('modalSummaryName').textContent = name;
-    document.getElementById('modalSummaryDur').textContent = dur;
-    document.getElementById('modalSummarySpeed').textContent = speed;
-    document.getElementById('modalSummaryPrice').textContent = price;
-    document.getElementById('buyModal').classList.remove('hidden');
-  }
-
-  function openPayInvoiceModal(title, price) {
-    openBuyModal(title, price, '1 Bulan', '20 Mbps');
-  }
-
-  function openTopupModal() {
-    document.getElementById('topupModal').classList.remove('hidden');
-  }
-
-  function closeModal(id) {
-    document.getElementById(id).classList.add('hidden');
-  }
-
   function selectTopupNominal(nom, el) {
     activeTopupNominal = nom;
     document.querySelectorAll('.topup-btn').forEach(b => {
@@ -970,10 +1594,10 @@
     closeModal('buyModal');
     const randomCode = 'ARB-' + Math.floor(1000 + Math.random() * 9000) + '-' + ['XK', 'PL', 'QR', 'ZM', 'TN'][Math.floor(Math.random() * 5)];
     
-    // Add to Voucher Saya mock list
-    const container = document.getElementById('myVouchersList');
+    // Add to Modal Voucher Saya list
+    const container = document.getElementById('modalVouchersList');
     const newCard = document.createElement('div');
-    newCard.className = 'bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3';
+    newCard.className = 'bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 space-y-2.5';
     newCard.innerHTML = `
       <div class="flex items-start justify-between">
         <div>
@@ -984,26 +1608,26 @@
           Siap Pakai
         </span>
       </div>
-      <div class="bg-slate-900 border border-dashed border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
-        <span class="font-mono text-sm sm:text-base font-bold text-indigo-300 tracking-wider">${randomCode}</span>
+      <div class="bg-slate-900 border border-dashed border-indigo-500/40 rounded-xl p-2.5 flex items-center justify-between">
+        <span class="font-mono text-sm font-bold text-indigo-300 tracking-wider">${randomCode}</span>
         <button onclick="copyVoucherCode('${randomCode}')" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white rounded-lg text-xs font-semibold transition cursor-pointer">
           Salin
         </button>
       </div>
-      <div class="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/80">
+      <div class="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800">
         <span>Durasi: <strong class="text-white">${currentBuyPkg.dur}</strong></span>
         <span>Speed: <strong class="text-emerald-400">${currentBuyPkg.speed}</strong></span>
       </div>
     `;
     container.prepend(newCard);
 
-    // Update count badge
-    const badge = document.getElementById('myVoucherBadge');
-    badge.textContent = parseInt(badge.textContent || '3') + 1;
+    // Increment voucher count
+    currentVoucherCount++;
+    document.getElementById('statVoucherCount').textContent = `${currentVoucherCount} Voucher`;
 
     showToast(`Berhasil! Kode Voucher: ${randomCode}`);
     setTimeout(() => {
-      switchMainTab('history');
+      openModalVoucherSaya();
     }, 600);
   }
 
@@ -1015,6 +1639,63 @@
     document.getElementById('dropdownBalance').textContent = formatted;
     document.getElementById('statBalance').textContent = formatted;
     showToast(`Top Up Berhasil! Saldo bertambah Rp ${activeTopupNominal.toLocaleString('id-ID')}`);
+  }
+
+  function processMockPayInvoice() {
+    if (isInvoicePaid) {
+      showToast('Tagihan ini sudah lunas!');
+      return;
+    }
+    isInvoicePaid = true;
+
+    // Update modal card box
+    const cardBox = document.getElementById('modalTagihanCardBox');
+    cardBox.className = "bg-slate-950/80 border border-emerald-500/40 rounded-2xl p-4 space-y-3";
+    const badge = document.getElementById('modalTagihanStatusBadge');
+    badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+    badge.textContent = "● Lunas";
+    
+    // Update button
+    const btn = document.getElementById('btnPayModalTagihan');
+    btn.className = "w-full py-2.5 bg-slate-800 text-emerald-400 font-bold text-xs rounded-xl cursor-not-allowed";
+    btn.textContent = "✓ Tagihan Sudah Lunas";
+
+    // Update top stat card
+    const statVal = document.getElementById('statTagihanVal');
+    statVal.textContent = "Lunas (Rp 0)";
+    statVal.className = "font-heading font-bold text-sm sm:text-base text-emerald-400 block truncate";
+
+    showToast('Pembayaran Tagihan Rp 150.000 Sukses via ArabPay!');
+    setTimeout(() => {
+      closeModal('modalTagihan');
+    }, 1200);
+  }
+
+  function filterTesuiVouchers(type, btn) {
+    const tabs = [document.getElementById('tabVcAll'), document.getElementById('tabVcActive'), document.getElementById('tabVcUsed')];
+    tabs.forEach(t => {
+      if (!t) return;
+      t.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200";
+    });
+
+    if (type === 'all') {
+      btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20";
+    } else if (type === 'active') {
+      btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20";
+    } else if (type === 'used') {
+      btn.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border bg-slate-700 border-slate-600 text-white shadow-md";
+    }
+
+    const cards = document.querySelectorAll('.vc-card-item');
+    cards.forEach(c => {
+      if (type === 'all') {
+        c.style.display = 'flex';
+      } else if (type === 'active') {
+        c.style.display = c.classList.contains('vc-active') ? 'flex' : 'none';
+      } else if (type === 'used') {
+        c.style.display = c.classList.contains('vc-used') ? 'flex' : 'none';
+      }
+    });
   }
 
   function copyVoucherCode(code) {

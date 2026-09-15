@@ -251,6 +251,8 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         COALESCE(p.price, 0)::int as price,
         COALESCE(p.validity_iso, 'P1D') as validity_iso,
         COALESCE(p.quota_mb, 0)::int as quota_mb,
+        COALESCE(p.shared_users, 1)::int as shared_users,
+        COALESCE(p.uptime_limit, '') as uptime_limit,
         COUNT(v.id)::int as stock,
         'pregenerated' as mode
       FROM router_profiles rp
@@ -260,7 +262,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       WHERE rp.package_id IS NOT NULL
         AND COALESCE(rp.is_active, true) = true
         AND COALESCE(p.is_active, true) = true
-      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb
+      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
       ORDER BY COALESCE(p.price, 0) ASC
     `);
 
@@ -275,6 +277,8 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
         COALESCE(p.validity_iso, 'P1D') as validity_iso,
         COALESCE(p.quota_mb, 0)::int as quota_mb,
+        COALESCE(p.shared_users, 1)::int as shared_users,
+        COALESCE(p.uptime_limit, '') as uptime_limit,
         COALESCE(r.id, 'rtr-pusat-01') as router_id,
         COALESCE(r.name, 'Router Utama') as router_name,
         COALESCE(r.dns_name, 'arab.net') as dns_name,
@@ -706,6 +710,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         v.code as username,
         v.password,
         v.status,
+        v.first_login_at,
+        v.expired_at,
         COALESCE(v.sold_at, v.created_at) as date,
         v.sold_at,
         v.comment,
@@ -734,22 +740,29 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       LIMIT 100
     `, [cleanUserId, cleanPhone]);
 
-    const formatted = result.rows.map(row => ({
-      id: row.invoice_number || row.voucher_id,
-      voucher_id: row.voucher_id,
-      invoice_id: row.invoice_id,
-      invoice_number: row.invoice_number,
-      date: row.date ? new Date(row.date).toLocaleString('id-ID') : new Date().toLocaleString('id-ID'),
-      packageName: row.package_name || row.profile_name || 'Voucher Hotspot',
-      price: Number(row.price || 0),
-      username: row.username,
-      password: row.password,
-      hotspot_ip: row.hotspot_ip || '10.0.0.1',
-      dns_name: row.dns_name || 'arab.net',
-      status: row.status === 'sold' || row.status === 'active' ? 'SUCCESS' : row.status,
-      paymentChannel: row.payment_channel,
-      is_flash_sale: Boolean((row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
-    }));
+    const formatted = result.rows.map(row => {
+      const isUsed = row.status === 'used' || row.status === 'expired' || Boolean(row.expired_at && new Date(row.expired_at).getTime() < Date.now());
+      return {
+        id: row.invoice_number || row.voucher_id,
+        voucher_id: row.voucher_id,
+        invoice_id: row.invoice_id,
+        invoice_number: row.invoice_number,
+        date: row.date ? new Date(row.date).toLocaleString('id-ID') : new Date().toLocaleString('id-ID'),
+        packageName: row.package_name || row.profile_name || 'Voucher Hotspot',
+        price: Number(row.price || 0),
+        username: row.username,
+        password: row.password,
+        hotspot_ip: row.hotspot_ip || '10.0.0.1',
+        dns_name: row.dns_name || 'arab.net',
+        status: isUsed ? 'used' : (row.status === 'sold' || row.status === 'active' ? 'active' : row.status),
+        raw_status: row.status,
+        is_used: isUsed,
+        first_login_at: row.first_login_at,
+        expired_at: row.expired_at,
+        paymentChannel: row.payment_channel,
+        is_flash_sale: Boolean((row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
+      };
+    });
 
     res.json({ success: true, vouchers: formatted });
   } catch (err: any) {
