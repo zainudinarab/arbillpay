@@ -3,7 +3,7 @@ import { UserAccount, CustomerPortalConfig, CustomerPortalSection } from '../typ
 import {
   Wifi, Zap, Clock, Shield, ShoppingCart, Wallet, X,
   CheckCircle2, Lock, ArrowRight, Loader2, AlertCircle,
-  Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft,
+  Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft, ChevronDown,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info,
   MessageCircle, Megaphone, Flame
@@ -161,6 +161,7 @@ export default function CustomerPortal({
   const [paymentChannels, setPaymentChannels] = useState<any[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   // Portal Template & Layout Configuration (Loaded dynamically from Admin)
   const [portalConfig, setPortalConfig] = useState<CustomerPortalConfig | null>(() => {
@@ -1955,28 +1956,85 @@ export default function CustomerPortal({
                   <span className="hidden sm:inline">Top Up</span>
                 </button>
 
-                {/* User Avatar & Profile Button */}
-                <button
-                  onClick={() => setShowProfileModal(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition cursor-pointer"
-                  title="Klik untuk Lihat Profil Saya"
-                >
-                  <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                    <span className="text-[10px] font-bold text-indigo-400">
-                      {(currentUser?.name || 'P')[0].toUpperCase()}
-                    </span>
-                  </div>
-                  <span className="text-xs font-medium text-slate-300 hidden sm:inline">{currentUser?.name}</span>
-                </button>
+                {/* User Avatar & Dropdown Menu */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowUserDropdown(prev => !prev)}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full transition cursor-pointer"
+                    title="Menu Akun Saya"
+                  >
+                    <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-indigo-400">
+                        {(currentUser?.name || 'P')[0].toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="text-xs font-medium text-slate-300 hidden sm:inline">{currentUser?.name}</span>
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${showUserDropdown ? 'rotate-180' : ''}`} />
+                  </button>
 
-                {/* Logout Button */}
-                <button
-                  onClick={onLogout}
-                  className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition cursor-pointer"
-                  title="Keluar / Logout"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
+                  {/* Dropdown Menu Popup */}
+                  {showUserDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowUserDropdown(false)} />
+                      <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 p-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+                        <div className="px-3 py-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 mb-1">
+                          <p className="text-xs font-bold text-slate-200 truncate">{currentUser?.name}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{currentUser?.phone || currentUser?.email || 'Akun Terhubung'}</p>
+                          <div className="mt-2 flex items-center justify-between pt-1.5 border-t border-slate-800/80">
+                            <span className="text-[10px] text-slate-400 font-medium">Saldo ArabPay</span>
+                            <span className="font-mono font-bold text-xs text-emerald-400">{formatRupiah(balance || 0)}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setShowProfileModal(true);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-left"
+                        >
+                          <UserCheck size={15} className="text-emerald-400" />
+                          <span>Profil Saya</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setShowTopupModal(true);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-left"
+                        >
+                          <Plus size={15} className="text-amber-400" />
+                          <span>Top Up Saldo</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setActiveTab('invoices');
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-left"
+                        >
+                          <FileText size={15} className="text-sky-400" />
+                          <span>Tagihan & Langganan</span>
+                        </button>
+
+                        <div className="border-t border-slate-800 my-1" />
+
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            onLogout();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 rounded-xl transition cursor-pointer text-left"
+                        >
+                          <LogOut size={15} className="text-rose-400" />
+                          <span>Keluar / Logout</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </>
             ) : (
               <div className="flex items-center gap-2">
@@ -2032,81 +2090,66 @@ export default function CustomerPortal({
           </div>
         )}
 
-        {/* ==================== NAVIGATION TABS (RESPONSIVE SCROLLBAR / GRID) ==================== */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+        {/* ==================== NAVIGATION TABS (3 TOMBOL UTAMA BERSIH & RAPI) ==================== */}
+        <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+          {/* 1. Beli Voucher */}
           <button
             onClick={() => setActiveTab('buy')}
-            className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'buy'
+            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+              activeTab === 'buy'
                 ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            }`}
           >
             <ShoppingCart className="w-4 h-4" />
             <span>Beli Voucher</span>
           </button>
 
-          {currentUser && allRegs.length > 0 && (
-            <button
-              onClick={() => setActiveTab('subscriptions')}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'subscriptions'
-                  ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-            >
-              <Signal className="w-4 h-4 text-emerald-400" />
-              <span>Langganan Saya ({allRegs.length})</span>
-            </button>
-          )}
-
+          {/* 2. Voucher Saya */}
           <button
             onClick={() => {
-              setActiveTab('register_member');
-              fetchMonthlyMemberPackages();
+              if (!currentUser) {
+                setShowLoginModal(true);
+              } else {
+                setActiveTab('history');
+              }
             }}
-            className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'register_member'
-                ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-500/20'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
+            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+              activeTab === 'history'
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            }`}
           >
-            <Zap className="w-4 h-4 text-amber-400" />
-            <span>Daftar Member</span>
+            <Ticket className="w-4 h-4" />
+            <span>Voucher Saya</span>
+            {currentUser && localPurchasedVouchers.length > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                activeTab === 'history' ? 'bg-white/20 text-white' : 'bg-slate-800 text-indigo-400 border border-indigo-500/30'
+              }`}>
+                {localPurchasedVouchers.length}
+              </span>
+            )}
           </button>
 
-          {currentUser && (
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'history'
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-            >
-              <Clock className="w-4 h-4" />
-              <span>Voucher Saya ({localPurchasedVouchers.length})</span>
-            </button>
-          )}
-
-          {currentUser && (
-            <button
-              onClick={() => setActiveTab('invoices')}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${activeTab === 'invoices'
-                  ? 'bg-sky-600 border-sky-500 text-white shadow-lg shadow-sky-500/20'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
-                }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Tagihan Bulanan</span>
-            </button>
-          )}
-
-          {currentUser && (
-            <button
-              onClick={() => setShowProfileModal(true)}
-              className="px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white"
-            >
-              <UserCheck className="w-4 h-4 text-emerald-400" />
-              <span>Profil Saya</span>
-            </button>
-          )}
+          {/* 3. Tagihan & Langganan */}
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+              activeTab === 'invoices' || activeTab === 'subscriptions'
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Tagihan & Langganan</span>
+            {currentUser && allRegs.length > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                activeTab === 'invoices' || activeTab === 'subscriptions' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
+              }`}>
+                {allRegs.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* ==================== TAB: DAFTAR LANGGANAN SAYA ==================== */}
