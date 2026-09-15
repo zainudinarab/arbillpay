@@ -1922,6 +1922,69 @@ export default function CustomerPortal({
     );
   };
 
+  const renderPortalNavigationTabs = () => (
+    <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
+      {/* 1. Beli Voucher */}
+      <button
+        onClick={() => setActiveTab('buy')}
+        className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+          activeTab === 'buy'
+            ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+        }`}
+      >
+        <ShoppingCart className="w-4 h-4" />
+        <span>Beli Voucher</span>
+      </button>
+
+      {/* 2. Voucher Saya */}
+      <button
+        onClick={() => {
+          if (!currentUser) {
+            setShowLoginModal(true);
+          } else {
+            setActiveTab('history');
+          }
+        }}
+        className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+          activeTab === 'history'
+            ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+        }`}
+      >
+        <Ticket className="w-4 h-4" />
+        <span>Voucher Saya</span>
+        {currentUser && localPurchasedVouchers.length > 0 && (
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+            activeTab === 'history' ? 'bg-white/20 text-white' : 'bg-slate-800 text-indigo-400 border border-indigo-500/30'
+          }`}>
+            {localPurchasedVouchers.length}
+          </span>
+        )}
+      </button>
+
+      {/* 3. Tagihan & Langganan */}
+      <button
+        onClick={() => setActiveTab('invoices')}
+        className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
+          activeTab === 'invoices' || activeTab === 'subscriptions'
+            ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+        }`}
+      >
+        <FileText className="w-4 h-4" />
+        <span>Tagihan & Langganan</span>
+        {currentUser && allRegs.length > 0 && (
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+            activeTab === 'invoices' || activeTab === 'subscriptions' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
+          }`}>
+            {allRegs.length}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+
   return (
     <div className={getThemeContainerClass()}>
 
@@ -2090,71 +2153,12 @@ export default function CustomerPortal({
           </div>
         )}
 
-        {/* ==================== NAVIGATION TABS (3 TOMBOL UTAMA BERSIH & RAPI) ==================== */}
-        <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:justify-center scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
-          {/* 1. Beli Voucher */}
-          <button
-            onClick={() => setActiveTab('buy')}
-            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
-              activeTab === 'buy'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
-            }`}
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>Beli Voucher</span>
-          </button>
 
-          {/* 2. Voucher Saya */}
-          <button
-            onClick={() => {
-              if (!currentUser) {
-                setShowLoginModal(true);
-              } else {
-                setActiveTab('history');
-              }
-            }}
-            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
-            }`}
-          >
-            <Ticket className="w-4 h-4" />
-            <span>Voucher Saya</span>
-            {currentUser && localPurchasedVouchers.length > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                activeTab === 'history' ? 'bg-white/20 text-white' : 'bg-slate-800 text-indigo-400 border border-indigo-500/30'
-              }`}>
-                {localPurchasedVouchers.length}
-              </span>
-            )}
-          </button>
-
-          {/* 3. Tagihan & Langganan */}
-          <button
-            onClick={() => setActiveTab('invoices')}
-            className={`px-5 sm:px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition flex items-center gap-2 border shrink-0 cursor-pointer ${
-              activeTab === 'invoices' || activeTab === 'subscriptions'
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20'
-                : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>Tagihan & Langganan</span>
-            {currentUser && allRegs.length > 0 && (
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                activeTab === 'invoices' || activeTab === 'subscriptions' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
-              }`}>
-                {allRegs.length}
-              </span>
-            )}
-          </button>
-        </div>
 
         {/* ==================== TAB: DAFTAR LANGGANAN SAYA ==================== */}
         {activeTab === 'subscriptions' && currentUser && (
           <div className="space-y-6">
+            {renderPortalNavigationTabs()}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 p-5 rounded-3xl border border-slate-800">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
@@ -2345,6 +2349,8 @@ export default function CustomerPortal({
                 case 'vouchers':
                   return (
                     <div key={section.id} id="voucher-catalog-section" className="space-y-6">
+                      {/* Navigasi Tab menyatu dalam 1 frame dengan daftar voucher */}
+                      {renderPortalNavigationTabs()}
             {voucherLoading ? (
               <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
                 <RefreshCw size={28} className="animate-spin text-indigo-500" />
@@ -2641,6 +2647,7 @@ export default function CustomerPortal({
         {/* ==================== TAB 2: VOUCHER HISTORY (Persis arbiljs) ==================== */}
         {activeTab === 'history' && currentUser && (
           <div className="space-y-6">
+            {renderPortalNavigationTabs()}
             <div className="flex items-center justify-between bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
               <div>
                 <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
@@ -2741,7 +2748,9 @@ export default function CustomerPortal({
 
         {/* ==================== TAB 3: BROADBAND INVOICES ==================== */}
         {activeTab === 'invoices' && (
-          <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 md:p-8 space-y-6">
+          <div className="space-y-6">
+            {renderPortalNavigationTabs()}
+            <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 md:p-8 space-y-6">
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold">
@@ -2830,6 +2839,7 @@ export default function CustomerPortal({
                 })}
               </div>
             )}
+            </div>
           </div>
         )}
 
