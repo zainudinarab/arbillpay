@@ -40,6 +40,10 @@ app.use('/api', apiRouter);
 import path from 'path';
 import fs from 'fs';
 const distPath = path.resolve(process.cwd(), 'dist');
+app.get('/tesui.html', (req, res) => {
+  res.sendFile(path.resolve(process.cwd(), 'tesui.html'));
+});
+
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res) => {

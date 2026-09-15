@@ -3,1025 +3,2171 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARBILL Hotspot & Internet</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
-  body { background: #f5f6fa; color: #1a1a2e; }
+<title>ARBILL Hotspot & Internet — Portal Pelanggan</title>
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  /* ===== HEADER ===== */
+<style>
+  :root {
+    --bg-main: #090d16;
+    --bg-card: #0f172a;
+    --bg-card-hover: #162036;
+    --bg-card-elevated: #1e293b;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(99, 102, 241, 0.4);
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --primary-glow: rgba(99, 102, 241, 0.25);
+    --accent-cyan: #06b6d4;
+    --accent-emerald: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-rose: #f43f5e;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: var(--font-body);
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    min-height: 100vh;
+    background-image: 
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent 70%),
+      radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08), transparent 50%);
+    background-attachment: fixed;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  /* SVG Icons Helper */
+  .icon {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2;
+    stroke: currentColor;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  /* ===== HEADER / NAVBAR ===== */
   .header {
-    background: #fff;
-    padding: 12px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(9, 13, 22, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 12px 24px;
+    transition: all 0.3s ease;
+  }
+  .header-container {
+    max-width: 1200px;
+    margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    flex-wrap: wrap;
-    gap: 10px;
+    gap: 16px;
   }
-  .logo-area { display: flex; align-items: center; gap: 10px; }
-  .logo-icon {
-    width: 40px; height: 40px;
-    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    color: white; font-size: 20px;
-  }
-  .logo-text h1 { font-size: 16px; color: #2d3436; }
-  .logo-text p { font-size: 11px; color: #636e72; }
 
-  .header-actions { display: flex; align-items: center; gap: 10px; }
-  .icon-btn {
-    width: 38px; height: 38px;
-    border-radius: 50%;
+  .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+  }
+  .logo-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5, #06b6d4);
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+  }
+  .logo-icon svg { width: 22px; height: 22px; }
+  .logo-text h1 {
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .logo-text .badge-live {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .logo-text p {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .balance-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(30, 41, 59, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 14px;
+    border-radius: 30px;
+    font-size: 12px;
+    transition: 0.2s;
+  }
+  .balance-pill:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(30, 41, 59, 1);
+  }
+  .balance-pill .val {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    color: #34d399;
+  }
+
+  .btn-topup-header {
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    color: white;
     border: none;
-    background: #f0f0f0;
+    padding: 7px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
     cursor: pointer;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-topup-header:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+  }
+
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     position: relative;
-    font-size: 16px;
+    transition: 0.2s;
+  }
+  .icon-btn:hover {
+    color: white;
+    background: rgba(30, 41, 59, 1);
+    border-color: var(--border-hover);
   }
   .badge-dot {
     position: absolute;
-    top: 2px; right: 2px;
-    background: #e74c3c;
-    color: white;
-    font-size: 9px;
-    width: 16px; height: 16px;
+    top: 7px;
+    right: 7px;
+    width: 8px;
+    height: 8px;
+    background: var(--accent-rose);
     border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 8px var(--accent-rose);
   }
-  .btn-topup {
-    background: #f1c40f;
-    color: #2d3436;
-    padding: 8px 18px;
-    border: none;
-    border-radius: 20px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-  }
+
+  /* User Profile Dropdown */
   .user-profile-wrapper { position: relative; }
-  .user-profile {
-    display: flex; align-items: center; gap: 8px;
+  .user-profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px 4px 4px;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: 30px;
     cursor: pointer;
-    padding: 4px 10px;
-    border-radius: 20px;
     transition: 0.2s;
   }
-  .user-profile:hover { background: #f0f0f0; }
+  .user-profile-btn:hover {
+    border-color: var(--border-hover);
+    background: rgba(30, 41, 59, 1);
+  }
+  .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ec4899, #8b5cf6);
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .user-name-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-main);
+  }
+
   .profile-dropdown {
     display: none;
     position: absolute;
     right: 0;
     top: 48px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-    width: 220px;
+    width: 250px;
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
     padding: 8px;
-    z-index: 200;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    animation: fadeInDown 0.2s ease;
   }
   .profile-dropdown.show { display: block; }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .dropdown-header {
+    padding: 10px 12px;
+    background: rgba(30, 41, 59, 0.6);
+    border-radius: 12px;
+    margin-bottom: 6px;
+  }
+  .dropdown-header .name {
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+    display: block;
+  }
+  .dropdown-header .phone {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .dropdown-balance {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+  }
   .dropdown-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    font-size: 13px;
-    color: #2d3436;
-    border-radius: 8px;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
     cursor: pointer;
     text-decoration: none;
+    transition: 0.15s;
   }
-  .dropdown-item:hover { background: #f5f6fa; }
-  .dropdown-divider { height: 1px; background: #eee; margin: 6px 0; }
-  .avatar {
-    width: 36px; height: 36px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+  .dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06);
     color: white;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 600;
   }
-  .user-name { font-size: 13px; font-weight: 600; }
+  .dropdown-item.danger { color: #f87171; }
+  .dropdown-item.danger:hover { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
 
-  /* ===== BANNER NOTIFIKASI ===== */
+  /* ===== ANNOUNCEMENT BANNER ===== */
+  .notif-banner-wrap {
+    max-width: 1200px;
+    margin: 16px auto 0;
+    padding: 0 20px;
+  }
   .notif-banner {
-    background: linear-gradient(90deg, #6c5ce7, #a29bfe);
-    color: white;
-    text-align: center;
-    padding: 10px 15px;
-    font-size: 13px;
-    font-weight: 500;
+    background: linear-gradient(90deg, rgba(79, 70, 229, 0.2), rgba(6, 182, 212, 0.15));
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 14px;
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: #c7d2fe;
+  }
+  .notif-banner .pulse-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.3);
+    color: #a5b4fc;
+    flex-shrink: 0;
   }
 
-  /* ===== CONTAINER ===== */
+  /* ===== MAIN CONTAINER ===== */
   .container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 24px 20px 80px;
   }
 
   /* ===== DASHBOARD STATS ===== */
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: 16px;
+    margin-bottom: 24px;
   }
   .stat-card {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    padding: 18px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    gap: 14px;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   }
-  .stat-icon {
-    width: 42px; height: 42px;
-    border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 20px;
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-hover);
+    background: var(--bg-card-hover);
   }
-  .stat-icon.green { background: #e8f8f0; }
-  .stat-icon.blue { background: #e8f0fe; }
-  .stat-icon.purple { background: #f0e8fe; }
-  .stat-icon.orange { background: #fef0e8; }
-  .stat-info p { font-size: 11px; color: #636e72; }
-  .stat-info strong { font-size: 14px; color: #2d3436; }
+  .stat-icon-box {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .stat-icon-box.emerald {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+  }
+  .stat-icon-box.indigo {
+    background: rgba(99, 102, 241, 0.12);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+  }
+  .stat-icon-box.cyan {
+    background: rgba(6, 182, 212, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(6, 182, 212, 0.25);
+  }
+  .stat-icon-box.amber {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+  }
+  .stat-info p {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .stat-info strong {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    color: white;
+    display: block;
+    margin-top: 2px;
+  }
 
   /* ===== FLASH SALE BANNER ===== */
   .flash-banner {
-    background: linear-gradient(135deg, #1a1a2e 0%, #6c5ce7 100%);
-    border-radius: 16px;
-    padding: 25px;
-    color: white;
+    background: linear-gradient(135deg, rgba(30, 27, 75, 0.9) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(67, 24, 43, 0.6) 100%);
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    border-radius: 24px;
+    padding: 28px;
     position: relative;
     overflow: hidden;
-    margin-bottom: 20px;
+    margin-bottom: 28px;
+    box-shadow: 0 10px 30px rgba(244, 63, 94, 0.12);
   }
   .flash-banner::before {
-    content: "";
+    content: '';
     position: absolute;
-    top: -50px; right: -50px;
-    width: 200px; height: 200px;
-    background: rgba(255,255,255,0.05);
-    border-radius: 50%;
+    top: -80px;
+    right: -80px;
+    width: 250px;
+    height: 250px;
+    background: radial-gradient(circle, rgba(244, 63, 94, 0.2) 0%, transparent 70%);
+    pointer-events: none;
   }
-  .flash-header {
+  .flash-inner {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 15px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
   }
-  .promo-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .flash-left {
+    max-width: 540px;
+  }
+  .promo-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
   .badge-promo {
-    background: #e74c3c;
-    padding: 4px 10px;
-    border-radius: 6px;
+    background: rgba(244, 63, 94, 0.2);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.4);
+    padding: 3px 10px;
+    border-radius: 20px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .badge-hemat {
-    background: #f1c40f;
-    color: #2d3436;
-    padding: 4px 10px;
-    border-radius: 6px;
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    padding: 3px 10px;
+    border-radius: 20px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
   }
   .flash-title {
+    font-family: var(--font-heading);
     font-size: 24px;
-    font-weight: 700;
-    margin-bottom: 5px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: white;
+    margin-bottom: 4px;
   }
-  .flash-subtitle { font-size: 14px; opacity: 0.9; }
+  .flash-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
   .flash-price {
     display: flex;
     align-items: baseline;
-    gap: 10px;
-    margin: 15px 0;
-    flex-wrap: wrap;
+    gap: 12px;
+    margin: 16px 0 12px;
   }
   .price-old {
-    font-size: 16px;
+    font-size: 15px;
+    color: var(--text-dim);
     text-decoration: line-through;
-    opacity: 0.7;
   }
   .price-new {
+    font-family: var(--font-heading);
     font-size: 32px;
-    font-weight: 700;
-    color: #f1c40f;
+    font-weight: 800;
+    color: #fbbf24;
+    text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+  }
+
+  .flash-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 16px;
   }
   .countdown {
     display: flex;
-    gap: 6px;
-    margin-top: 10px;
+    gap: 8px;
   }
   .countdown-box {
-    background: rgba(255,255,255,0.15);
-    padding: 6px 10px;
-    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 8px 12px;
     text-align: center;
-    min-width: 50px;
+    min-width: 54px;
   }
-  .countdown-box strong { font-size: 18px; display: block; }
-  .countdown-box span { font-size: 10px; opacity: 0.8; }
-  .progress-area {
-    margin-top: 15px;
+  .countdown-box strong {
+    font-family: var(--font-heading);
+    font-size: 18px;
+    font-weight: 800;
+    color: white;
+    display: block;
+  }
+  .countdown-box span {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .flash-action-wrap {
     display: flex;
     align-items: center;
     gap: 12px;
+    width: 100%;
+    justify-content: flex-end;
     flex-wrap: wrap;
   }
-  .progress-bar {
-    flex: 1;
-    min-width: 150px;
-    height: 8px;
-    background: rgba(255,255,255,0.2);
+  .flash-stock-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .stock-bar-mini {
+    width: 100px;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     overflow: hidden;
   }
-  .progress-fill {
+  .stock-fill-mini {
+    width: 35%;
     height: 100%;
-    width: 2%;
-    background: #f1c40f;
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
     border-radius: 10px;
   }
-  .progress-text { font-size: 12px; }
-  .btn-claimed {
-    background: #27ae60;
+  .btn-flash-buy {
+    background: linear-gradient(135deg, #ef4444, #f97316);
     color: white;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
     border: none;
-  }
-
-  /* ===== TABS ===== */
-  .tabs {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  .tab-btn {
-    padding: 10px 24px;
-    border-radius: 25px;
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-    transition: 0.3s;
-  }
-  .tab-btn.active {
-    background: #6c5ce7;
-    color: white;
-  }
-  .tab-btn:not(.active) {
-    background: #2d3436;
-    color: white;
-  }
-
-  /* ===== CEK TAGIHAN ===== */
-  .tagihan-card {
-    background: white;
-    border-radius: 16px;
-    padding: 25px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-    margin-bottom: 20px;
-  }
-  .tagihan-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  .tagihan-header h2 { font-size: 18px; }
-  .tagihan-header p { font-size: 12px; color: #636e72; }
-  .tag-badge {
-    background: #e8f0fe;
-    color: #6c5ce7;
-    padding: 5px 12px;
-    border-radius: 15px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .tagihan-form {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .tagihan-form input {
-    flex: 1;
-    min-width: 200px;
-    padding: 12px 15px;
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    outline: none;
-    font-size: 14px;
-  }
-  .tagihan-form input:focus { border-color: #6c5ce7; }
-  .btn-cek {
-    background: #6c5ce7;
-    color: white;
-    padding: 12px 24px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-  }
-
-  /* ===== FILTER PILLS ===== */
-  .filter-pills {
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding-bottom: 5px;
-    margin-bottom: 15px;
-  }
-  .filter-pills::-webkit-scrollbar { height: 4px; }
-  .filter-pills::-webkit-scrollbar-thumb { background: #6c5ce7; border-radius: 10px; }
-  .pill {
-    padding: 8px 16px;
-    border-radius: 20px;
-    border: 2px solid #e0e0e0;
-    background: white;
-    cursor: pointer;
+    padding: 10px 22px;
+    border-radius: 14px;
     font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    transition: 0.3s;
-  }
-  .pill.active {
-    background: #6c5ce7;
-    color: white;
-    border-color: #6c5ce7;
-  }
-
-  /* ===== NAV BUTTONS ===== */
-  .nav-buttons {
-    display: flex;
-    gap: 10px;
-    overflow-x: auto;
-    padding-bottom: 5px;
-    margin-bottom: 20px;
-  }
-  .nav-buttons::-webkit-scrollbar { height: 4px; }
-  .nav-btn {
-    padding: 10px 18px;
-    border-radius: 25px;
-    border: none;
-    font-weight: 600;
+    font-weight: 700;
     cursor: pointer;
-    font-size: 13px;
-    white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+    transition: all 0.2s;
     display: flex;
     align-items: center;
     gap: 6px;
   }
-  .nav-btn.primary { background: #6c5ce7; color: white; }
-  .nav-btn.secondary { background: #2d3436; color: white; }
+  .btn-flash-buy:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 22px rgba(239, 68, 68, 0.6);
+  }
 
-  /* ===== PRODUCT GRID ===== */
-  .product-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 15px;
-    margin-bottom: 30px;
+  /* ===== QUICK BILLING CARD ===== */
+  .quick-bill-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 22px;
+    margin-bottom: 28px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   }
-  .product-card {
-    background: linear-gradient(135deg, #1a1a2e, #2d3436);
-    border-radius: 16px;
-    padding: 20px;
-    color: white;
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.3s;
-  }
-  .product-card:hover { transform: translateY(-5px); }
-  .product-card.flash {
-    border: 2px solid #e74c3c;
-  }
-  .product-flash-badge {
-    position: absolute;
-    top: 10px; right: 10px;
-    background: #e74c3c;
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 10px;
-    font-weight: 700;
-  }
-  .product-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-  .product-isp { font-size: 12px; opacity: 0.8; margin-bottom: 10px; }
-  .product-meta {
-    display: flex;
-    gap: 15px;
-    font-size: 12px;
-    opacity: 0.9;
-    margin-bottom: 15px;
-    flex-wrap: wrap;
-  }
-  .product-divider {
-    height: 1px;
-    background: rgba(255,255,255,0.1);
-    margin: 10px 0;
-  }
-  .product-price-area {
+  .quick-bill-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    margin-bottom: 16px;
     flex-wrap: wrap;
     gap: 10px;
   }
-  .product-price-label { font-size: 11px; opacity: 0.7; }
-  .product-price { font-size: 22px; font-weight: 700; color: #2ecc71; }
-  .btn-beli {
-    background: #6c5ce7;
+  .quick-bill-header h3 {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
     color: white;
-    padding: 10px 24px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
-  }
-  .product-note { font-size: 11px; opacity: 0.7; margin-top: 5px; }
-
-  /* ===== CARA BELI ===== */
-  .cara-beli {
-    background: white;
-    border-radius: 16px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-  }
-  .cara-beli h2 {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 20px;
-  }
-  .steps {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 15px;
-  }
-  .step {
-    text-align: center;
-    padding: 15px;
-  }
-  .step-icon {
-    width: 60px; height: 60px;
-    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    margin: 0 auto 10px;
-    font-size: 24px;
-    color: white;
-  }
-  .step h4 { font-size: 14px; margin-bottom: 5px; }
-  .step p { font-size: 12px; color: #636e72; }
-
-  /* ===== METODE PEMBAYARAN ===== */
-  .payment-methods {
-    background: white;
-    border-radius: 16px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-    text-align: center;
-  }
-  .payment-methods h2 { margin-bottom: 15px; font-size: 20px; }
-  .payment-logos {
     display: flex;
-    justify-content: center;
-    gap: 15px;
+    align-items: center;
+    gap: 8px;
+  }
+  .quick-bill-header p {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .bill-tag {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    font-weight: 600;
+  }
+  .bill-search-form {
+    display: flex;
+    gap: 10px;
     flex-wrap: wrap;
   }
-  .payment-logo {
-    padding: 10px 20px;
-    background: #f5f6fa;
-    border-radius: 10px;
-    font-weight: 600;
+  .bill-input {
+    flex: 1;
+    min-width: 260px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 12px 16px;
+    color: white;
     font-size: 13px;
-    color: #636e72;
+    outline: none;
+    transition: 0.2s;
+  }
+  .bill-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  }
+  .btn-check-bill {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 24px;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-check-bill:hover {
+    background: var(--primary-hover);
+  }
+  .bill-result-mock {
+    display: none;
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 14px;
+    animation: fadeIn 0.3s ease;
+  }
+  .bill-result-mock.show { display: block; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ===== UNIFIED FRAME (TOMBOL NAVIGASI & DAFTAR DALAM 1 FRAME) ===== */
+  .portal-unified-frame {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 24px;
+    padding: 24px;
+    margin-bottom: 36px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
   }
 
-  /* ===== TESTIMONI ===== */
-  .testimoni {
-    background: white;
-    border-radius: 16px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  /* 3 TOMBOL UTAMA BERSIH & RAPI */
+  .nav-tabs-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 22px;
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
-  .testimoni h2 { text-align: center; margin-bottom: 20px; font-size: 20px; }
+  .nav-tab-btn {
+    padding: 11px 22px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--border-subtle);
+    background: rgba(30, 41, 59, 0.7);
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .nav-tab-btn:hover {
+    color: white;
+    background: rgba(30, 41, 59, 1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .nav-tab-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: #818cf8;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35);
+  }
+  .tab-count-badge {
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    color: inherit;
+  }
+  .nav-tab-btn.active .tab-count-badge {
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
+  }
+
+  /* FILTER PILLS (Untuk Katalog Voucher) */
+  .filter-pills-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    scrollbar-width: none;
+  }
+  .filter-pills-row::-webkit-scrollbar { display: none; }
+  .pill-filter {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    padding: 7px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: 0.2s;
+  }
+  .pill-filter:hover {
+    color: white;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .pill-filter.active {
+    background: rgba(99, 102, 241, 0.2);
+    border-color: var(--primary);
+    color: #a5b4fc;
+  }
+
+  /* TAB VIEW CONTAINERS */
+  .tab-view-content { display: none; }
+  .tab-view-content.active { display: block; }
+
+  /* ===== PRODUCT GRID (3 KOLOM PC, RESPONSIF HP) ===== */
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .product-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid var(--border-subtle);
+    border-radius: 20px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.25s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .product-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--border-hover);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    background: var(--bg-card-hover);
+  }
+  .product-card.flash-featured {
+    border-color: rgba(244, 63, 94, 0.4);
+    background: linear-gradient(180deg, rgba(30, 20, 35, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+  }
+  .product-top-badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .product-top-badge.flash {
+    background: rgba(244, 63, 94, 0.2);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.4);
+  }
+  .product-top-badge.popular {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+  }
+
+  .pkg-icon-wrap {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+  .pkg-icon-wrap.indigo { background: rgba(99, 102, 241, 0.15); color: #818cf8; }
+  .pkg-icon-wrap.cyan { background: rgba(6, 182, 212, 0.15); color: #38bdf8; }
+  .pkg-icon-wrap.emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+  .pkg-icon-wrap.amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+  .pkg-icon-wrap.rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+
+  .pkg-title {
+    font-family: var(--font-heading);
+    font-size: 17px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 4px;
+  }
+  .pkg-isp {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .pkg-meta-tags {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .meta-tag {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 3px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .meta-tag.speed {
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.2);
+    background: rgba(16, 185, 129, 0.08);
+    font-weight: 600;
+  }
+
+  .product-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 14px 0;
+  }
+
+  .product-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .price-col .label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .price-col .val {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 800;
+    color: #34d399;
+  }
+  .price-col .val.flash { color: #fbbf24; }
+
+  .btn-buy-card {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  }
+  .btn-buy-card:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+  }
+  .btn-buy-card.flash-btn {
+    background: #ef4444;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  }
+  .btn-buy-card.flash-btn:hover {
+    background: #dc2626;
+  }
+
+  /* ===== TAB 2: VOUCHER SAYA CARDS ===== */
+  .my-voucher-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .my-voucher-card {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    padding: 20px;
+    transition: 0.2s;
+  }
+  .my-voucher-card:hover {
+    border-color: var(--border-hover);
+  }
+  .voucher-code-box {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px dashed rgba(99, 102, 241, 0.4);
+    border-radius: 12px;
+    padding: 12px;
+    margin: 12px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .code-text {
+    font-family: monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: #a5b4fc;
+    letter-spacing: 0.05em;
+  }
+  .btn-copy-code {
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    color: #c7d2fe;
+    padding: 5px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .btn-copy-code:hover {
+    background: var(--primary);
+    color: white;
+  }
+
+  /* ===== TAB 3: TAGIHAN & LANGGANAN ===== */
+  .subs-card {
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    padding: 22px;
+    margin-bottom: 16px;
+  }
+  .subs-card.warning {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: linear-gradient(180deg, rgba(35, 25, 15, 0.4) 0%, rgba(15, 23, 42, 0.9) 100%);
+  }
+
+  /* ===== HOW TO BUY SECTION ===== */
+  .section-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 24px;
+    padding: 28px;
+    margin-bottom: 28px;
+  }
+  .section-title-wrap {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .section-title {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    color: white;
+  }
+  .section-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .steps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .step-box {
+    text-align: center;
+    padding: 20px;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    transition: 0.2s;
+  }
+  .step-box:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+  }
+  .step-num-badge {
+    width: 50px;
+    height: 50px;
+    margin: 0 auto 14px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(6, 182, 212, 0.2));
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    color: #818cf8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+  }
+  .step-box h4 {
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 6px;
+  }
+  .step-box p {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  /* ===== PAYMENT METHODS CHANNELS ===== */
+  .channels-row {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .channel-pill {
+    padding: 10px 18px;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ===== TESTIMONIALS (3 KOLOM) ===== */
   .testi-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
   }
   .testi-card {
-    background: #f5f6fa;
-    padding: 15px;
-    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
   }
   .testi-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
   .testi-avatar {
-    width: 40px; height: 40px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+    background: linear-gradient(135deg, #4f46e5, #06b6d4);
     color: white;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 600;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  .testi-name { font-weight: 600; font-size: 14px; }
-  .testi-stars { color: #f1c40f; font-size: 12px; }
-  .testi-text { font-size: 13px; color: #636e72; line-height: 1.5; }
+  .testi-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: white;
+  }
+  .testi-stars {
+    color: #fbbf24;
+    font-size: 12px;
+  }
+  .testi-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
 
-  /* ===== FAQ ===== */
-  .faq {
-    background: white;
-    border-radius: 16px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+  /* ===== FAQ ACCORDION ===== */
+  .faq-list {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
-  .faq h2 { text-align: center; margin-bottom: 20px; font-size: 20px; }
   .faq-item {
-    border-bottom: 1px solid #e0e0e0;
-    padding: 12px 0;
+    background: rgba(30, 41, 59, 0.4);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: 0.2s;
   }
+  .faq-item:hover { border-color: rgba(255, 255, 255, 0.15); }
   .faq-question {
+    padding: 16px 20px;
+    font-size: 13px;
     font-weight: 600;
+    color: white;
     cursor: pointer;
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    font-size: 14px;
+    justify-content: space-between;
+  }
+  .faq-icon-chevron {
+    transition: transform 0.25s ease;
+  }
+  .faq-item.open .faq-icon-chevron {
+    transform: rotate(180deg);
   }
   .faq-answer {
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.3s;
-    font-size: 13px;
-    color: #636e72;
+    transition: max-height 0.3s ease;
+    padding: 0 20px;
+    font-size: 12px;
+    color: var(--text-muted);
     line-height: 1.6;
   }
   .faq-item.open .faq-answer {
-    max-height: 200px;
-    padding-top: 10px;
+    max-height: 180px;
+    padding-bottom: 16px;
   }
 
   /* ===== FOOTER ===== */
   .footer {
-    background: #1a1a2e;
-    color: white;
-    padding: 30px 20px 15px;
+    background: #060911;
+    border-top: 1px solid var(--border-subtle);
+    padding: 48px 24px 24px;
+    color: var(--text-muted);
   }
   .footer-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
     max-width: 1200px;
     margin: 0 auto;
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 32px;
   }
-  .footer-col h4 { margin-bottom: 12px; font-size: 14px; }
+  .footer-col h4 {
+    color: white;
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
   .footer-col a {
     display: block;
-    color: rgba(255,255,255,0.7);
+    color: var(--text-muted);
     text-decoration: none;
-    font-size: 13px;
-    margin-bottom: 8px;
+    font-size: 12px;
+    margin-bottom: 9px;
+    transition: 0.15s;
   }
   .footer-col a:hover { color: white; }
   .footer-bottom {
-    text-align: center;
+    max-width: 1200px;
+    margin: 32px auto 0;
     padding-top: 20px;
-    margin-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.1);
-    font-size: 12px;
-    color: rgba(255,255,255,0.5);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-wrap: wrap;
+    gap: 12px;
   }
 
-  /* ===== FLOATING WA ===== */
+  /* ===== FLOATING WA BUTTON ===== */
   .float-wa {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 55px; height: 55px;
-    background: #25d366;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
+    bottom: 24px;
+    right: 24px;
+    background: linear-gradient(135deg, #10b981, #059669);
     color: white;
-    font-size: 28px;
+    padding: 12px 20px;
+    border-radius: 30px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
     text-decoration: none;
-    box-shadow: 0 4px 15px rgba(37,211,102,0.4);
-    z-index: 99;
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    z-index: 90;
+    transition: all 0.2s;
+  }
+  .float-wa:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6);
   }
 
-  /* ===== RESPONSIVE MOBILE ===== */
-  @media (max-width: 768px) {
-    .header { padding: 10px 15px; }
-    .logo-text h1 { font-size: 14px; }
-    .logo-text p { display: none; }
-    .search-bar { display: none; }
-    .user-name { display: none; }
-    .container { padding: 12px; }
+  /* ===== INTERACTIVE MODALS ===== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-box {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 22px;
+    width: 100%;
+    max-width: 480px;
+    padding: 24px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    animation: zoomIn 0.2s ease;
+  }
+  @keyframes zoomIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+  .modal-header h3 {
+    font-family: var(--font-heading);
+    font-size: 17px;
+    color: white;
+  }
+  .modal-close {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: var(--text-muted);
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-close:hover { color: white; background: rgba(255, 255, 255, 0.2); }
+
+  .payment-option-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .payment-option-card:hover, .payment-option-card.selected {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+  }
+
+  /* TOAST NOTIFIKASI */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 300;
+    pointer-events: none;
+  }
+  .toast {
+    background: #1e293b;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: toastIn 0.3s ease;
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ===== RESPONSIVE MEDIA QUERIES ===== */
+  @media (max-width: 1024px) {
+    .product-grid { grid-template-columns: repeat(2, 1fr); }
     .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    .flash-title { font-size: 18px; }
-    .price-new { font-size: 24px; }
-    .countdown-box { min-width: 42px; padding: 5px 8px; }
-    .countdown-box strong { font-size: 14px; }
-    .steps { grid-template-columns: 1fr; }
-    .product-grid { grid-template-columns: 1fr; }
+    .steps-grid { grid-template-columns: 1fr; }
     .testi-grid { grid-template-columns: 1fr; }
+    .footer-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .header-actions .balance-pill { display: none; }
+    .logo-text p { display: none; }
+    .flash-inner { flex-direction: column; align-items: flex-start; }
+    .flash-right { align-items: flex-start; width: 100%; }
+    .flash-action-wrap { justify-content: flex-start; }
+    .product-grid { grid-template-columns: 1fr; }
+    .my-voucher-grid { grid-template-columns: 1fr; }
+    .footer-grid { grid-template-columns: 1fr; }
   }
 
   @media (max-width: 480px) {
-    .stats-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
-    .stat-card { padding: 10px; }
-    .stat-icon { width: 36px; height: 36px; font-size: 16px; }
-    .stat-info strong { font-size: 12px; }
+    .container { padding: 16px 12px 80px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card { padding: 12px; gap: 10px; }
+    .stat-icon-box { width: 38px; height: 38px; }
+    .stat-info strong { font-size: 14px; }
+    .nav-tab-btn { padding: 9px 14px; font-size: 12px; }
+    .flash-title { font-size: 20px; }
+    .price-new { font-size: 26px; }
   }
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
-<div class="header">
-  <div class="logo-area">
-    <div class="logo-icon">📶</div>
-    <div class="logo-text">
-      <h1>ARBILL Hotspot & Internet</h1>
-      <p>Internet Cepat, Beli Voucher Instan & Bayar Tagihan Mudah</p>
-    </div>
-  </div>
-  <div class="header-actions">
-    <button class="icon-btn">🔔<span class="badge-dot">3</span></button>
-    <button class="icon-btn">🛒</button>
-    <button class="btn-topup">+ Top Up</button>
-    <div class="user-profile-wrapper">
-      <div class="user-profile" id="userProfileBtn">
-        <div class="avatar">Z</div>
-        <span class="user-name">Zainuddin Arab ▼</span>
+<!-- HEADER / NAVBAR -->
+<header class="header">
+  <div class="header-container">
+    <a href="#" class="logo-area">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" class="icon"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
       </div>
-      <div class="profile-dropdown" id="profileDropdown">
-        <div style="padding: 8px 10px; border-bottom: 1px solid #eee; margin-bottom: 5px;">
-          <strong style="font-size: 13px; display: block; color: #2d3436;">Zainuddin Arab</strong>
-          <span style="font-size: 11px; color: #636e72;">0812-3456-7890</span>
-          <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #eee; display: flex; justify-content: space-between; font-size: 11px;">
-            <span style="color: #636e72;">Saldo ArabPay:</span>
-            <strong style="color: #27ae60;">Rp 50.000</strong>
+      <div class="logo-text">
+        <h1>ARBILL <span class="badge-live">ONLINE</span></h1>
+        <p>Hotspot & Billing SaaS Terintegrasi ArabPay</p>
+      </div>
+    </a>
+
+    <div class="header-actions">
+      <!-- Saldo Quick Pill -->
+      <div class="balance-pill" title="Saldo Dompet ArabPay">
+        <svg class="icon" style="color: #34d399;" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+        <span>Saldo: <strong class="val" id="headerBalance">Rp 50.000</strong></span>
+      </div>
+
+      <!-- Top Up Button -->
+      <button class="btn-topup-header" onclick="openTopupModal()">
+        <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span>Top Up</span>
+      </button>
+
+      <!-- User Profile Dropdown -->
+      <div class="user-profile-wrapper">
+        <div class="user-profile-btn" id="userProfileBtn">
+          <div class="avatar">Z</div>
+          <span class="user-name-text">Zainuddin Arab</span>
+          <svg class="icon" style="width:12px;height:12px;color:var(--text-muted);" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+
+        <div class="profile-dropdown" id="profileDropdown">
+          <div class="dropdown-header">
+            <span class="name">Zainuddin Arab</span>
+            <span class="phone">0812-3456-7890 • Member Tetap</span>
+            <div class="dropdown-balance">
+              <span style="color:var(--text-muted);">Saldo ArabPay:</span>
+              <strong style="color:#34d399;" id="dropdownBalance">Rp 50.000</strong>
+            </div>
+          </div>
+          <div class="dropdown-item" onclick="showToast('Membuka Profil Pengguna')">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            <span>Profil Saya</span>
+          </div>
+          <div class="dropdown-item" onclick="openTopupModal()">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            <span>Top Up Saldo</span>
+          </div>
+          <div class="dropdown-item" onclick="switchMainTab('invoices')">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <span>Tagihan & Langganan</span>
+          </div>
+          <div style="height:1px;background:rgba(255,255,255,0.08);margin:6px 0;"></div>
+          <div class="dropdown-item danger" onclick="showToast('Simulasi Logout berhasil')">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+            <span>Keluar / Logout</span>
           </div>
         </div>
-        <div class="dropdown-item">👤 Profil Saya</div>
-        <div class="dropdown-item">➕ Top Up Saldo</div>
-        <div class="dropdown-item">📄 Tagihan & Langganan</div>
-        <div class="dropdown-divider"></div>
-        <div class="dropdown-item" style="color: #e74c3c;">🚪 Keluar / Logout</div>
       </div>
     </div>
   </div>
-</div>
+</header>
 
-<!-- NOTIFIKASI BANNER -->
-<div class="notif-banner">
-  🔔 Beli voucher WiFi sekarang lebih mudah via QRIS & Saldo ArabPay! Aktif otomatis 24 Jam.
+<!-- ANNOUNCEMENT BANNER -->
+<div class="notif-banner-wrap">
+  <div class="notif-banner">
+    <div class="pulse-icon">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+    </div>
+    <span><strong>Pengumuman:</strong> Beli voucher WiFi sekarang lebih mudah via QRIS & Saldo ArabPay! Aktif otomatis seketika 24 Jam non-stop.</span>
+  </div>
 </div>
 
 <div class="container">
 
-  <!-- DASHBOARD STATS -->
+  <!-- DASHBOARD STATS (4 KOLOM KPI MODERN) -->
   <div class="stats-grid">
     <div class="stat-card">
-      <div class="stat-icon green">💰</div>
+      <div class="stat-icon-box emerald">
+        <svg class="icon" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      </div>
       <div class="stat-info">
-        <p>Saldo</p>
-        <strong>Rp 50.000</strong>
+        <p>Saldo Dompet</p>
+        <strong id="statBalance">Rp 50.000</strong>
       </div>
     </div>
+
     <div class="stat-card">
-      <div class="stat-icon blue">🎫</div>
+      <div class="stat-icon-box indigo">
+        <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+      </div>
       <div class="stat-info">
         <p>Voucher Aktif</p>
-        <strong>3</strong>
+        <strong>3 Voucher</strong>
       </div>
     </div>
+
     <div class="stat-card">
-      <div class="stat-icon purple">📊</div>
+      <div class="stat-icon-box cyan">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+      </div>
       <div class="stat-info">
-        <p>Kuota Tersisa</p>
-        <strong>2.5 GB</strong>
+        <p>Kecepatan Maksimal</p>
+        <strong>Up to 10 Mbps</strong>
       </div>
     </div>
+
     <div class="stat-card">
-      <div class="stat-icon orange">📅</div>
+      <div class="stat-icon-box amber">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+      </div>
       <div class="stat-info">
-        <p>Masa Aktif</p>
-        <strong>12 hari</strong>
+        <p>Status Layanan</p>
+        <strong style="color:#34d399;">Online 24 Jam</strong>
       </div>
     </div>
   </div>
 
   <!-- FLASH SALE BANNER -->
   <div class="flash-banner">
-    <div class="flash-header">
-      <div>
+    <div class="flash-inner">
+      <div class="flash-left">
         <div class="promo-badges">
-          <span class="badge-promo">🔥 PROMO TERBATAS</span>
-          <span class="badge-hemat">Hemat 50%</span>
+          <span class="badge-promo">
+            <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            FLASH SALE AKHIR PEKAN
+          </span>
+          <span class="badge-hemat">Diskon 50%</span>
         </div>
-        <h2 class="flash-title"> FLASH SALE AKHIR PEKAN</h2>
-        <p class="flash-subtitle">Paket: Voucher Hotspot 3 Jam</p>
+        <h2 class="flash-title">Voucher Hotspot 3 Jam Super Cepat</h2>
+        <p class="flash-subtitle">Nikmati internet stabil tanpa batas kuota untuk streaming & gaming santai.</p>
+        
+        <div class="flash-price">
+          <span class="price-old">Rp 2.000</span>
+          <span class="price-new">Rp 1.000</span>
+        </div>
+      </div>
+
+      <div class="flash-right">
+        <!-- Live Countdown Timer -->
+        <div class="countdown">
+          <div class="countdown-box"><strong id="days">01</strong><span>HARI</span></div>
+          <div class="countdown-box"><strong id="hours">04</strong><span>JAM</span></div>
+          <div class="countdown-box"><strong id="minutes">28</strong><span>MENIT</span></div>
+          <div class="countdown-box"><strong id="seconds">45</strong><span>DETIK</span></div>
+        </div>
+
+        <div class="flash-action-wrap">
+          <div class="flash-stock-info">
+            <span>Sisa Kuota: <strong>49/50</strong></span>
+            <div class="stock-bar-mini"><div class="stock-fill-mini"></div></div>
+          </div>
+          <button class="btn-flash-buy" onclick="openBuyModal('Voucher Flash Sale 3 Jam', 'Rp 1.000', '3 Jam', '5 Mbps')">
+            <svg class="icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Klaim & Beli Sekarang</span>
+          </button>
+        </div>
       </div>
     </div>
-    <div class="flash-price">
-      <span class="price-old">Rp 2.000</span>
-      <span class="price-new">Rp 1.000</span>
-    </div>
-    <div class="countdown">
-      <div class="countdown-box"><strong id="days">01</strong><span>HARI</span></div>
-      <div class="countdown-box"><strong id="hours">03</strong><span>JAM</span></div>
-      <div class="countdown-box"><strong id="minutes">50</strong><span>MNT</span></div>
-      <div class="countdown-box"><strong id="seconds">18</strong><span>DTK</span></div>
-    </div>
-    <div class="progress-area">
-      <div class="progress-bar"><div class="progress-fill"></div></div>
-      <span class="progress-text">1/50 (Sisa 49)</span>
-      <button class="btn-claimed">✓ Sudah Diklaim (Maks. 1)</button>
-    </div>
   </div>
 
-  <!-- TABS -->
-  <div class="tabs">
-    <button class="tab-btn active">🔥 Flash Sale</button>
-    <button class="tab-btn">💼 Dompet Saldo</button>
-  </div>
-
-  <!-- CEK TAGIHAN -->
-  <div class="tagihan-card">
-    <div class="tagihan-header">
+  <!-- QUICK BILLING CHECK (Cek Tagihan Instan) -->
+  <div class="quick-bill-card">
+    <div class="quick-bill-header">
       <div>
-        <h2>Cek & Bayar Tagihan Internet</h2>
-        <p>Masukkan No. HP atau Username PPPoE Anda</p>
+        <h3>
+          <svg class="icon" style="color:var(--primary);" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          Cek & Bayar Tagihan Internet Bulanan
+        </h3>
+        <p>Masukkan No. HP Pelanggan atau Username PPPoE Anda untuk cek tagihan</p>
       </div>
-      <span class="tag-badge">🏠 Pelanggan Rumah</span>
+      <span class="bill-tag">🏠 Tagihan Rumah / RT-RW Net</span>
     </div>
-    <div class="tagihan-form">
-      <input type="text" placeholder="Contoh: 08123456789 atau user_pppoe">
-      <button class="btn-cek">→ Cek Tagihan</button>
+    <div class="bill-search-form">
+      <input type="text" id="billInput" class="bill-input" placeholder="Contoh: 08123456789 atau user_pppoe">
+      <button class="btn-check-bill" onclick="checkBilling()">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Cek Tagihan</span>
+      </button>
     </div>
-  </div>
 
-  <!-- FILTER PILLS -->
-  <div class="filter-pills">
-    <button class="pill active">Semua</button>
-    <button class="pill">1 Jam</button>
-    <button class="pill">3 Jam</button>
-    <button class="pill">1 Hari</button>
-    <button class="pill">7 Hari</button>
-    <button class="pill">30 Hari</button>
-    <button class="pill">Unlimited</button>
-  </div>
-
-  <!-- NAV BUTTONS (3 TOMBOL UTAMA BERSIH & RAPI) -->
-  <div class="nav-buttons">
-    <button class="nav-btn primary">🛒 Beli Voucher</button>
-    <button class="nav-btn secondary">🎫 Voucher Saya (25)</button>
-    <button class="nav-btn secondary">📄 Tagihan & Langganan (3)</button>
-  </div>
-
-  <!-- PRODUCT GRID -->
-  <div class="product-grid">
-    <div class="product-card flash">
-      <span class="product-flash-badge">FLASH SALE</span>
-      <h3 class="product-title">Voucher Hotspot 3 Jam</h3>
-      <p class="product-isp">🌐 ISP: arab.net</p>
-      <div class="product-meta">
-        <span>⏱ 3 Jam</span>
-        <span> 3M/3M</span>
-      </div>
-      <div class="product-divider"></div>
-      <div class="product-price-area">
+    <!-- Mock Result Box -->
+    <div id="billResultMock" class="bill-result-mock">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div>
-          <div class="product-price-label">HARGA</div>
-          <div class="product-price">Rp 2.000</div>
-          <div class="product-note">Maks. 1 promo dipakai</div>
+          <div style="font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;">TAGIHAN DITEMUKAN</div>
+          <h4 style="font-size:15px;font-weight:700;color:white;margin-top:2px;" id="billCustName">Pelanggan: Budi Santoso (user_budi)</h4>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:2px;">Paket: PPPoE Home Unlimited 20 Mbps • Periode September 2026</p>
         </div>
-        <button class="btn-beli">🛒 Beli</button>
-      </div>
-    </div>
-
-    <div class="product-card">
-      <h3 class="product-title">Paket 1 Hari</h3>
-      <p class="product-isp"> ISP: arab.net</p>
-      <div class="product-meta">
-        <span> 13 Jam</span>
-        <span>⚡ 5M/5M</span>
-      </div>
-      <div class="product-divider"></div>
-      <div class="product-price-area">
-        <div>
-          <div class="product-price-label">HARGA</div>
-          <div class="product-price">Rp 5.000</div>
+        <div style="text-align:right;">
+          <span style="font-size:11px;color:var(--text-muted);display:block;">TOTAL TAGIHAN</span>
+          <strong style="font-family:var(--font-heading);font-size:20px;color:#34d399;">Rp 150.000</strong>
         </div>
-        <button class="btn-beli">🛒 Beli</button>
-      </div>
-    </div>
-
-    <div class="product-card">
-      <h3 class="product-title">Paket 7 Hari</h3>
-      <p class="product-isp">🌐 ISP: arab.net</p>
-      <div class="product-meta">
-        <span>⏱ 7 Hari</span>
-        <span> 5M/5M</span>
-      </div>
-      <div class="product-divider"></div>
-      <div class="product-price-area">
-        <div>
-          <div class="product-price-label">HARGA</div>
-          <div class="product-price">Rp 25.000</div>
-        </div>
-        <button class="btn-beli">🛒 Beli</button>
-      </div>
-    </div>
-
-    <div class="product-card">
-      <h3 class="product-title">Paket 30 Hari</h3>
-      <p class="product-isp">🌐 ISP: arab.net</p>
-      <div class="product-meta">
-        <span>⏱ 30 Hari</span>
-        <span>⚡ 10M/10M</span>
-      </div>
-      <div class="product-divider"></div>
-      <div class="product-price-area">
-        <div>
-          <div class="product-price-label">HARGA</div>
-          <div class="product-price">Rp 75.000</div>
-        </div>
-        <button class="btn-beli">🛒 Beli</button>
+        <button class="btn-buy-card" onclick="openPayInvoiceModal('Tagihan Internet 20 Mbps', 'Rp 150.000')">
+          <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+          <span>Bayar Sekarang</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- CARA BELI -->
-  <div class="cara-beli">
-    <h2>🛍️ Cara Beli Voucher</h2>
-    <div class="steps">
-      <div class="step">
-        <div class="step-icon">1️⃣</div>
-        <h4>Pilih Paket</h4>
-        <p>Pilih voucher sesuai kebutuhan Anda</p>
+  <!-- ==================== UNIFIED FRAME (TOMBOL NAVIGASI & DAFTAR DALAM 1 FRAME) ==================== -->
+  <div class="portal-unified-frame" id="catalogUnifiedFrame">
+    
+    <!-- 3 TOMBOL UTAMA BERSIH & RAPI (Menyatu dalam Frame) -->
+    <div class="nav-tabs-wrapper">
+      <button class="nav-tab-btn active" id="tabBtnBuy" onclick="switchMainTab('buy')">
+        <svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+        <span>Beli Voucher</span>
+      </button>
+
+      <button class="nav-tab-btn" id="tabBtnHistory" onclick="switchMainTab('history')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+        <span>Voucher Saya</span>
+        <span class="tab-count-badge" id="myVoucherBadge">3</span>
+      </button>
+
+      <button class="nav-tab-btn" id="tabBtnInvoices" onclick="switchMainTab('invoices')">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        <span>Tagihan & Langganan</span>
+        <span class="tab-count-badge">1</span>
+      </button>
+    </div>
+
+    <!-- ==================== TAB VIEW 1: BELI VOUCHER (KATALOG 3 KOLOM PC) ==================== -->
+    <div class="tab-view-content active" id="tabViewBuy">
+      
+      <!-- Filter Durasi Pills -->
+      <div class="filter-pills-row">
+        <button class="pill-filter active" onclick="filterPackages('all', this)">Semua Paket</button>
+        <button class="pill-filter" onclick="filterPackages('1h', this)">1 Jam</button>
+        <button class="pill-filter" onclick="filterPackages('3h', this)">3 Jam</button>
+        <button class="pill-filter" onclick="filterPackages('1d', this)">1 Hari</button>
+        <button class="pill-filter" onclick="filterPackages('7d', this)">7 Hari</button>
+        <button class="pill-filter" onclick="filterPackages('30d', this)">30 Hari</button>
       </div>
-      <div class="step">
-        <div class="step-icon">2️⃣</div>
-        <h4>Bayar via QRIS/Saldo</h4>
-        <p>Proses pembayaran cepat & aman</p>
+
+      <!-- PRODUCT GRID (3 Kolom pada PC, 1 Kolom pada HP) -->
+      <div class="product-grid" id="productGridContainer">
+
+        <!-- Card 1: 1 Jam -->
+        <div class="product-card" data-category="1h">
+          <div class="pkg-icon-wrap cyan">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          </div>
+          <div>
+            <h4 class="pkg-title">Voucher 1 Jam</h4>
+            <div class="pkg-isp">
+              <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <span>ISP: arab.net • DNS Tercepat</span>
+            </div>
+            <div class="pkg-meta-tags">
+              <span class="meta-tag">⏱ Durasi 1 Jam</span>
+              <span class="meta-tag speed">⚡ 3 Mbps</span>
+              <span class="meta-tag">1 Perangkat</span>
+            </div>
+          </div>
+          <div class="product-divider"></div>
+          <div class="product-footer">
+            <div class="price-col">
+              <div class="label">Harga</div>
+              <div class="val">Rp 2.000</div>
+            </div>
+            <button class="btn-buy-card" onclick="openBuyModal('Voucher 1 Jam', 'Rp 2.000', '1 Jam', '3 Mbps')">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+              <span>Beli</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: 3 Jam (Flash Promo) -->
+        <div class="product-card flash-featured" data-category="3h">
+          <span class="product-top-badge flash">Promo 50%</span>
+          <div class="pkg-icon-wrap rose">
+            <svg class="icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          </div>
+          <div>
+            <h4 class="pkg-title">Voucher 3 Jam Flash</h4>
+            <div class="pkg-isp">
+              <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <span>ISP: arab.net • Kuota Terbatas</span>
+            </div>
+            <div class="pkg-meta-tags">
+              <span class="meta-tag">⏱ Durasi 3 Jam</span>
+              <span class="meta-tag speed">⚡ 5 Mbps</span>
+              <span class="meta-tag">Streaming HD</span>
+            </div>
+          </div>
+          <div class="product-divider"></div>
+          <div class="product-footer">
+            <div class="price-col">
+              <div class="label">Harga Flash Sale</div>
+              <div class="val flash">Rp 1.000</div>
+            </div>
+            <button class="btn-buy-card flash-btn" onclick="openBuyModal('Voucher 3 Jam Flash', 'Rp 1.000', '3 Jam', '5 Mbps')">
+              <svg class="icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span>Beli Promo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: 1 Hari (Best Seller) -->
+        <div class="product-card" data-category="1d">
+          <span class="product-top-badge popular">Best Seller</span>
+          <div class="pkg-icon-wrap indigo">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </div>
+          <div>
+            <h4 class="pkg-title">Paket 1 Hari Full</h4>
+            <div class="pkg-isp">
+              <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <span>ISP: arab.net • Aktif 24 Jam</span>
+            </div>
+            <div class="pkg-meta-tags">
+              <span class="meta-tag">⏱ Durasi 24 Jam</span>
+              <span class="meta-tag speed">⚡ 5 Mbps</span>
+              <span class="meta-tag">Unlimited FUP</span>
+            </div>
+          </div>
+          <div class="product-divider"></div>
+          <div class="product-footer">
+            <div class="price-col">
+              <div class="label">Harga</div>
+              <div class="val">Rp 5.000</div>
+            </div>
+            <button class="btn-buy-card" onclick="openBuyModal('Paket 1 Hari Full', 'Rp 5.000', '24 Jam', '5 Mbps')">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+              <span>Beli</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 4: 7 Hari -->
+        <div class="product-card" data-category="7d">
+          <div class="pkg-icon-wrap emerald">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
+          <div>
+            <h4 class="pkg-title">Paket 7 Hari Mingguan</h4>
+            <div class="pkg-isp">
+              <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <span>ISP: arab.net • Hemat & Cepat</span>
+            </div>
+            <div class="pkg-meta-tags">
+              <span class="meta-tag">⏱ Durasi 7 Hari</span>
+              <span class="meta-tag speed">⚡ 7 Mbps</span>
+              <span class="meta-tag">Bisa 2 Device</span>
+            </div>
+          </div>
+          <div class="product-divider"></div>
+          <div class="product-footer">
+            <div class="price-col">
+              <div class="label">Harga</div>
+              <div class="val">Rp 25.000</div>
+            </div>
+            <button class="btn-buy-card" onclick="openBuyModal('Paket 7 Hari Mingguan', 'Rp 25.000', '7 Hari', '7 Mbps')">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+              <span>Beli</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 5: 30 Hari Bulanan -->
+        <div class="product-card" data-category="30d">
+          <span class="product-top-badge popular">Paling Hemat</span>
+          <div class="pkg-icon-wrap amber">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+          </div>
+          <div>
+            <h4 class="pkg-title">Paket 30 Hari Bulanan</h4>
+            <div class="pkg-isp">
+              <svg class="icon" style="width:12px;height:12px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              <span>ISP: arab.net • Dedicated Bandwidth</span>
+            </div>
+            <div class="pkg-meta-tags">
+              <span class="meta-tag">⏱ Durasi 30 Hari</span>
+              <span class="meta-tag speed">⚡ 10 Mbps</span>
+              <span class="meta-tag">Prioritas Tinggi</span>
+            </div>
+          </div>
+          <div class="product-divider"></div>
+          <div class="product-footer">
+            <div class="price-col">
+              <div class="label">Harga</div>
+              <div class="val">Rp 75.000</div>
+            </div>
+            <button class="btn-buy-card" onclick="openBuyModal('Paket 30 Hari Bulanan', 'Rp 75.000', '30 Hari', '10 Mbps')">
+              <svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+              <span>Beli</span>
+            </button>
+          </div>
+        </div>
+
       </div>
-      <div class="step">
-        <div class="step-icon">3️</div>
-        <h4>Aktif Otomatis</h4>
-        <p>Voucher aktif 24/7 tanpa tunggu</p>
+    </div>
+
+    <!-- ==================== TAB VIEW 2: VOUCHER SAYA ==================== -->
+    <div class="tab-view-content" id="tabViewHistory">
+      <div style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h4 style="font-size:16px;font-weight:700;color:white;">Daftar Voucher Saya</h4>
+          <p style="font-size:12px;color:var(--text-muted);">Voucher aktif yang Anda miliki dapat langsung dipakai atau disalin</p>
+        </div>
+        <span style="font-size:11px;padding:3px 10px;border-radius:12px;background:rgba(16,185,129,0.15);color:#34d399;font-weight:700;">Tersimpan Otomatis</span>
+      </div>
+
+      <div class="my-voucher-grid" id="myVouchersList">
+        <!-- Item 1 -->
+        <div class="my-voucher-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <span style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;">VOUCHER AKTIF</span>
+              <h5 style="font-size:15px;font-weight:700;color:white;margin-top:2px;">Paket 1 Hari Full</h5>
+            </div>
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);">
+              ● Terhubung
+            </span>
+          </div>
+          <div class="voucher-code-box">
+            <span class="code-text" id="code1">ARB-9921-XK</span>
+            <button class="btn-copy-code" onclick="copyVoucherCode('ARB-9921-XK')">Salin Kode</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:8px;">
+            <span>Sisa Waktu: <strong style="color:white;">18 Jam 42 Menit</strong></span>
+            <span>Speed: <strong style="color:#34d399;">5 Mbps</strong></span>
+          </div>
+        </div>
+
+        <!-- Item 2 -->
+        <div class="my-voucher-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <span style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;">BELUM DIPAKAI</span>
+              <h5 style="font-size:15px;font-weight:700;color:white;margin-top:2px;">Voucher 3 Jam Flash</h5>
+            </div>
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.4);">
+              Siap Pakai
+            </span>
+          </div>
+          <div class="voucher-code-box">
+            <span class="code-text" id="code2">ARB-7742-PL</span>
+            <button class="btn-copy-code" onclick="copyVoucherCode('ARB-7742-PL')">Salin Kode</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:8px;">
+            <span>Masa Tunggu: <strong style="color:white;">30 Hari</strong></span>
+            <span>Speed: <strong style="color:#34d399;">5 Mbps</strong></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== TAB VIEW 3: TAGIHAN & LANGGANAN ==================== -->
+    <div class="tab-view-content" id="tabViewInvoices">
+      <div style="margin-bottom:16px;">
+        <h4 style="font-size:16px;font-weight:700;color:white;">Layanan & Tagihan Internet</h4>
+        <p style="font-size:12px;color:var(--text-muted);">Detail akun langganan rumah Anda dan tagihan yang perlu diselesaikan</p>
+      </div>
+
+      <!-- Subscription Detail -->
+      <div class="subs-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:rgba(16,185,129,0.15);color:#34d399;display:flex;align-items:center;justify-content:center;">
+              <svg class="icon" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+            </div>
+            <div>
+              <h5 style="font-size:14px;font-weight:700;color:white;">PPPoE Rumah - Paket Family 20 Mbps</h5>
+              <p style="font-size:11px;color:var(--text-muted);">ID Pelanggan: ARB-CUST-8831 • Username: user_zainudin</p>
+            </div>
+          </div>
+          <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);">
+            ● Status: Aktif Normal
+          </span>
+        </div>
+        <div style="display:flex;gap:20px;font-size:12px;color:var(--text-muted);border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;">
+          <span>IP Address: <strong style="color:white;">192.168.88.25</strong></span>
+          <span>Kecepatan: <strong style="color:#34d399;">20 Mbps Simetris</strong></span>
+          <span>Jatuh Tempo: <strong style="color:white;">Tgl 20 Setiap Bulan</strong></span>
+        </div>
+      </div>
+
+      <!-- Tagihan Belum Lunas -->
+      <div class="subs-card warning">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div>
+            <span style="font-size:10px;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;">TAGIHAN BULAN SEPTEMBER 2026</span>
+            <h5 style="font-size:15px;font-weight:700;color:white;margin-top:2px;">Invoice #INV-2026-09-0831</h5>
+            <p style="font-size:12px;color:var(--text-muted);">Jatuh Tempo: 20 September 2026 (Tersisa 5 Hari)</p>
+          </div>
+          <div style="text-align:right;">
+            <span style="font-size:11px;color:var(--text-muted);display:block;">TOTAL HARUS DIBAYAR</span>
+            <strong style="font-family:var(--font-heading);font-size:22px;color:#fbbf24;">Rp 150.000</strong>
+          </div>
+          <button class="btn-buy-card" style="background:#f59e0b;color:#0f172a;" onclick="openPayInvoiceModal('Tagihan Internet 20 Mbps', 'Rp 150.000')">
+            <svg class="icon" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"></rect><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+            <span>Bayar 1-Klik via ArabPay</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CARA BELI VOUCHER (3 LANGKAH MUDAH) -->
+  <div class="section-block">
+    <div class="section-title-wrap">
+      <h3 class="section-title">Cara Mudah Membeli Voucher Hotspot</h3>
+      <p class="section-desc">Hanya 3 langkah sederhana untuk langsung terhubung ke internet super kencang</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-box">
+        <div class="step-num-badge">1</div>
+        <h4>Pilih Paket Sesuai Kebutuhan</h4>
+        <p>Pilih durasi paket 1 jam, 3 jam, harian, atau bulanan dengan kecepatan stabil.</p>
+      </div>
+      <div class="step-box">
+        <div class="step-num-badge">2</div>
+        <h4>Bayar Instan via QRIS / Saldo</h4>
+        <p>Gunakan Saldo ArabPay untuk bayar 1 detik tanpa biaya admin, atau scan QRIS.</p>
+      </div>
+      <div class="step-box">
+        <div class="step-num-badge">3</div>
+        <h4>Voucher Langsung Aktif</h4>
+        <p>Kode voucher seketika muncul dan login otomatis ke jaringan WiFi Anda.</p>
       </div>
     </div>
   </div>
 
   <!-- METODE PEMBAYARAN -->
-  <div class="payment-methods">
-    <h2>💳 Metode Pembayaran</h2>
-    <div class="payment-logos">
-      <div class="payment-logo">QRIS</div>
-      <div class="payment-logo">ArabPay</div>
-      <div class="payment-logo">GoPay</div>
-      <div class="payment-logo">OVO</div>
-      <div class="payment-logo">DANA</div>
-      <div class="payment-logo">Bank Transfer</div>
+  <div class="section-block" style="text-align:center;">
+    <div class="section-title-wrap">
+      <h3 class="section-title">Metode Pembayaran Terlengkap</h3>
+      <p class="section-desc">Mendukung dompet digital, QRIS Nasional, dan transfer bank lokal</p>
+    </div>
+    <div class="channels-row">
+      <div class="channel-pill">
+        <span style="color:#10b981;">⚡</span> Saldo ArabPay (0 Biaya)
+      </div>
+      <div class="channel-pill">
+        <span style="color:#ef4444;">📱</span> QRIS (Semua E-Wallet)
+      </div>
+      <div class="channel-pill">
+        <span style="color:#06b6d4;">🔵</span> GoPay
+      </div>
+      <div class="channel-pill">
+        <span style="color:#8b5cf6;">🟣</span> OVO
+      </div>
+      <div class="channel-pill">
+        <span style="color:#3b82f6;">🔷</span> DANA
+      </div>
+      <div class="channel-pill">
+        <span style="color:#f59e0b;">🏛️</span> BCA / Mandiri / BRI
+      </div>
     </div>
   </div>
 
-  <!-- TESTIMONI -->
-  <div class="testimoni">
-    <h2>⭐ Testimoni Pelanggan</h2>
+  <!-- TESTIMONI PELANGGAN (3 KOLOM) -->
+  <div class="section-block">
+    <div class="section-title-wrap">
+      <h3 class="section-title">Apa Kata Pelanggan Kami?</h3>
+      <p class="section-desc">Kepuasan pengguna internet di jaringan WiFi Arbill</p>
+    </div>
     <div class="testi-grid">
       <div class="testi-card">
         <div class="testi-header">
-          <div class="testi-avatar">A</div>
+          <div class="testi-avatar">R</div>
           <div>
-            <div class="testi-name">Ahmad Rizki</div>
+            <div class="testi-name">Rizki Ramadhan</div>
             <div class="testi-stars">★★★★★</div>
           </div>
         </div>
-        <p class="testi-text">Internetnya cepat dan stabil! Beli voucher juga gampang banget via QRIS.</p>
+        <p class="testi-text">"Beli voucher tinggal klik bayar pakai saldo ArabPay, langsung aktif tanpa ribet ketik kode manual. Streaming lancar jaya!"</p>
       </div>
+
       <div class="testi-card">
         <div class="testi-header">
-          <div class="testi-avatar">S</div>
+          <div class="testi-avatar" style="background:linear-gradient(135deg,#ec4899,#8b5cf6);">S</div>
           <div>
             <div class="testi-name">Siti Nurhaliza</div>
             <div class="testi-stars">★★★★★</div>
           </div>
         </div>
-        <p class="testi-text">Harga murah, aktif otomatis. Cocok untuk WFH dan streaming.</p>
+        <p class="testi-text">"Sangat terbantu buat WFH dan ngerjain tugas kuliah. Harganya ramah di kantong dan speed-nya stabil banget seharian."</p>
       </div>
+
       <div class="testi-card">
         <div class="testi-header">
-          <div class="testi-avatar">B</div>
+          <div class="testi-avatar" style="background:linear-gradient(135deg,#f59e0b,#ef4444);">B</div>
           <div>
-            <div class="testi-name">Budi Santoso</div>
-            <div class="testi-stars">★★★★☆</div>
+            <div class="testi-name">Budi Pratama</div>
+            <div class="testi-stars">★★★★★</div>
           </div>
         </div>
-        <p class="testi-text">Pelayanan ramah, voucher langsung aktif. Recommended!</p>
+        <p class="testi-text">"Sistem tagihan rumahnya mantap, ada notifikasi sebelum jatuh tempo dan bisa dicek online dari mana saja."</p>
       </div>
     </div>
   </div>
 
-  <!-- FAQ -->
-  <div class="faq">
-    <h2>❓ Pertanyaan Umum (FAQ)</h2>
-    <div class="faq-item">
-      <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-        Bagaimana cara membeli voucher? <span>+</span>
-      </div>
-      <div class="faq-answer">Pilih paket yang diinginkan, lalu bayar via QRIS atau Saldo ArabPay. Voucher akan aktif otomatis dalam hitungan detik.</div>
+  <!-- FAQ ACCORDION -->
+  <div class="section-block">
+    <div class="section-title-wrap">
+      <h3 class="section-title">Pertanyaan Sering Diajukan (FAQ)</h3>
+      <p class="section-desc">Semua yang perlu Anda ketahui tentang layanan WiFi Arbill</p>
     </div>
-    <div class="faq-item">
-      <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-        Berapa lama voucher aktif? <span>+</span>
+    <div class="faq-list">
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-question">
+          <span>Bagaimana cara menggunakan voucher setelah dibeli?</span>
+          <svg class="icon faq-icon-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="faq-answer">
+          Setelah pembayaran berhasil, kode voucher Anda akan otomatis tampil dan tersimpan di tab "Voucher Saya". Hubungkan perangkat Anda ke WiFi ARBILL, lalu masukkan kode voucher pada halaman login hotspot.
+        </div>
       </div>
-      <div class="faq-answer">Voucher aktif sesuai durasi paket yang dipilih (1 jam, 3 jam, 1 hari, 7 hari, atau 30 hari).</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-        Apakah bisa bayar tagihan bulanan? <span>+</span>
+
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-question">
+          <span>Kapan kuota/masa aktif voucher mulai berjalan?</span>
+          <svg class="icon faq-icon-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="faq-answer">
+          Masa aktif voucher hanya mulai dihitung saat Anda pertama kali menggunakannya untuk login ke jaringan WiFi, bukan saat Anda membelinya.
+        </div>
       </div>
-      <div class="faq-answer">Ya! Masukkan No. HP atau Username PPPoE Anda di form "Cek & Bayar Tagihan" untuk melihat dan membayar tagihan.</div>
-    </div>
-    <div class="faq-item">
-      <div class="faq-question" onclick="this.parentElement.classList.toggle('open')">
-        Metode pembayaran apa saja yang tersedia? <span>+</span>
+
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-question">
+          <span>Bagaimana jika koneksi internet terputus saat browsing?</span>
+          <svg class="icon faq-icon-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="faq-answer">
+          Sistem kami otomatis menjaga sesi login Anda. Jika perangkat reconnect, Anda akan terhubung kembali secara instan selama masa aktif voucher masih berlaku.
+        </div>
       </div>
-      <div class="faq-answer">Kami menerima QRIS, Saldo ArabPay, GoPay, OVO, DANA, dan Bank Transfer.</div>
+
+      <div class="faq-item" onclick="toggleFaq(this)">
+        <div class="faq-question">
+          <span>Apakah bisa bayar tagihan PPPoE rumah di portal ini?</span>
+          <svg class="icon faq-icon-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </div>
+        <div class="faq-answer">
+          Bisa! Masukkan nomor HP atau ID pelanggan Anda di kolom "Cek & Bayar Tagihan Internet", lalu bayar dengan saldo ArabPay atau QRIS.
+        </div>
+      </div>
     </div>
   </div>
 
 </div>
 
 <!-- FOOTER -->
-<div class="footer">
+<footer class="footer">
   <div class="footer-grid">
     <div class="footer-col">
-      <h4>📶 ARBILL</h4>
-      <p style="font-size:12px;color:rgba(255,255,255,0.7);line-height:1.6;">Penyedia layanan hotspot & internet cepat dengan sistem voucher instan.</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <div class="logo-icon" style="width:34px;height:34px;border-radius:10px;">
+          <svg viewBox="0 0 24 24" class="icon" style="width:18px;height:18px;"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+        </div>
+        <h4 style="margin:0;font-size:16px;">ARBILL Hotspot & Internet</h4>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);line-height:1.7;max-width:320px;">
+        Solusi billing hotspot otomatis & internet berlangganan terpercaya dengan ekosistem dompet digital ArabPay.
+      </p>
     </div>
     <div class="footer-col">
-      <h4>Quick Links</h4>
-      <a href="#">Beli Voucher</a>
-      <a href="#">Cek Tagihan</a>
-      <a href="#">Daftar Member</a>
-      <a href="#">Tentang Kami</a>
+      <h4>Layanan</h4>
+      <a href="#catalogUnifiedFrame" onclick="switchMainTab('buy')">Beli Voucher Instan</a>
+      <a href="#catalogUnifiedFrame" onclick="switchMainTab('history')">Riwayat Voucher</a>
+      <a href="#catalogUnifiedFrame" onclick="switchMainTab('invoices')">Bayar Tagihan Rumah</a>
+      <a href="#" onclick="openTopupModal()">Top Up Saldo ArabPay</a>
     </div>
     <div class="footer-col">
-      <h4>Kontak</h4>
-      <a href="#"> 0812-3456-7890</a>
-      <a href="#">✉️ info@arbill.net</a>
-      <a href="#">📍 Jakarta, Indonesia</a>
+      <h4>Bantuan</h4>
+      <a href="https://wa.me/6281234567890" target="_blank">Hubungi CS WhatsApp</a>
+      <a href="#">Status Server & MikroTik</a>
+      <a href="#">Syarat & Ketentuan</a>
+      <a href="#">Kebijakan Privasi</a>
     </div>
     <div class="footer-col">
-      <h4>Social Media</h4>
-      <a href="#">📘 Facebook</a>
-      <a href="#">📸 Instagram</a>
-      <a href="#">🐦 Twitter</a>
-      <a href="#">▶️ YouTube</a>
+      <h4>Kontak Teknis</h4>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">📍 Basecamp RT/RW Net</p>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">📞 0812-3456-7890</p>
+      <p style="font-size:12px;color:var(--text-muted);">✉️ support@arbill.net</p>
     </div>
   </div>
   <div class="footer-bottom">
-    © 2026 ARBILL Hotspot & Internet. All rights reserved.
+    <span>© 2026 ARBILL Hotspot & Internet. Hak Cipta Dilindungi.</span>
+    <span>Sistem Otomatis Terintegrasi RouterOS MikroTik & Database PostgreSQL</span>
+  </div>
+</footer>
+
+<!-- FLOATING WHATSAPP CS -->
+<a href="https://wa.me/6281234567890" class="float-wa" target="_blank" title="Butuh Bantuan? Hubungi Kami di WhatsApp">
+  <svg class="icon" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+  <span>Bantuan CS</span>
+</a>
+
+<!-- ==================== MODAL BELI VOUCHER ==================== -->
+<div class="modal-overlay" id="buyModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalPkgTitle">Konfirmasi Pembelian</h3>
+      <button class="modal-close" onclick="closeModal('buyModal')">✕</button>
+    </div>
+
+    <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;">
+        <span style="color:var(--text-muted);">Paket Voucher:</span>
+        <strong style="color:white;" id="modalSummaryName">Paket 1 Hari</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;">
+        <span style="color:var(--text-muted);">Durasi Aktif:</span>
+        <span style="color:white;" id="modalSummaryDur">24 Jam</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;">
+        <span style="color:var(--text-muted);">Kecepatan:</span>
+        <span style="color:#34d399;" id="modalSummarySpeed">5 Mbps</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;font-size:14px;">
+        <strong style="color:white;">Total Bayar:</strong>
+        <strong style="color:#34d399;font-size:18px;" id="modalSummaryPrice">Rp 5.000</strong>
+      </div>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <label style="font-size:12px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:8px;">PILIH METODE PEMBAYARAN:</label>
+      
+      <div class="payment-option-card selected" onclick="selectPayMethod(this, 'balance')">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">⚡</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:white;">Saldo ArabPay (Instan)</div>
+            <div style="font-size:11px;color:#34d399;">Saldo Anda: Rp 50.000 • 0 Biaya</div>
+          </div>
+        </div>
+        <span style="color:#34d399;font-size:16px;">●</span>
+      </div>
+
+      <div class="payment-option-card" onclick="selectPayMethod(this, 'qris')">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:18px;">📱</span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:white;">QRIS Nasional</div>
+            <div style="font-size:11px;color:var(--text-muted);">Scan via BCA, GoPay, OVO, DANA</div>
+          </div>
+        </div>
+        <span style="color:var(--text-dim);font-size:16px;">○</span>
+      </div>
+    </div>
+
+    <button class="btn-buy-card" style="width:100%;justify-content:center;padding:12px;font-size:14px;" onclick="processMockPurchase()">
+      <span>Bayar Sekarang</span>
+    </button>
   </div>
 </div>
 
-<!-- FLOATING WA -->
-<a href="https://wa.me/6281234567890" class="float-wa" target="_blank">💬</a>
+<!-- ==================== MODAL TOP UP SALDO ==================== -->
+<div class="modal-overlay" id="topupModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Top Up Saldo ArabPay</h3>
+      <button class="modal-close" onclick="closeModal('topupModal')">✕</button>
+    </div>
 
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">
+      Pilih nominal saldo yang ingin Anda tambahkan ke akun ArabPay Anda:
+    </p>
+
+    <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:10px;margin-bottom:18px;">
+      <button class="pill-filter active" style="padding:12px;text-align:center;" onclick="selectTopupNominal(20000, this)">
+        Rp 20.000
+      </button>
+      <button class="pill-filter" style="padding:12px;text-align:center;" onclick="selectTopupNominal(50000, this)">
+        Rp 50.000
+      </button>
+      <button class="pill-filter" style="padding:12px;text-align:center;" onclick="selectTopupNominal(100000, this)">
+        Rp 100.000
+      </button>
+      <button class="pill-filter" style="padding:12px;text-align:center;" onclick="selectTopupNominal(200000, this)">
+        Rp 200.000
+      </button>
+    </div>
+
+    <div style="background:rgba(30,41,59,0.5);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:14px;margin-bottom:18px;text-align:center;">
+      <span style="font-size:11px;color:var(--text-muted);display:block;">METODE PEMBAYARAN: QRIS OTOMATIS</span>
+      <strong style="font-size:14px;color:white;display:block;margin-top:4px;">QRIS Real-Time Arbill</strong>
+    </div>
+
+    <button class="btn-buy-card" style="width:100%;justify-content:center;padding:12px;font-size:14px;background:#10b981;" onclick="processMockTopup()">
+      <span>Konfirmasi Top Up (+<span id="selectedNominalText">Rp 20.000</span>)</span>
+    </button>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- JAVASCRIPT LOGIC (MOCK INTERACTIVE UI) -->
 <script>
-  // Countdown Timer
-  let totalSeconds = 1*86400 + 3*3600 + 50*60 + 18;
+  let currentBalance = 50000;
+  let activeTopupNominal = 20000;
+  let currentBuyPkg = { name: '', price: '', dur: '', speed: '' };
+
+  // Countdown Timer Flash Sale
+  let totalSeconds = 1 * 86400 + 4 * 3600 + 28 * 60 + 45;
   function updateCountdown() {
     if (totalSeconds <= 0) return;
     totalSeconds--;
@@ -1029,32 +2175,193 @@
     const h = Math.floor((totalSeconds % 86400) / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = totalSeconds % 60;
-    document.getElementById('days').textContent = String(d).padStart(2,'0');
-    document.getElementById('hours').textContent = String(h).padStart(2,'0');
-    document.getElementById('minutes').textContent = String(m).padStart(2,'0');
-    document.getElementById('seconds').textContent = String(s).padStart(2,'0');
+    document.getElementById('days').textContent = String(d).padStart(2, '0');
+    document.getElementById('hours').textContent = String(h).padStart(2, '0');
+    document.getElementById('minutes').textContent = String(m).padStart(2, '0');
+    document.getElementById('seconds').textContent = String(s).padStart(2, '0');
   }
   setInterval(updateCountdown, 1000);
 
-  // Filter Pills
-  document.querySelectorAll('.pill').forEach(pill => {
-    pill.addEventListener('click', function() {
-      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-      this.classList.add('active');
-    });
-  });
+  // Switch Main 3 Tabs
+  function switchMainTab(tab) {
+    // Reset buttons
+    document.getElementById('tabBtnBuy').classList.remove('active');
+    document.getElementById('tabBtnHistory').classList.remove('active');
+    document.getElementById('tabBtnInvoices').classList.remove('active');
 
-  // User Profile Dropdown Toggle
-  const profileBtn = document.getElementById('userProfileBtn');
-  const profileDropdown = document.getElementById('profileDropdown');
-  if (profileBtn && profileDropdown) {
-    profileBtn.addEventListener('click', function(e) {
+    // Reset views
+    document.getElementById('tabViewBuy').classList.remove('active');
+    document.getElementById('tabViewHistory').classList.remove('active');
+    document.getElementById('tabViewInvoices').classList.remove('active');
+
+    if (tab === 'buy') {
+      document.getElementById('tabBtnBuy').classList.add('active');
+      document.getElementById('tabViewBuy').classList.add('active');
+    } else if (tab === 'history') {
+      document.getElementById('tabBtnHistory').classList.add('active');
+      document.getElementById('tabViewHistory').classList.add('active');
+    } else if (tab === 'invoices') {
+      document.getElementById('tabBtnInvoices').classList.add('active');
+      document.getElementById('tabViewInvoices').classList.add('active');
+    }
+
+    // Smooth scroll to frame if triggered from outside
+    const frame = document.getElementById('catalogUnifiedFrame');
+    if (frame) {
+      frame.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  // Filter Paket Voucher
+  function filterPackages(category, el) {
+    document.querySelectorAll('.pill-filter').forEach(btn => btn.classList.remove('active'));
+    el.classList.add('active');
+
+    const cards = document.querySelectorAll('#productGridContainer .product-card');
+    cards.forEach(card => {
+      const cat = card.getAttribute('data-category');
+      if (category === 'all' || cat === category) {
+        card.style.display = 'flex';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  // User Profile Dropdown
+  const userBtn = document.getElementById('userProfileBtn');
+  const dropdown = document.getElementById('profileDropdown');
+  if (userBtn && dropdown) {
+    userBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      profileDropdown.classList.toggle('show');
+      dropdown.classList.toggle('show');
     });
-    document.addEventListener('click', function() {
-      profileDropdown.classList.remove('show');
+    document.addEventListener('click', () => {
+      dropdown.classList.remove('show');
     });
+  }
+
+  // FAQ Toggle
+  function toggleFaq(el) {
+    el.classList.toggle('open');
+  }
+
+  // Quick Bill Check
+  function checkBilling() {
+    const input = document.getElementById('billInput').value.trim();
+    if (!input) {
+      showToast('Harap masukkan nomor HP atau username!');
+      return;
+    }
+    const resBox = document.getElementById('billResultMock');
+    document.getElementById('billCustName').textContent = `Pelanggan: ${input} (Paket Home 20M)`;
+    resBox.classList.add('show');
+    showToast('Data tagihan ditemukan!');
+  }
+
+  // Modal Functions
+  function openBuyModal(name, price, dur, speed) {
+    currentBuyPkg = { name, price, dur, speed };
+    document.getElementById('modalPkgTitle').textContent = `Beli ${name}`;
+    document.getElementById('modalSummaryName').textContent = name;
+    document.getElementById('modalSummaryDur').textContent = dur;
+    document.getElementById('modalSummarySpeed').textContent = speed;
+    document.getElementById('modalSummaryPrice').textContent = price;
+    document.getElementById('buyModal').classList.add('active');
+  }
+
+  function openPayInvoiceModal(title, price) {
+    openBuyModal(title, price, '1 Bulan', '20 Mbps');
+  }
+
+  function openTopupModal() {
+    document.getElementById('topupModal').classList.add('active');
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+  }
+
+  function selectPayMethod(el, method) {
+    document.querySelectorAll('.payment-option-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+  }
+
+  function selectTopupNominal(nom, el) {
+    activeTopupNominal = nom;
+    el.parentElement.querySelectorAll('.pill-filter').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('selectedNominalText').textContent = 'Rp ' + nom.toLocaleString('id-ID');
+  }
+
+  function processMockPurchase() {
+    closeModal('buyModal');
+    const randomCode = 'ARB-' + Math.floor(1000 + Math.random() * 9000) + '-' + ['XK', 'PL', 'QR', 'ZM', 'TN'][Math.floor(Math.random() * 5)];
+    
+    // Add to Voucher Saya mock list
+    const container = document.getElementById('myVouchersList');
+    const newCard = document.createElement('div');
+    newCard.className = 'my-voucher-card';
+    newCard.style.animation = 'fadeIn 0.3s ease';
+    newCard.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <span style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;">BARU DIBELI</span>
+          <h5 style="font-size:15px;font-weight:700;color:white;margin-top:2px;">${currentBuyPkg.name}</h5>
+        </div>
+        <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.4);">
+          Siap Pakai
+        </span>
+      </div>
+      <div class="voucher-code-box">
+        <span class="code-text">${randomCode}</span>
+        <button class="btn-copy-code" onclick="copyVoucherCode('${randomCode}')">Salin Kode</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:8px;">
+        <span>Durasi: <strong style="color:white;">${currentBuyPkg.dur}</strong></span>
+        <span>Speed: <strong style="color:#34d399;">${currentBuyPkg.speed}</strong></span>
+      </div>
+    `;
+    container.prepend(newCard);
+
+    // Update count badge
+    const badge = document.getElementById('myVoucherBadge');
+    badge.textContent = parseInt(badge.textContent || '3') + 1;
+
+    showToast(`Berhasil! Kode Voucher Anda: ${randomCode}`);
+    setTimeout(() => {
+      switchMainTab('history');
+    }, 600);
+  }
+
+  function processMockTopup() {
+    closeModal('topupModal');
+    currentBalance += activeTopupNominal;
+    const formatted = 'Rp ' + currentBalance.toLocaleString('id-ID');
+    document.getElementById('headerBalance').textContent = formatted;
+    document.getElementById('dropdownBalance').textContent = formatted;
+    document.getElementById('statBalance').textContent = formatted;
+    showToast(`Top Up Berhasil! Saldo bertambah Rp ${activeTopupNominal.toLocaleString('id-ID')}`);
+  }
+
+  function copyVoucherCode(code) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code);
+    }
+    showToast(`Kode ${code} disalin ke clipboard!`);
+  }
+
+  function showToast(msg) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `<span>✓ ${msg}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
   }
 </script>
 
