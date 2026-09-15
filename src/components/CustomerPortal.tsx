@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { UserAccount, CustomerPortalConfig } from '../types';
+import { UserAccount, CustomerPortalConfig, CustomerPortalSection } from '../types';
 import {
   Wifi, Zap, Clock, Shield, ShoppingCart, Wallet, X,
   CheckCircle2, Lock, ArrowRight, Loader2, AlertCircle,
@@ -172,11 +172,29 @@ export default function CustomerPortal({
     }
   });
 
+  const defaultSections: CustomerPortalSection[] = useMemo(() => [
+    { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
+    { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
+    { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
+    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
+    { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
+    { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
+    { id: 'contact_footer', label: 'Tombol Bantuan WhatsApp CS', enabled: true, order: 8 }
+  ], []);
+
   const isSectionEnabled = (sectionId: string) => {
     if (!portalConfig?.sections) return true;
     const found = portalConfig.sections.find(s => s.id === sectionId);
     return found ? found.enabled : true;
   };
+
+  const sortedSections = useMemo(() => {
+    const list = (portalConfig?.sections && portalConfig.sections.length > 0)
+      ? portalConfig.sections
+      : defaultSections;
+    return [...list].sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [portalConfig?.sections, defaultSections]);
 
   const fetchPortalConfig = async () => {
     try {
@@ -228,61 +246,6 @@ export default function CustomerPortal({
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [portalConfig?.flash_sale?.end_time]);
-
-  // --- TOP BANNER CAROUSEL STATE & HANDLERS ---
-  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
-  const [touchStartX, setTouchStartX] = useState<number | null>(null);
-  const [isCarouselHovered, setIsCarouselHovered] = useState(false);
-
-  const carouselSlides = useMemo(() => {
-    const slides: Array<{ id: 'hero' | 'flash_sale' | 'wallet'; label: string; icon?: string }> = [];
-    if (isSectionEnabled('hero')) {
-      slides.push({ id: 'hero', label: 'Info Hotspot' });
-    }
-    if (isSectionEnabled('flash_sale') && portalConfig?.flash_sale?.enabled) {
-      slides.push({ id: 'flash_sale', label: '🔥 Flash Sale' });
-    }
-    if (isSectionEnabled('wallet_widget')) {
-      slides.push({ id: 'wallet', label: '💳 Dompet Saldo' });
-    }
-    return slides;
-  }, [portalConfig?.sections, portalConfig?.flash_sale?.enabled]);
-
-  useEffect(() => {
-    if (carouselSlides.length <= 1 || isCarouselHovered) return;
-    const timer = setInterval(() => {
-      setActiveSlideIndex(prev => (prev + 1) % carouselSlides.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [carouselSlides.length, isCarouselHovered]);
-
-  const handlePrevSlide = () => {
-    if (carouselSlides.length <= 1) return;
-    setActiveSlideIndex(prev => (prev - 1 + carouselSlides.length) % carouselSlides.length);
-  };
-
-  const handleNextSlide = () => {
-    if (carouselSlides.length <= 1) return;
-    setActiveSlideIndex(prev => (prev + 1) % carouselSlides.length);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartX(e.touches[0].clientX);
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX === null || carouselSlides.length <= 1) return;
-    const touchEndX = e.changedTouches[0].clientX;
-    const diff = touchStartX - touchEndX;
-    if (diff > 45) {
-      // Swipe kiri -> slide berikutnya
-      handleNextSlide();
-    } else if (diff < -45) {
-      // Swipe kanan -> slide sebelumnya
-      handlePrevSlide();
-    }
-    setTouchStartX(null);
-  };
 
   const apiUrl = getApiUrl();
 
@@ -1449,6 +1412,515 @@ export default function CustomerPortal({
     }
   };
 
+  // --- MODULAR SECTION RENDERERS (Driven strictly by Layout Builder order) ---
+  const renderAnnouncementSection = (section: CustomerPortalSection) => {
+    if (!announcement?.enabled || !announcement?.text) return null;
+    return (
+      <div
+        key={section.id}
+        className={`p-3.5 sm:p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold shadow-sm transition-all duration-300 ${
+          announcement.type === 'promo'
+            ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
+            : announcement.type === 'warning'
+            ? 'bg-amber-950/60 border-amber-500/30 text-amber-300'
+            : 'bg-indigo-950/60 border-indigo-500/30 text-indigo-300'
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          <Megaphone className="w-4 h-4 shrink-0 text-amber-400 animate-pulse" />
+          <span>{announcement.text}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderHeroSection = (section: CustomerPortalSection) => {
+    return (
+      <div
+        key={section.id}
+        className={`p-6 sm:p-7 rounded-3xl border shadow-xl relative overflow-hidden transition-all duration-300 ${
+          isLight
+            ? 'bg-gradient-to-br from-indigo-50/95 via-white to-sky-50/70 border-slate-200 text-slate-800'
+            : 'bg-gradient-to-br from-slate-900 via-slate-900/95 to-indigo-950/50 border-slate-800 text-white'
+        }`}
+      >
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative">
+          <div className="space-y-2.5 max-w-2xl">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                Hotspot Online
+              </span>
+              <span className="text-xs text-slate-400">● Beli & Langsung Terhubung</span>
+            </div>
+            <h2 className={`text-2xl sm:text-3xl font-black tracking-tight leading-snug ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              {hotspotName}
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 font-medium">
+              {tagline}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0">
+            <button
+              onClick={() => {
+                const el = document.getElementById('voucher-catalog-section');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>Pilih Paket Voucher</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderFlashSaleSection = (section: CustomerPortalSection) => {
+    if (!portalConfig?.flash_sale?.enabled) return null;
+    return (
+      <div
+        key={section.id}
+        className="p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-rose-950/95 via-slate-900 to-amber-950/90 border border-rose-500/40 text-white relative overflow-hidden shadow-2xl shadow-rose-950/30 transition-all duration-300"
+      >
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-2 max-w-xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                <Flame className="w-3.5 h-3.5 animate-bounce" />
+                <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
+              </span>
+
+              {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
+                  Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
+                </span>
+              )}
+
+              <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
+                🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
+              </span>
+            </div>
+
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+                <span>{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
+              </h3>
+              <p className="text-xs sm:text-sm text-rose-200/90 font-medium mt-0.5">
+                {portalConfig.flash_sale.target_package_name ? `Paket: ${portalConfig.flash_sale.target_package_name}` : (portalConfig.flash_sale.subtitle || 'Voucher Hotspot Pilihan')}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap pt-1">
+              <div className="flex items-baseline gap-2">
+                {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
+                  <span className="text-xs text-slate-400 line-through font-mono">
+                    {formatRupiah(Number(portalConfig.flash_sale.original_price))}
+                  </span>
+                )}
+                <span className="text-xl sm:text-2xl font-black text-amber-300 font-mono">
+                  {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
+                </span>
+              </div>
+
+              <div className="h-3 w-px bg-slate-700 hidden sm:block" />
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                <span className="text-slate-400">Kuota:</span>
+                <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-amber-300 font-bold">
+                  {portalConfig.flash_sale.quota_sold || 0}/{portalConfig.flash_sale.quota_limit || 100}
+                </span>
+                <span className="text-slate-400">
+                  ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 shrink-0 pt-2 lg:pt-0">
+            <div className="flex items-center gap-1.5">
+              {countdown.days > 0 && (
+                <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
+                  <span className="text-sm font-black font-mono text-white leading-none">
+                    {String(countdown.days).padStart(2, '0')}
+                  </span>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Hari</span>
+                </div>
+              )}
+              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
+                <span className="text-sm font-black font-mono text-amber-300 leading-none">
+                  {String(countdown.hours).padStart(2, '0')}
+                </span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Jam</span>
+              </div>
+              <span className="text-rose-400 font-bold font-mono">:</span>
+              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
+                <span className="text-sm font-black font-mono text-amber-300 leading-none">
+                  {String(countdown.minutes).padStart(2, '0')}
+                </span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Mnt</span>
+              </div>
+              <span className="text-rose-400 font-bold font-mono">:</span>
+              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
+                <span className="text-sm font-black font-mono text-rose-400 leading-none animate-pulse">
+                  {String(countdown.seconds).padStart(2, '0')}
+                </span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Dtk</span>
+              </div>
+            </div>
+
+            {userHasClaimedFlashSale ? (
+              <button
+                disabled
+                className="px-5 py-2.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Sudah Diklaim (Maks. 1)</span>
+              </button>
+            ) : isFlashSaleSoldOut ? (
+              <button
+                disabled
+                className="px-5 py-2.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
+              >
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>Kuota Promo Habis</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleBuyFlashSale}
+                className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-600/30 flex items-center gap-2 transition cursor-pointer"
+              >
+                <Flame className="w-4 h-4" />
+                <span>{portalConfig.flash_sale.button_text || 'Beli Promo Flash Sale'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderWalletSection = (section: CustomerPortalSection) => {
+    return (
+      <div key={section.id} className="w-full">
+        {currentUser ? (
+          <div className="p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-emerald-950/70 border border-emerald-500/30 text-white flex flex-col justify-between shadow-2xl shadow-emerald-500/10 relative overflow-hidden transition-all duration-300">
+            <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
+
+            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
+                    <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>SALDO ARABPAY WALLET</span>
+                  </div>
+                  <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>SSE Synced</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
+                    {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                  </span>
+                  <button
+                    onClick={fetchLiveArabPayBalance}
+                    className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
+                    title="Refresh Saldo Live"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                  <span className="text-slate-500">Pemilik Akun:</span>
+                  <span className="font-bold text-slate-200">{currentUser.name}</span>
+                  <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
+                    {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
+                <button
+                  onClick={() => setShowTopupModal(true)}
+                  className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Top Up Saldo</span>
+                </button>
+
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="px-5 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Profil Saya</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={`p-6 sm:p-7 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${
+            isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
+          }`}>
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                <Wallet className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="font-extrabold text-base sm:text-lg">
+                  Pembayaran Voucher Otomatis via ArabPay
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                  Gunakan e-wallet ArabPay untuk transaksi secepat kilat tanpa repot transfer berulang kali.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-2xl transition shadow-md shadow-emerald-600/20 shrink-0 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Wallet className="w-4 h-4" />
+              <span>Login / Hubungkan Wallet</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderQuickBillingSection = (section: CustomerPortalSection) => {
+    return (
+      <div
+        key={section.id}
+        className={`p-5 sm:p-6 rounded-3xl border shadow-lg transition-all duration-300 ${
+          isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/90 border-slate-800 text-white'
+        }`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base">Cek & Bayar Tagihan Internet</h3>
+              <p className="text-xs text-slate-400">Masukkan No. HP atau Username PPPoE Anda</p>
+            </div>
+          </div>
+          <span className="px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-bold">
+            Pelanggan Rumah
+          </span>
+        </div>
+
+        <form onSubmit={handleQuickCheckBill} className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              value={searchIdentity}
+              onChange={(e) => setSearchIdentity(e.target.value)}
+              placeholder="Contoh: 08123456789 atau user_pppoe"
+              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-xs sm:text-sm font-medium outline-none transition ${
+                isLight 
+                  ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500' 
+                  : 'bg-slate-950 border-slate-800 text-white focus:border-blue-500'
+              }`}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={quickCheckLoading || !searchIdentity.trim()}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 cursor-pointer"
+          >
+            {quickCheckLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+            <span>Cek Tagihan</span>
+          </button>
+        </form>
+
+        {quickCheckResult && (
+          <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-3 animate-fade-in">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-300">{quickCheckResult.customer?.name} ({quickCheckResult.customer?.phone_number || quickCheckResult.customer?.username})</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
+                {quickCheckResult.invoices?.length || 0} Tagihan
+              </span>
+            </div>
+            {quickCheckResult.invoices?.length > 0 ? (
+              <div className="space-y-2">
+                {quickCheckResult.invoices.map((inv: any) => (
+                  <div key={inv.id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <p className="font-bold text-white">{inv.invoice_number || 'Tagihan Bulanan'}</p>
+                      <p className="text-slate-500 text-[11px]">Jatuh Tempo: {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-mono font-bold text-emerald-400">{formatRupiah(Number(inv.amount || 0))}</p>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        inv.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                      }`}>
+                        {inv.status === 'paid' ? 'LUNAS' : 'BELUM DIBAYAR'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic">Tidak ada tagihan tertunggak untuk akun ini.</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderContactFooterSection = (section: CustomerPortalSection) => {
+    return (
+      <div
+        key={section.id}
+        className={`p-5 sm:p-6 rounded-3xl border shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${
+          isLight ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
+        }`}
+      >
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+            <MessageCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-base sm:text-lg">
+              Layanan Pelanggan & Bantuan CS
+            </h4>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Butuh bantuan pembelian voucher, pembayaran tagihan, atau kendala koneksi internet? Hubungi CS kami 24 Jam.
+            </p>
+          </div>
+        </div>
+        {contactPhone && (
+          <a
+            href={`https://wa.me/${contactPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Halo Admin, saya butuh bantuan layanan WiFi ' + hotspotName)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-2xl transition shadow-md shadow-emerald-600/20 shrink-0 cursor-pointer flex items-center justify-center gap-2"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>WhatsApp CS: {contactPhone}</span>
+          </a>
+        )}
+      </div>
+    );
+  };
+
+  const renderMonthlyPackagesSection = (section: CustomerPortalSection) => {
+    return (
+      <div key={section.id} id="monthly-packages-section" className="space-y-4">
+        <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30 rounded-3xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg sm:text-xl font-bold text-amber-300 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-400" />
+                <span>Paket Internet Bulanan / Pendaftaran Baru (RT/RW Net)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-xl">
+                Akun Hotspot Dedicated / PPPoE Bulanan dengan tagihan invoice tetap setiap bulan.
+              </p>
+            </div>
+            <span className="px-3 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-full text-xs font-black self-start sm:self-auto">
+              {monthlyPackages.length} Paket Tersedia
+            </span>
+          </div>
+        </div>
+
+        {monthlyPackages.length === 0 ? (
+          <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-3xl space-y-2">
+            <Shield className="w-10 h-10 text-slate-600 mx-auto animate-pulse" />
+            <h3 className="text-sm font-bold text-slate-300">Belum Ada Paket Bulanan</h3>
+            <p className="text-xs text-slate-500">Hubungi admin untuk info pendaftaran internet rumah.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {monthlyPackages.map((pkg: any, idx: number) => {
+              const price = Number(pkg.price || 0);
+              return (
+                <div
+                  key={pkg.id || idx}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-amber-500/50 hover:shadow-xl hover:shadow-amber-500/5 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
+                        {pkg.type === 'hotspot_monthly' ? '📶 Hotspot Member' : '⚡ PPPoE / FTTH'}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400">{pkg.speed_limit || pkg.rate_limit || '10 Mbps'}</span>
+                    </div>
+                    <h4 className="text-lg font-bold text-white">{pkg.name}</h4>
+                    <div className="text-2xl font-black text-amber-400 font-mono">
+                      {formatRupiah(price)}<span className="text-xs text-slate-500 font-normal"> /bulan</span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {pkg.description || 'Akun dedicated aktif 24 jam dengan tagihan otomatis bulanan.'}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setRegisterPkg(pkg);
+                      const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                      const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
+                      const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+
+                      setRegForm({
+                        name: currentUser?.name || '',
+                        phone_number: currentUser?.phone_number || '',
+                        username: defaultUser,
+                        password: defaultPass,
+                        dusun: '',
+                        desa: '',
+                        kecamatan: '',
+                        rt: '',
+                        rw: '',
+                        address_detail: '',
+                        selected_province_code: '35',
+                        selected_regency_code: '3509',
+                        selected_district_code: '',
+                        selected_village_code: '',
+                        latitude: null,
+                        longitude: null,
+                        installation_address: ''
+                      });
+                      setActiveTab('register_member');
+                    }}
+                    className="mt-4 w-full py-2.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-md shadow-amber-600/20 cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>Daftar Langganan</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className={getThemeContainerClass()}>
 
@@ -1529,33 +2001,6 @@ export default function CustomerPortal({
         </div>
       </nav>
 
-      {/* ==================== ANNOUNCEMENT BAR ==================== */}
-      {isSectionEnabled('announcement') && (
-        announcement?.enabled && announcement?.text ? (
-          <div className={`relative py-2 px-4 text-center border-b ${
-            announcement.type === 'promo'
-              ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300'
-              : announcement.type === 'warning'
-              ? 'bg-amber-950/60 border-amber-500/30 text-amber-300'
-              : 'bg-indigo-950/60 border-indigo-500/30 text-indigo-300'
-          }`}>
-            <p className="text-xs sm:text-sm font-semibold flex items-center justify-center gap-2">
-              <Megaphone className="w-3.5 h-3.5 shrink-0 text-amber-400 animate-pulse" />
-              <span>{announcement.text}</span>
-            </p>
-          </div>
-        ) : (
-          <div className={`relative py-2.5 px-4 border-b text-center ${
-            isLight ? 'bg-white border-slate-200 text-slate-700' : 'bg-slate-950/50 border-slate-800/60 text-slate-300 backdrop-blur-md'
-          }`}>
-            <p className="text-xs sm:text-sm font-medium">
-              <Signal className="inline w-3.5 h-3.5 mr-1.5 text-emerald-400 -mt-0.5" />
-              <span className="font-bold text-white">Beli Voucher WiFi Instan</span> — Bayar Saldo <span className="text-emerald-400 font-semibold">ArabPay Wallet</span>
-            </p>
-          </div>
-        )
-      )}
-
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-6 pb-16 space-y-6 flex-1 w-full">
 
@@ -1568,420 +2013,6 @@ export default function CustomerPortal({
               <span className="text-xs md:text-sm font-bold">{toastMsg.text}</span>
             </div>
             <button onClick={() => setToastMsg(null)} className="text-xs font-bold underline cursor-pointer">Tutup</button>
-          </div>
-        )}
-
-        {/* ==================== 1-COLUMN SLIDABLE HERO & PROMO CAROUSEL ==================== */}
-        {carouselSlides.length > 0 && (() => {
-          const currentSlide = carouselSlides[activeSlideIndex % carouselSlides.length];
-
-          return (
-            <div 
-              className="relative group w-full space-y-2.5"
-              onMouseEnter={() => setIsCarouselHovered(true)}
-              onMouseLeave={() => setIsCarouselHovered(false)}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
-              {/* Slider Main Box */}
-              <div className="relative overflow-hidden rounded-3xl border shadow-xl backdrop-blur-xl min-h-[170px] sm:min-h-[185px] transition-all duration-500">
-                
-                {/* PREV & NEXT FLOATING BUTTONS (visible on hover or mobile) */}
-                {carouselSlides.length > 1 && (
-                  <>
-                    <button
-                      onClick={handlePrevSlide}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center backdrop-blur-md opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition duration-200 cursor-pointer shadow-lg active:scale-95"
-                      title="Geser ke Kiri"
-                      aria-label="Previous Slide"
-                    >
-                      <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                    <button
-                      onClick={handleNextSlide}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/80 border border-white/20 text-white flex items-center justify-center backdrop-blur-md opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition duration-200 cursor-pointer shadow-lg active:scale-95"
-                      title="Geser ke Kanan"
-                      aria-label="Next Slide"
-                    >
-                      <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                  </>
-                )}
-
-                {/* SLIDE CONTENT RENDERING */}
-                {currentSlide?.id === 'hero' && (
-                  /* SLIDE 1: HERO / WELCOME HOTSPOT */
-                  <div className={`p-6 sm:p-7 flex flex-col justify-between h-full ${
-                    isLight
-                      ? 'bg-gradient-to-br from-indigo-50/95 via-white to-sky-50/70 border-slate-200 text-slate-800'
-                      : 'bg-gradient-to-br from-slate-900 via-slate-900/95 to-indigo-950/50 border-slate-800 text-white'
-                  }`}>
-                    {/* Lighting glow */}
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-2.5 max-w-2xl">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow-xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                            Hotspot Online
-                          </span>
-                          <span className="text-xs text-slate-400">● Beli & Langsung Terhubung</span>
-                        </div>
-                        <h2 className={`text-2xl sm:text-3xl font-black tracking-tight leading-snug ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                          {hotspotName}
-                        </h2>
-                        <p className="text-xs sm:text-sm text-slate-400 font-medium">
-                          {tagline}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0">
-                        <button
-                          onClick={() => setActiveTab('buy')}
-                          className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-2xl shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition cursor-pointer"
-                        >
-                          <ShoppingCart className="w-4 h-4" />
-                          <span>Pilih Paket Voucher</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {currentSlide?.id === 'flash_sale' && (
-                  /* SLIDE 2: FLASH SALE PROMO BANNER */
-                  <div className="p-6 sm:p-7 bg-gradient-to-br from-rose-950/95 via-slate-900 to-amber-950/90 border border-rose-500/40 text-white flex flex-col justify-between h-full shadow-2xl shadow-rose-950/30">
-                    {/* Lighting glow */}
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
-                    <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                    <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      {/* Left Info */}
-                      <div className="space-y-2 max-w-xl">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                            <Flame className="w-3.5 h-3.5 animate-bounce" />
-                            <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
-                          </span>
-
-                          {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                            <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
-                              Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
-                            </span>
-                          )}
-
-                          <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
-                            🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
-                          </span>
-                        </div>
-
-                        <div>
-                          <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-amber-400 shrink-0" />
-                            <span>{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
-                          </h3>
-                          <p className="text-xs sm:text-sm text-rose-200/90 font-medium mt-0.5">
-                            {portalConfig.flash_sale.target_package_name ? `Paket: ${portalConfig.flash_sale.target_package_name}` : (portalConfig.flash_sale.subtitle || 'Voucher Hotspot Pilihan')}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-3 flex-wrap pt-1">
-                          <div className="flex items-baseline gap-2">
-                            {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                              <span className="text-xs text-slate-400 line-through font-mono">
-                                {formatRupiah(Number(portalConfig.flash_sale.original_price))}
-                              </span>
-                            )}
-                            <span className="text-xl sm:text-2xl font-black text-amber-300 font-mono">
-                              {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
-                            </span>
-                          </div>
-
-                          <div className="h-3 w-px bg-slate-700 hidden sm:block" />
-
-                          <div className="flex items-center gap-2 text-[11px] text-slate-300">
-                            <span className="text-slate-400">Kuota:</span>
-                            <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
-                              <div
-                                className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
-                                }}
-                              />
-                            </div>
-                            <span className="font-mono text-amber-300 font-bold">
-                              {portalConfig.flash_sale.quota_sold || 0}/{portalConfig.flash_sale.quota_limit || 100}
-                            </span>
-                            <span className="text-slate-400">
-                              ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right Countdown & CTA */}
-                      <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 shrink-0 pt-2 lg:pt-0">
-                        {/* Countdown Digits */}
-                        <div className="flex items-center gap-1.5">
-                          {countdown.days > 0 && (
-                            <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                              <span className="text-sm font-black font-mono text-white leading-none">
-                                {String(countdown.days).padStart(2, '0')}
-                              </span>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Hari</span>
-                            </div>
-                          )}
-                          <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                            <span className="text-sm font-black font-mono text-amber-300 leading-none">
-                              {String(countdown.hours).padStart(2, '0')}
-                            </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Jam</span>
-                          </div>
-                          <span className="text-rose-400 font-bold font-mono">:</span>
-                          <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                            <span className="text-sm font-black font-mono text-amber-300 leading-none">
-                              {String(countdown.minutes).padStart(2, '0')}
-                            </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Mnt</span>
-                          </div>
-                          <span className="text-rose-400 font-bold font-mono">:</span>
-                          <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                            <span className="text-sm font-black font-mono text-rose-400 leading-none animate-pulse">
-                              {String(countdown.seconds).padStart(2, '0')}
-                            </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Dtk</span>
-                          </div>
-                        </div>
-
-                        {/* Button */}
-                        {userHasClaimedFlashSale ? (
-                          <button
-                            disabled
-                            className="px-5 py-2.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
-                          >
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span>Sudah Diklaim (Maks. 1)</span>
-                          </button>
-                        ) : isFlashSaleSoldOut ? (
-                          <button
-                            disabled
-                            className="px-5 py-2.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
-                          >
-                            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                            <span>Kuota Promo Habis</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={handleBuyFlashSale}
-                            className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-600/30 flex items-center gap-2 transition cursor-pointer"
-                          >
-                            <Flame className="w-4 h-4" />
-                            <span>{portalConfig.flash_sale.button_text || 'Beli Promo Flash Sale'}</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {currentSlide?.id === 'wallet' && (
-                  /* SLIDE 3: SALDO ARABPAY FINTECH CARD */
-                  currentUser ? (
-                    <div className="p-6 sm:p-7 bg-gradient-to-br from-slate-900 via-slate-900/95 to-emerald-950/70 border border-emerald-500/30 text-white flex flex-col justify-between h-full shadow-2xl shadow-emerald-500/10">
-                      {/* Ambient lighting */}
-                      <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
-                      <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-                      <div className="absolute inset-0 bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
-
-                      <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-xs font-black text-emerald-300">
-                              <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>SALDO ARABPAY WALLET</span>
-                            </div>
-                            <div className="px-2.5 py-1 bg-slate-800/80 border border-slate-700/60 rounded-full flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                              <span>SSE Synced</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-3 pt-1">
-                            <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                              {formatRupiah(currentUser.arabpay_balance ?? 150000)}
-                            </span>
-                            <button
-                              onClick={fetchLiveArabPayBalance}
-                              className="p-2 bg-emerald-950/80 hover:bg-emerald-900/80 border border-emerald-800/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
-                              title="Refresh Saldo Live"
-                            >
-                              <RefreshCw className={`w-4 h-4 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
-                            <span className="text-slate-500">Pemilik Akun:</span>
-                            <span className="font-bold text-slate-200">{currentUser.name}</span>
-                            <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-[10px] text-slate-400 font-mono">
-                              {currentUser.phone_number || currentUser.email || 'Terverifikasi'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
-                          <button
-                            onClick={() => setShowTopupModal(true)}
-                            className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
-                          >
-                            <Plus className="w-4 h-4" />
-                            <span>Top Up Saldo</span>
-                          </button>
-
-                          <button
-                            onClick={() => setShowProfileModal(true)}
-                            className="px-5 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
-                          >
-                            <UserCheck className="w-4 h-4 text-emerald-400" />
-                            <span>Profil Saya</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Guest Teaser */
-                    <div className={`p-6 sm:p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-4 h-full ${
-                      isLight ? 'bg-emerald-50 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 text-white'
-                    }`}>
-                      <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
-                          <Wallet className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h4 className="font-extrabold text-base sm:text-lg">
-                            Pembayaran Voucher Otomatis via ArabPay
-                          </h4>
-                          <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                            Gunakan e-wallet ArabPay untuk transaksi secepat kilat tanpa repot transfer berulang kali.
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setShowLoginModal(true)}
-                        className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-2xl transition shadow-md shadow-emerald-600/20 shrink-0 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        <Wallet className="w-4 h-4" />
-                        <span>Login / Hubungkan Wallet</span>
-                      </button>
-                    </div>
-                  )
-                )}
-
-              </div>
-
-              {/* SLIDE INDICATOR PILLS / DOTS (Swipe & Click navigation) */}
-              {carouselSlides.length > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-1">
-                  {carouselSlides.map((slide, idx) => (
-                    <button
-                      key={slide.id}
-                      onClick={() => setActiveSlideIndex(idx)}
-                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        activeSlideIndex % carouselSlides.length === idx
-                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 scale-105'
-                          : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 border border-slate-700/60'
-                      }`}
-                    >
-                      <span>{slide.label}</span>
-                      {slide.id === 'flash_sale' && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* ==================== QUICK BILLING CHECK SECTION ==================== */}
-        {isSectionEnabled('quick_billing') && (
-          <div className={`p-5 sm:p-6 rounded-3xl border shadow-lg ${
-            isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/90 border-slate-800 text-white'
-          }`}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base">Cek & Bayar Tagihan Internet</h3>
-                  <p className="text-xs text-slate-400">Masukkan No. HP atau Username PPPoE Anda</p>
-                </div>
-              </div>
-              <span className="px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-bold">
-                Pelanggan Rumah
-              </span>
-            </div>
-
-            <form onSubmit={handleQuickCheckBill} className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  value={searchIdentity}
-                  onChange={(e) => setSearchIdentity(e.target.value)}
-                  placeholder="Contoh: 08123456789 atau user_pppoe"
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-xs sm:text-sm font-medium outline-none transition ${
-                    isLight 
-                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500' 
-                      : 'bg-slate-950 border-slate-800 text-white focus:border-blue-500'
-                  }`}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={quickCheckLoading || !searchIdentity.trim()}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 cursor-pointer"
-              >
-                {quickCheckLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                <span>Cek Tagihan</span>
-              </button>
-            </form>
-
-            {/* Quick Check Bill Results */}
-            {quickCheckResult && (
-              <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-3 animate-fade-in">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-300">{quickCheckResult.customer?.name} ({quickCheckResult.customer?.phone_number || quickCheckResult.customer?.username})</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
-                    {quickCheckResult.invoices?.length || 0} Tagihan
-                  </span>
-                </div>
-                {quickCheckResult.invoices?.length > 0 ? (
-                  <div className="space-y-2">
-                    {quickCheckResult.invoices.map((inv: any) => (
-                      <div key={inv.id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
-                        <div>
-                          <p className="font-bold text-white">{inv.invoice_number || 'Tagihan Bulanan'}</p>
-                          <p className="text-slate-500 text-[11px]">Jatuh Tempo: {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono font-bold text-emerald-400">{formatRupiah(Number(inv.amount || 0))}</p>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            inv.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                          }`}>
-                            {inv.status === 'paid' ? 'LUNAS' : 'BELUM DIBAYAR'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 italic">Tidak ada tagihan tertunggak untuk akun ini.</p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -2249,9 +2280,28 @@ export default function CustomerPortal({
           </div>
         )}
 
-        {/* ==================== TAB 1: BUY VOUCHER (Persis arbiljs) ==================== */}
+        {/* ==================== TAB 1: MODULAR CUSTOMER PORTAL (Driven by Layout Builder order) ==================== */}
         {activeTab === 'buy' && (
-          <div id="voucher-catalog-section" className="space-y-6">
+          <div className="space-y-6">
+            {sortedSections.filter(s => s.enabled).map((section) => {
+              switch (section.id) {
+                case 'announcement':
+                  return renderAnnouncementSection(section);
+                case 'hero':
+                  return renderHeroSection(section);
+                case 'flash_sale':
+                  return renderFlashSaleSection(section);
+                case 'wallet_widget':
+                  return renderWalletSection(section);
+                case 'quick_billing':
+                  return renderQuickBillingSection(section);
+                case 'monthly_packages':
+                  return renderMonthlyPackagesSection(section);
+                case 'contact_footer':
+                  return renderContactFooterSection(section);
+                case 'vouchers':
+                  return (
+                    <div key={section.id} id="voucher-catalog-section" className="space-y-6">
             {voucherLoading ? (
               <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
                 <RefreshCw size={28} className="animate-spin text-indigo-500" />
@@ -2536,6 +2586,12 @@ export default function CustomerPortal({
                 })}
               </div>
             )}
+                    </div>
+                  );
+                default:
+                  return null;
+              }
+            })}
           </div>
         )}
 
