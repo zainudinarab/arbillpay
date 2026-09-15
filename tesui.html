@@ -170,25 +170,25 @@
       </div>
     </div>
 
-    <!-- Stat 3: Kecepatan -->
-    <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition">
-      <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/20">
-        <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+    <!-- Stat 3: Langganan -->
+    <div onclick="switchMainTab('invoices')" class="bg-slate-900 border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group">
+      <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0 border border-cyan-500/20 group-hover:scale-105 transition">
+        <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Kecepatan Max</p>
-        <strong class="font-heading font-bold text-sm sm:text-base text-white block truncate">10 Mbps</strong>
+        <p class="text-[11px] text-slate-400 truncate">Langganan</p>
+        <strong class="font-heading font-bold text-sm sm:text-base text-cyan-400 block truncate">1 Layanan</strong>
       </div>
     </div>
 
-    <!-- Stat 4: Layanan -->
-    <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition">
-      <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
-        <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+    <!-- Stat 4: Tagihan -->
+    <div onclick="switchMainTab('invoices')" class="bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20 group-hover:scale-105 transition">
+        <svg class="w-5 h-5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
       </div>
       <div class="min-w-0">
-        <p class="text-[11px] text-slate-400 truncate">Status Jaringan</p>
-        <strong class="font-heading font-bold text-sm sm:text-base text-emerald-400 block truncate">Online 24 Jam</strong>
+        <p class="text-[11px] text-slate-400 truncate">Tagihan</p>
+        <strong class="font-heading font-bold text-sm sm:text-base text-amber-400 block truncate">Rp 150.000</strong>
       </div>
     </div>
   </div>
