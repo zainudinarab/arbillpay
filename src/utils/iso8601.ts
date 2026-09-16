@@ -49,28 +49,53 @@ export function parseIso8601(isoStr: string | null | undefined, fallbackVal = 1,
 
   const clean = isoStr.trim().toUpperCase();
 
+  // Support colloquial Indonesian / MikroTik shorthand (e.g. 1hari, 2jam, 2mnit, 1bln, 3h, 30m, 1d)
+  if (!clean.startsWith('P')) {
+    const lower = clean.toLowerCase();
+    const minM = lower.match(/^(\d+)\s*(?:menit|mnit|min)$/);
+    if (minM) return parseIso8601(`PT${minM[1]}M`);
+    const hrM = lower.match(/^(\d+)\s*(?:jam|j|hr)$/);
+    if (hrM) return parseIso8601(`PT${hrM[1]}H`);
+    const dayM = lower.match(/^(\d+)\s*(?:hari|d)$/);
+    if (dayM) return parseIso8601(`P${dayM[1]}D`);
+    const moM = lower.match(/^(\d+)\s*(?:bulan|bln|mo)$/);
+    if (moM) return parseIso8601(`P${moM[1]}M`);
+    const yrM = lower.match(/^(\d+)\s*(?:tahun|thn|y|yr)$/);
+    if (yrM) return parseIso8601(`P${yrM[1]}Y`);
+
+    const mtIso = mikrotikTimeToIso(clean);
+    if (mtIso && mtIso.startsWith('P')) return parseIso8601(mtIso);
+  }
+
   // Simple Month match (P1M, P3M)
   const monthMatch = clean.match(/^P(\d+)M$/);
   if (monthMatch) {
     const v = parseInt(monthMatch[1], 10);
-    return { val: v, unit: 'month', raw: clean, human: `${v} Bulan (Kalender)` };
+    return { val: v, unit: 'month', raw: clean, human: `${v} Bulan` };
   }
 
-  // Simple Day match (P30D, P15D, P7D)
+  // Simple Week match (P1W, P2W)
+  const weekMatch = clean.match(/^P(\d+)W$/);
+  if (weekMatch) {
+    const v = parseInt(weekMatch[1], 10);
+    return { val: v * 7, unit: 'day', raw: clean, human: `${v} Minggu` };
+  }
+
+  // Simple Day match (P30D, P15D, P7D, P1D)
   const dayMatch = clean.match(/^P(\d+)D$/);
   if (dayMatch) {
     const v = parseInt(dayMatch[1], 10);
     return { val: v, unit: 'day', raw: clean, human: `${v} Hari` };
   }
 
-  // Simple Hour match (PT12H, PT3H)
+  // Simple Hour match (PT12H, PT3H, PT1H)
   const hourMatch = clean.match(/^PT(\d+)H$/);
   if (hourMatch) {
     const v = parseInt(hourMatch[1], 10);
     return { val: v, unit: 'hour', raw: clean, human: `${v} Jam` };
   }
 
-  // Simple Minute match (PT30M, PT60M)
+  // Simple Minute match (PT30M, PT60M, PT2M)
   const minuteMatch = clean.match(/^PT(\d+)M$/);
   if (minuteMatch) {
     const v = parseInt(minuteMatch[1], 10);
@@ -84,7 +109,7 @@ export function parseIso8601(isoStr: string | null | undefined, fallbackVal = 1,
     return { val: v, unit: 'year', raw: clean, human: `${v} Tahun` };
   }
 
-  // Complex ISO format parse (e.g., P1DT6H, P1Y1M)
+  // Complex ISO format parse (e.g., P3DT3H, P1DT6H, P1M15D, PT2H30M)
   let humanText = clean;
   try {
     const parts: string[] = [];
@@ -97,6 +122,9 @@ export function parseIso8601(isoStr: string | null | undefined, fallbackVal = 1,
     const m = pPart.match(/(\d+)M/);
     if (m) parts.push(`${m[1]} Bulan`);
 
+    const w = pPart.match(/(\d+)W/);
+    if (w) parts.push(`${w[1]} Minggu`);
+
     const d = pPart.match(/(\d+)D/);
     if (d) parts.push(`${d[1]} Hari`);
 
@@ -106,8 +134,11 @@ export function parseIso8601(isoStr: string | null | undefined, fallbackVal = 1,
     const min = tPart.match(/(\d+)M/);
     if (min) parts.push(`${min[1]} Menit`);
 
+    const sec = tPart.match(/(\d+)S/);
+    if (sec) parts.push(`${sec[1]} Detik`);
+
     if (parts.length > 0) {
-      humanText = `${parts.join(' ')} (ISO: ${clean})`;
+      humanText = parts.join(' ');
     }
   } catch (e) {
     humanText = clean;
@@ -119,6 +150,31 @@ export function parseIso8601(isoStr: string | null | undefined, fallbackVal = 1,
     raw: clean,
     human: humanText
   };
+}
+
+/**
+ * Format string masa aktif ISO-8601 ke string bahasa Indonesia yang jelas (tanpa duplikasi angka)
+ * Contoh:
+ * - 'P1D' -> '1 Hari'
+ * - 'P3DT3H' -> '3 Hari 3 Jam'
+ * - 'PT3H' -> '3 Jam'
+ * - 'PT2M' -> '2 Menit'
+ * - 'P1M' -> '1 Bulan'
+ */
+export function formatValidityDisplay(validityIso?: string | null, fallbackVal?: number, fallbackUnit?: string): string {
+  if (validityIso && typeof validityIso === 'string' && validityIso.trim().length > 0) {
+    const parsed = parseIso8601(validityIso);
+    if (parsed.human && parsed.human !== parsed.raw) return parsed.human;
+    if (parsed.human) return parsed.human;
+  }
+  const v = fallbackVal || 1;
+  const u = (fallbackUnit || 'day').toLowerCase();
+  if (u === 'day' || u === 'hari' || u === 'd') return `${v} Hari`;
+  if (u === 'hour' || u === 'jam' || u === 'h') return `${v} Jam`;
+  if (u === 'minute' || u === 'menit' || u === 'mnit' || u === 'm') return `${v} Menit`;
+  if (u === 'month' || u === 'bulan' || u === 'bln') return `${v} Bulan`;
+  if (u === 'year' || u === 'tahun' || u === 'thn') return `${v} Tahun`;
+  return `${v} ${fallbackUnit || 'Hari'}`;
 }
 
 /**
@@ -298,4 +354,38 @@ export function decomposeIsoDuration(isoStr?: string | null): DurationParts {
   if (min) def.minutes = parseInt(min[1], 10);
 
   return def;
+}
+
+/**
+ * Memformat kecepatan/bandwidth agar hanya menampilkan sisi download (tidak menampilkan upload Up: ...)
+ * Contoh:
+ * "4M/4M" -> "4M"
+ * "10M/10M" -> "10M"
+ * "2M/5M" -> "5M"
+ * "1500k/3M" -> "3M"
+ * "Up: 4M / Down: 10M" -> "10M"
+ * "10 Mbps" -> "10 Mbps"
+ */
+export function formatSpeedDisplay(rateLimit?: string | null): string {
+  if (!rateLimit) return '';
+  const str = String(rateLimit).trim();
+  if (!str || str.toLowerCase() === 'none' || str.toLowerCase() === 'unlimited') return '';
+
+  // Jika format mengandung "Down" atau "Download"
+  if (/down/i.test(str)) {
+    const match = str.match(/down(?:load)?\s*[:=]?\s*([0-9]+[a-zA-Z]+(?:\s*mbps|\s*kbps)?)/i);
+    if (match && match[1]) return match[1].trim();
+  }
+
+  // Format MikroTik rx/tx (Upload/Download). Bagian setelah slash adalah Download!
+  if (str.includes('/')) {
+    const parts = str.split('/');
+    const downloadPart = parts[1]?.trim();
+    if (downloadPart) {
+      // Ambil token pertama (misal jika ada burst-limit "4M 0/0")
+      return downloadPart.split(' ')[0];
+    }
+  }
+
+  return str;
 }

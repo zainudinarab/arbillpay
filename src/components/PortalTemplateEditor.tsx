@@ -68,7 +68,7 @@ const defaultEditorConfig: CustomerPortalConfig = {
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
     { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
     { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
-    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'wallet_widget', label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)', enabled: true, order: 4 },
     { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
     { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
     { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
@@ -120,13 +120,14 @@ const ACCENT_COLORS = [
 ];
 
 interface PortalTemplateEditorProps {
-  profile: BusinessProfile;
+  profile?: BusinessProfile;
   onNavigateView?: (view: string) => void;
+  onBack?: () => void;
 }
 
-export default function PortalTemplateEditor({ profile, onNavigateView }: PortalTemplateEditorProps) {
+export default function PortalTemplateEditor({ profile, onNavigateView, onBack }: PortalTemplateEditorProps) {
   const [config, setConfig] = useState<CustomerPortalConfig>(defaultEditorConfig);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'mobile' | 'desktop'>('mobile');
@@ -158,8 +159,23 @@ export default function PortalTemplateEditor({ profile, onNavigateView }: Portal
           ...defaultEditorConfig,
           ...data.config,
           flash_sale: data.config.flash_sale || defaultEditorConfig.flash_sale,
-          sections: data.config.sections?.length ? data.config.sections : defaultEditorConfig.sections
+          sections: data.config.sections?.length ? [...data.config.sections] : [...defaultEditorConfig.sections]
         };
+
+        // Normalisasi label dan ketersediaan kartu status / dompet di tata letak
+        const statsIdx = loaded.sections.findIndex((s: any) => s.id === 'wallet_widget' || s.id === 'dashboard_stats');
+        if (statsIdx >= 0) {
+          loaded.sections[statsIdx].label = 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)';
+        } else {
+          loaded.sections.splice(3, 0, {
+            id: 'wallet_widget',
+            label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)',
+            enabled: true,
+            order: 4
+          });
+          loaded.sections.forEach((s: any, idx: number) => { s.order = idx + 1; });
+        }
+
         if (!loaded.sections.some((s: any) => s.id === 'flash_sale')) {
           loaded.sections.splice(2, 0, { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 });
           loaded.sections.forEach((s: any, idx: number) => { s.order = idx + 1; });
@@ -1195,49 +1211,74 @@ export default function PortalTemplateEditor({ profile, onNavigateView }: Portal
                     );
                   }
 
-                  if (s.id === 'wallet_widget') {
+                  if (s.id === 'wallet_widget' || s.id === 'dashboard_stats') {
                     return (
-                      <div key={s.id} className={`p-3 rounded-2xl border flex items-center justify-between ${
-                        config.template_theme === 'clean_light'
-                          ? 'bg-white border-slate-200 shadow-xs text-slate-800'
-                          : 'bg-slate-900/80 border-slate-800 text-white'
-                      }`}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                            <Wallet size={16} />
+                      <div key={s.id} className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
+                          config.template_theme === 'clean_light' ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                        }`}>
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                            <Wallet size={12} />
                           </div>
-                          <div>
-                            <span className="text-[9px] text-slate-400 block">Saldo ArabPay Anda</span>
-                            <span className="text-xs font-mono font-black text-emerald-400">Rp 150.000</span>
+                          <div className="min-w-0">
+                            <span className="text-[8px] text-slate-400 block truncate">Saldo Dompet</span>
+                            <strong className="text-[10px] text-emerald-400 font-mono block truncate">Rp 150.000</strong>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-1 bg-emerald-600 text-white rounded-lg">
-                          + Top Up
-                        </span>
+
+                        <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
+                          config.template_theme === 'clean_light' ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                        }`}>
+                          <div className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                            <Package size={12} />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[8px] text-slate-400 block truncate">Voucher Aktif</span>
+                            <strong className="text-[10px] text-indigo-400 font-mono block truncate">3 Voucher</strong>
+                          </div>
+                        </div>
+
+                        <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
+                          config.template_theme === 'clean_light' ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                        }`}>
+                          <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center shrink-0">
+                            <Wifi size={12} />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[8px] text-slate-400 block truncate">Langganan</span>
+                            <strong className="text-[10px] text-cyan-400 font-mono block truncate">1 Layanan</strong>
+                          </div>
+                        </div>
+
+                        <div className={`p-2 rounded-xl border flex items-center gap-1.5 ${
+                          config.template_theme === 'clean_light' ? 'bg-white border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                        }`}>
+                          <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                            <FileText size={12} />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[8px] text-slate-400 block truncate">Tagihan</span>
+                            <strong className="text-[10px] text-amber-400 font-mono block truncate">Rp 0</strong>
+                          </div>
+                        </div>
                       </div>
                     );
                   }
 
                   if (s.id === 'quick_billing') {
                     return (
-                      <div key={s.id} className={`p-3 rounded-2xl border space-y-1.5 ${
+                      <div key={s.id} className={`p-1.5 rounded-2xl border flex items-center gap-1.5 shadow-xs ${
                         config.template_theme === 'clean_light'
-                          ? 'bg-white border-slate-200 shadow-xs'
-                          : 'bg-slate-900/80 border-slate-800'
+                          ? 'bg-white border-slate-200 text-slate-800'
+                          : 'bg-slate-900/90 border-slate-800 text-white'
                       }`}>
-                        <span className="text-[10px] font-bold flex items-center gap-1 text-blue-400">
-                          <FileText size={12} /> Cek & Bayar Tagihan Cepat
+                        <Search size={12} className="text-indigo-400 ml-1.5 shrink-0" />
+                        <span className="text-[10px] text-slate-400 truncate flex-1">
+                          Cek Tagihan: No. HP / PPPoE...
                         </span>
-                        <div className="flex gap-1.5">
-                          <input
-                            disabled
-                            placeholder="Nomor Pelanggan..."
-                            className="flex-1 bg-slate-800/40 border border-slate-700/60 rounded-lg px-2 py-1 text-[10px] text-slate-300"
-                          />
-                          <button disabled className="px-2.5 py-1 bg-blue-600 text-white font-bold text-[10px] rounded-lg">
-                            Cek
-                          </button>
-                        </div>
+                        <span className="px-2.5 py-1 bg-indigo-600 text-white font-bold text-[9px] rounded-xl shrink-0">
+                          Cek
+                        </span>
                       </div>
                     );
                   }

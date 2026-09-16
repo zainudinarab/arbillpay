@@ -6,14 +6,14 @@ import {
   Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft, ChevronDown,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info, Smartphone, Database,
-  MessageCircle, Megaphone, Flame
+  MessageCircle, Megaphone, Flame, Home
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 import { generateNextCustomerCode } from '../utils';
 import { IndonesianAddressForm } from './IndonesianAddressForm';
-import { parseIso8601 } from '../utils/iso8601';
+import { parseIso8601, formatValidityDisplay, formatSpeedDisplay } from '../utils/iso8601';
 
 function calculateChannelFee(ch: any, amount: number): number {
   if (!ch) return 0;
@@ -94,6 +94,7 @@ export default function CustomerPortal({
   const setShowLoginModal = propSetShowLoginModal ?? setLocalShowLoginModal;
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [monthlyPackages, setMonthlyPackages] = useState<any[]>([]);
+  const [monthlyCategoryFilter, setMonthlyCategoryFilter] = useState<'all' | 'hotspot' | 'home'>('all');
 
   // Filter Durasi Voucher & Modals untuk 4 Stat Card
   const [durationFilter, setDurationFilter] = useState<'all' | '1h' | '3h' | '1d' | '7d' | '30d'>('all');
@@ -188,7 +189,7 @@ export default function CustomerPortal({
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
     { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
     { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
-    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'wallet_widget', label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)', enabled: true, order: 4 },
     { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
     { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
     { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
@@ -202,15 +203,33 @@ export default function CustomerPortal({
   };
 
   const sortedSections = useMemo(() => {
-    const list = (portalConfig?.sections && portalConfig.sections.length > 0)
-      ? portalConfig.sections
-      : defaultSections;
-    return [...list].sort((a, b) => (a.order || 0) - (b.order || 0));
+    let list = (portalConfig?.sections && portalConfig.sections.length > 0)
+      ? [...portalConfig.sections]
+      : [...defaultSections];
+
+    // Normalisasi label & pastikan kartu status / dompet ada di tata letak
+    const statsIdx = list.findIndex(s => s.id === 'wallet_widget' || s.id === 'dashboard_stats');
+    if (statsIdx >= 0) {
+      list[statsIdx] = {
+        ...list[statsIdx],
+        id: 'wallet_widget',
+        label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)'
+      };
+    } else {
+      list.push({
+        id: 'wallet_widget',
+        label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)',
+        enabled: true,
+        order: 4
+      });
+    }
+
+    return list.sort((a, b) => (a.order || 0) - (b.order || 0));
   }, [portalConfig?.sections, defaultSections]);
 
   const fetchPortalConfig = async () => {
     try {
-      const res = await fetch('/api/portal-config', { cache: 'no-store' });
+      const res = await fetch(`/api/portal-config?_t=${Date.now()}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success && data.config) {
         setPortalConfig(data.config);
@@ -457,32 +476,39 @@ export default function CustomerPortal({
     setVoucherLoading(true);
     try {
       const apiUrl = getApiUrl();
-      if (apiUrl) {
-        try {
-          const res = await fetch(`${apiUrl}/api/vouchers/available`);
+      const baseUrl = apiUrl ? `${apiUrl}/api/vouchers/available` : '/api/vouchers/available';
+      const endpoint = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+      try {
+        const res = await fetch(endpoint, { cache: 'no-store' });
+        if (res.ok) {
           const data = await res.json();
-          if (data.success && Array.isArray(data.groups)) {
+          if (data.success && Array.isArray(data.groups) && data.groups.length > 0) {
             setVoucherGroups(data.groups);
             setVoucherLoading(false);
             return;
           }
-        } catch (apiErr) { }
-      }
+        }
+      } catch (apiErr) { }
 
       // Direct Firebase Firestore (fallback only if API server unreachable)
       const fbData = await getVouchersFromFirestore();
       if (fbData.success && Array.isArray(fbData.vouchers) && fbData.vouchers.length > 0) {
         const groupsMap: any = {};
         fbData.vouchers.forEach((v: any) => {
-          const pName = v.profile_name || 'Voucher Hotspot';
+          const pName = v.package_name || v.profile_name || 'Voucher Hotspot';
           if (!groupsMap[pName]) {
             groupsMap[pName] = {
-              profile_id: v.id,
+              profile_id: v.profile_id || v.id,
+              package_id: v.package_id || v.id,
               package_name: pName,
-              rate_limit: v.speed_limit || '10 Mbps',
+              rate_limit: v.rate_limit || v.speed_limit || '10 Mbps',
               price: Number(v.price) || 5000,
-              validity_value: 1,
-              validity_unit: 'day',
+              validity_iso: v.validity_iso || '',
+              uptime_limit: v.uptime_limit || '',
+              validity_value: Number(v.validity_value) || 1,
+              validity_unit: v.validity_unit || 'day',
+              shared_users: Number(v.shared_users) || 1,
+              quota_mb: Number(v.quota_mb) || 0,
               color: 'violet',
               mode: 'ondemand',
               stock: 0
@@ -513,17 +539,19 @@ export default function CustomerPortal({
   const fetchMonthlyMemberPackages = async () => {
     try {
       const apiUrl = getApiUrl();
-      if (apiUrl) {
-        try {
-          const res = await fetch(`${apiUrl}/api/packages`);
+      const baseUrl = apiUrl ? `${apiUrl}/api/packages` : '/api/packages';
+      const endpoint = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+      try {
+        const res = await fetch(endpoint, { cache: 'no-store' });
+        if (res.ok) {
           const data = await res.json();
           if (data.success && Array.isArray(data.packages)) {
             const filtered = data.packages.filter((p: any) => (p.type === 'hotspot_monthly' || p.type === 'pppoe') && p.is_active !== false);
             setMonthlyPackages(filtered);
             return;
           }
-        } catch (apiErr) { }
-      }
+        }
+      } catch (apiErr) { }
 
       // Direct Firebase Firestore
       const fbData = await getPackagesFromFirestore();
@@ -1881,55 +1909,62 @@ export default function CustomerPortal({
     return (
       <div
         key={section.id}
-        className={`p-5 sm:p-6 rounded-3xl border shadow-lg transition-all duration-300 ${
-          isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900/90 border-slate-800 text-white'
-        }`}
+        className="w-full max-w-3xl mx-auto space-y-2.5"
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center">
-              <FileText className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-sm sm:text-base">Cek & Bayar Tagihan Internet</h3>
-              <p className="text-xs text-slate-400">Masukkan No. HP atau Username PPPoE Anda</p>
-            </div>
+        {/* Streamlined Compact Search Bar */}
+        <form
+          onSubmit={handleQuickCheckBill}
+          className={`relative flex items-center rounded-2xl border p-1.5 transition-all shadow-md ${
+            isLight
+              ? 'bg-white border-slate-200 text-slate-800 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20'
+              : 'bg-slate-900/90 border-slate-800 text-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20'
+          }`}
+        >
+          <div className="pl-3 pr-2 text-blue-400 shrink-0 flex items-center">
+            <Search className="w-4 h-4" />
           </div>
-          <span className="px-2.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-bold">
-            Pelanggan Rumah
-          </span>
-        </div>
-
-        <form onSubmit={handleQuickCheckBill} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <input
-              type="text"
-              value={searchIdentity}
-              onChange={(e) => setSearchIdentity(e.target.value)}
-              placeholder="Contoh: 08123456789 atau user_pppoe"
-              className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-xs sm:text-sm font-medium outline-none transition ${
-                isLight 
-                  ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-blue-500' 
-                  : 'bg-slate-950 border-slate-800 text-white focus:border-blue-500'
-              }`}
-            />
-          </div>
+          <input
+            type="text"
+            value={searchIdentity}
+            onChange={(e) => setSearchIdentity(e.target.value)}
+            placeholder="Cek & Bayar Tagihan: Masukkan No. HP atau Username PPPoE..."
+            className="w-full bg-transparent text-xs sm:text-sm font-medium placeholder:text-slate-500 outline-none px-1 py-1.5 min-w-0"
+          />
+          {searchIdentity.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchIdentity('');
+                setQuickCheckResult(null);
+              }}
+              className="p-1 text-slate-400 hover:text-white transition shrink-0 mr-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             type="submit"
             disabled={quickCheckLoading || !searchIdentity.trim()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 cursor-pointer"
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-md shadow-blue-600/20 cursor-pointer active:scale-95"
           >
-            {quickCheckLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-            <span>Cek Tagihan</span>
+            {quickCheckLoading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ArrowRight className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">Cek Tagihan</span>
+            <span className="sm:hidden">Cek</span>
           </button>
         </form>
 
+        {/* Quick Billing Result Accordion */}
         {quickCheckResult && (
-          <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-3 animate-fade-in">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5 animate-fade-in shadow-lg">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-300">{quickCheckResult.customer?.name} ({quickCheckResult.customer?.phone_number || quickCheckResult.customer?.username})</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
+              <span className="font-bold text-slate-200">
+                {quickCheckResult.customer?.name} <span className="text-slate-400 font-normal">({quickCheckResult.customer?.phone_number || quickCheckResult.customer?.username})</span>
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                 {quickCheckResult.invoices?.length || 0} Tagihan
               </span>
             </div>
@@ -1939,21 +1974,32 @@ export default function CustomerPortal({
                   <div key={inv.id} className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
                     <div>
                       <p className="font-bold text-white">{inv.invoice_number || 'Tagihan Bulanan'}</p>
-                      <p className="text-slate-500 text-[11px]">Jatuh Tempo: {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}</p>
+                      <p className="text-slate-400 text-[11px]">Jatuh Tempo: {inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : '-'}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-emerald-400">{formatRupiah(Number(inv.amount || 0))}</p>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        inv.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                      }`}>
-                        {inv.status === 'paid' ? 'LUNAS' : 'BELUM DIBAYAR'}
-                      </span>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-emerald-400">{formatRupiah(Number(inv.amount || 0))}</p>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                          inv.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                        }`}>
+                          {inv.status === 'paid' ? 'LUNAS' : 'BELUM BAYAR'}
+                        </span>
+                      </div>
+                      {inv.status !== 'paid' && (
+                        <button
+                          type="button"
+                          onClick={() => handleInitiatePayInvoice(inv)}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-sm shadow-emerald-600/30 active:scale-95"
+                        >
+                          Bayar
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-500 italic">Tidak ada tagihan tertunggak untuk akun ini.</p>
+              <p className="text-xs text-slate-400 italic text-center py-1">Tidak ada tagihan tertunggak untuk akun ini.</p>
             )}
           </div>
         )}
@@ -1998,8 +2044,18 @@ export default function CustomerPortal({
   };
 
   const renderMonthlyPackagesSection = (section: CustomerPortalSection) => {
+    const hotspotCount = monthlyPackages.filter((p: any) => p.type === 'hotspot_monthly').length;
+    const homeCount = monthlyPackages.filter((p: any) => p.type !== 'hotspot_monthly').length;
+
+    const filteredPackages = monthlyPackages.filter((pkg: any) => {
+      if (monthlyCategoryFilter === 'hotspot') return pkg.type === 'hotspot_monthly';
+      if (monthlyCategoryFilter === 'home') return pkg.type !== 'hotspot_monthly';
+      return true;
+    });
+
     return (
       <div key={section.id} id="monthly-packages-section" className="space-y-4">
+        {/* Header Section */}
         <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30 rounded-3xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -2015,18 +2071,75 @@ export default function CustomerPortal({
               {monthlyPackages.length} Paket Tersedia
             </span>
           </div>
+
+          {/* Category Filter Pills (Member Hotspot vs Internet Rumah) */}
+          <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-slate-800/80">
+            <button
+              type="button"
+              onClick={() => setMonthlyCategoryFilter('all')}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                monthlyCategoryFilter === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span>Semua Paket</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                monthlyCategoryFilter === 'all' ? 'bg-black/20 text-slate-950' : 'bg-slate-900 text-slate-400'
+              }`}>
+                {monthlyPackages.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMonthlyCategoryFilter('hotspot')}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                monthlyCategoryFilter === 'hotspot'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <Wifi size={13} />
+              <span>Member Hotspot</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                monthlyCategoryFilter === 'hotspot' ? 'bg-black/20 text-slate-950' : 'bg-slate-900 text-slate-400'
+              }`}>
+                {hotspotCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMonthlyCategoryFilter('home')}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                monthlyCategoryFilter === 'home'
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <Home size={13} />
+              <span>Internet Rumah (PPPoE / FTTH)</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                monthlyCategoryFilter === 'home' ? 'bg-black/20 text-slate-950' : 'bg-slate-900 text-slate-400'
+              }`}>
+                {homeCount}
+              </span>
+            </button>
+          </div>
         </div>
 
-        {monthlyPackages.length === 0 ? (
+        {filteredPackages.length === 0 ? (
           <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-3xl space-y-2">
             <Shield className="w-10 h-10 text-slate-600 mx-auto animate-pulse" />
-            <h3 className="text-sm font-bold text-slate-300">Belum Ada Paket Bulanan</h3>
-            <p className="text-xs text-slate-500">Hubungi admin untuk info pendaftaran internet rumah.</p>
+            <h3 className="text-sm font-bold text-slate-300">Tidak Ada Paket di Kategori Ini</h3>
+            <p className="text-xs text-slate-500">Pilih kategori lain atau hubungi admin untuk info lebih lanjut.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {monthlyPackages.map((pkg: any, idx: number) => {
+            {filteredPackages.map((pkg: any, idx: number) => {
               const price = Number(pkg.price || 0);
+              const isHotspot = pkg.type === 'hotspot_monthly';
               return (
                 <div
                   key={pkg.id || idx}
@@ -2034,53 +2147,107 @@ export default function CustomerPortal({
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
-                        {pkg.type === 'hotspot_monthly' ? '📶 Hotspot Member' : '⚡ PPPoE / FTTH'}
+                      <span className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full border ${
+                        isHotspot
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                          : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      }`}>
+                        {isHotspot ? '📶 Hotspot Member' : '🏠 PPPoE / Rumah'}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400">{pkg.speed_limit || pkg.rate_limit || '10 Mbps'}</span>
+                      <span className="text-xs font-semibold text-slate-400">{formatSpeedDisplay(pkg.speed_limit || pkg.rate_limit || '10 Mbps')}</span>
                     </div>
                     <h4 className="text-lg font-bold text-white">{pkg.name}</h4>
                     <div className="text-2xl font-black text-amber-400 font-mono">
                       {formatRupiah(price)}<span className="text-xs text-slate-500 font-normal"> /bulan</span>
                     </div>
+
+                    {/* Specs Badges */}
+                    <div className="grid grid-cols-2 gap-2 pt-2.5 pb-2 border-y border-slate-800/80 text-xs">
+                      <div className="flex items-center gap-1.5 text-slate-300">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="font-semibold text-emerald-400">{formatSpeedDisplay(pkg.speed_limit || pkg.rate_limit || '10 Mbps')}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-300">
+                        <Smartphone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>{pkg.shared_users || 1} Device</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-400">
+                        <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>30 Hari Aktif</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-slate-400">
+                        <Database className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                        <span>{pkg.quota_bytes ? `${Math.round(pkg.quota_bytes / (1024 * 1024 * 1024))} GB` : 'Unlimited'}</span>
+                      </div>
+                    </div>
+
                     <p className="text-xs text-slate-400">
                       {pkg.description || 'Akun dedicated aktif 24 jam dengan tagihan otomatis bulanan.'}
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setRegisterPkg(pkg);
-                      const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-                      const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
-                      const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+                  <div className="mt-5 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDetailPackage({
+                          ...pkg,
+                          type: 'monthly_package',
+                          package_name: pkg.name,
+                          price,
+                          validity: 30,
+                          unit: 'Hari',
+                          speed: pkg.speed_limit || pkg.rate_limit || '10 Mbps',
+                          rate_limit: pkg.speed_limit || pkg.rate_limit || '10 Mbps',
+                          shared_users: pkg.shared_users || 1,
+                          quota: pkg.quota_bytes ? `${Math.round(pkg.quota_bytes / (1024 * 1024 * 1024))} GB` : 'Unlimited'
+                        });
+                        setShowDetailPackageModal(true);
+                      }}
+                      className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                      title="Lihat Detail Paket Bulanan"
+                    >
+                      <Info className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Detail</span>
+                    </button>
 
-                      setRegForm({
-                        name: currentUser?.name || '',
-                        phone_number: currentUser?.phone_number || '',
-                        username: defaultUser,
-                        password: defaultPass,
-                        dusun: '',
-                        desa: '',
-                        kecamatan: '',
-                        rt: '',
-                        rw: '',
-                        address_detail: '',
-                        selected_province_code: '35',
-                        selected_regency_code: '3509',
-                        selected_district_code: '',
-                        selected_village_code: '',
-                        latitude: null,
-                        longitude: null,
-                        installation_address: ''
-                      });
-                      setActiveTab('register_member');
-                    }}
-                    className="mt-4 w-full py-2.5 bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-md shadow-amber-600/20 cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <span>Daftar Langganan</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisterPkg(pkg);
+                        const cleanName = (currentUser?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const defaultUser = cleanName ? `${cleanName}${Math.floor(10 + Math.random() * 90)}` : `user${Math.floor(1000 + Math.random() * 9000)}`;
+                        const defaultPass = Math.floor(100000 + Math.random() * 900000).toString();
+
+                        setRegForm({
+                          name: currentUser?.name || '',
+                          phone_number: currentUser?.phone_number || '',
+                          username: defaultUser,
+                          password: defaultPass,
+                          dusun: '',
+                          desa: '',
+                          kecamatan: '',
+                          rt: '',
+                          rw: '',
+                          address_detail: '',
+                          selected_province_code: '35',
+                          selected_regency_code: '3509',
+                          selected_district_code: '',
+                          selected_village_code: '',
+                          latitude: null,
+                          longitude: null,
+                          installation_address: ''
+                        });
+                        setRegError('');
+                        setRegSuccess(false);
+                        setShowMemberRegisterModal(true);
+                      }}
+                      className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-slate-950 font-extrabold text-xs rounded-xl transition shadow-md shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>Daftar Member</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -2268,23 +2435,13 @@ export default function CustomerPortal({
                 </div>
               </>
             ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { window.location.hash = '#/setup'; window.location.reload(); }}
-                  className="flex items-center gap-1 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-full transition cursor-pointer border border-slate-700"
-                  title="Setup Kredensial ArabPay Owner"
-                >
-                  <span>⚙️ Setup Owner</span>
-                </button>
-                <button
-                  onClick={() => setShowLoginModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-full transition shadow-lg shadow-indigo-500/20 cursor-pointer"
-                >
-                  <Wallet className="w-3.5 h-3.5" />
-                  <span>Login ArabPay</span>
-                </button>
-              </div>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-full transition shadow-lg shadow-indigo-500/20 cursor-pointer"
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                <span>Login ArabPay</span>
+              </button>
             )}
           </div>
         </div>
@@ -2498,9 +2655,11 @@ export default function CustomerPortal({
         {/* ==================== TAB 1: MODULAR CUSTOMER PORTAL (Driven by Layout Builder order) ==================== */}
         {activeTab === 'buy' && (
           <div className="space-y-6">
-            {renderDashboardStats()}
-            {sortedSections.filter(s => s.enabled && s.id !== 'wallet_widget').map((section) => {
+            {sortedSections.filter(s => s.enabled).map((section) => {
               switch (section.id) {
+                case 'wallet_widget':
+                case 'dashboard_stats':
+                  return <div key={section.id}>{renderDashboardStats()}</div>;
                 case 'announcement':
                   return renderAnnouncementSection(section);
                 case 'hero':
@@ -2577,9 +2736,7 @@ export default function CustomerPortal({
                         <div className="space-y-3">
                           {filteredVoucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
-                  const parsedV = parseIso8601(pkg.validity_iso);
-                  const validity = parsedV.val || pkg.validity_value || 1;
-                  const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
+                  const validityDisplay = formatValidityDisplay(pkg.validity_iso, pkg.validity_value, pkg.validity_unit);
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
                   const isTargetFlashSale = Boolean(
@@ -2630,11 +2787,11 @@ export default function CustomerPortal({
                           </div>
                           <div className="flex items-center gap-2 sm:gap-3 text-xs text-slate-400 mt-1 font-medium flex-wrap">
                             <span className="flex items-center gap-1 bg-slate-950/60 px-2 py-0.5 rounded-lg border border-slate-800">
-                              <Clock className="w-3.5 h-3.5 text-slate-500" /> {validity} {unit}
+                              <Clock className="w-3.5 h-3.5 text-slate-500" /> {validityDisplay}
                             </span>
                             {pkg.rate_limit && (
                               <span className="flex items-center gap-1 text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                                <Zap className="w-3.5 h-3.5" /> {pkg.rate_limit}
+                                <Zap className="w-3.5 h-3.5" /> {formatSpeedDisplay(pkg.rate_limit)}
                               </span>
                             )}
                             <span className="flex items-center gap-1 text-sky-400 font-medium bg-sky-500/10 px-2 py-0.5 rounded-lg border border-sky-500/20">
@@ -2649,21 +2806,23 @@ export default function CustomerPortal({
 
                       <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/60 flex-wrap sm:flex-nowrap">
                         <div className="text-left sm:text-right">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase block">
-                            {canBuyFlashSale ? 'Harga Flash Sale' : 'Harga'}
-                          </span>
-                          <div className="flex items-baseline gap-1.5 sm:justify-end">
-                            {canBuyFlashSale && fsOrigPrice > fsPromoPrice && (
+                          {canBuyFlashSale && fsOrigPrice > fsPromoPrice ? (
+                            <div className="flex items-center gap-1.5 sm:justify-end">
+                              <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">Flash Sale</span>
                               <span className="text-xs text-slate-400 line-through font-mono">
                                 {formatRupiah(fsOrigPrice)}
                               </span>
-                            )}
-                            <span className={`text-lg sm:text-xl font-black font-mono ${canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'}`}>
-                              {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-bold uppercase block tracking-wider">
+                              {canBuyFlashSale ? 'Harga Flash Sale' : 'Harga'}
                             </span>
-                          </div>
+                          )}
+                          <p className={`text-lg sm:text-xl font-black font-mono leading-tight mt-0.5 ${canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'}`}>
+                            {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
+                          </p>
                           {isTargetFlashSale && userHasClaimedFlashSale && (
-                            <span className="text-[9px] text-slate-400 block sm:text-right">Maks. 1 promo sudah diklaim</span>
+                            <span className="text-[9px] text-slate-400 block sm:text-right mt-0.5">Maks. 1 promo sudah diklaim</span>
                           )}
                         </div>
 
@@ -2671,7 +2830,7 @@ export default function CustomerPortal({
                           <button
                             type="button"
                             onClick={() => {
-                              setSelectedDetailPackage({ ...pkg, type: 'hotspot_voucher', price, validity, unit, isFlashSale: true, promoPrice: fsPromoPrice });
+                              setSelectedDetailPackage({ ...pkg, type: 'hotspot_voucher', price, validityDisplay, isFlashSale: true, promoPrice: fsPromoPrice });
                               setShowDetailPackageModal(true);
                             }}
                             className="px-3 py-2.5 rounded-xl text-xs font-bold transition bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer flex items-center gap-1.5 shrink-0"
@@ -2714,9 +2873,7 @@ export default function CustomerPortal({
               }`}>
                 {filteredVoucherGroups.map((pkg: any, idx: number) => {
                   const price = Number(pkg.price || 0);
-                  const parsedV = parseIso8601(pkg.validity_iso);
-                  const validity = parsedV.val || pkg.validity_value || 1;
-                  const unit = parsedV.human || (pkg.validity_unit === 'day' ? 'Hari' : pkg.validity_unit === 'hour' ? 'Jam' : pkg.validity_unit || 'Hari');
+                  const validityDisplay = formatValidityDisplay(pkg.validity_iso, pkg.validity_value, pkg.validity_unit);
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
                   const isTargetFlashSale = Boolean(
@@ -2803,11 +2960,11 @@ export default function CustomerPortal({
                           {/* Specs */}
                           <div className="flex items-center gap-2.5 sm:gap-4 text-[10px] sm:text-xs text-slate-400 mt-1 sm:mt-2 font-medium flex-wrap">
                             <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500" /> {validity} {unit}
+                              <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-500" /> {validityDisplay}
                             </span>
                             {pkg.rate_limit && (
                               <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                                <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {pkg.rate_limit}
+                                <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> {formatSpeedDisplay(pkg.rate_limit)}
                               </span>
                             )}
                             <span className="flex items-center gap-1 text-indigo-300 font-medium">
@@ -2817,30 +2974,36 @@ export default function CustomerPortal({
                         </div>
 
                         {/* Price + Buy Button */}
-                        <div className="flex items-center justify-between pt-2.5 sm:pt-3 border-t border-slate-800/60 gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[9px] sm:text-xs text-slate-500 font-bold uppercase">
-                              {canBuyFlashSale ? 'Flash Sale' : 'Harga'}
-                            </p>
-                            <div className="flex items-baseline gap-1 truncate">
-                              {canBuyFlashSale && fsOrigPrice > fsPromoPrice && (
-                                <span className="text-[10px] sm:text-xs text-slate-400 line-through font-mono">
+                        <div className="flex items-center justify-between pt-2 sm:pt-2.5 border-t border-slate-800/60 gap-1.5 sm:gap-2">
+                          <div className="min-w-0 flex-1">
+                            {canBuyFlashSale && fsOrigPrice > fsPromoPrice ? (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="text-[8px] sm:text-[9px] text-rose-400 font-extrabold uppercase tracking-wider">
+                                  Flash Sale
+                                </span>
+                                <span className="text-[9px] sm:text-[10px] text-slate-400 line-through font-mono">
                                   {formatRupiah(fsOrigPrice)}
                                 </span>
-                              )}
-                              <p className={`font-black font-mono truncate ${
+                              </div>
+                            ) : (
+                              <p className="text-[8px] sm:text-[9px] text-slate-500 font-bold uppercase tracking-wider">
+                                {canBuyFlashSale ? 'Flash Sale' : 'Harga'}
+                              </p>
+                            )}
+                            <div className="mt-0.5">
+                              <p className={`font-black font-mono whitespace-nowrap leading-none ${
                                 canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'
                               } ${
-                                voucherColumns === 2 ? 'text-sm sm:text-xl' : 'text-xl'
+                                voucherColumns === 2 ? 'text-xs sm:text-sm' : 'text-xs sm:text-sm md:text-base'
                               }`}>
                                 {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
                               </p>
                             </div>
                             {isTargetFlashSale && userHasClaimedFlashSale && (
-                              <p className="text-[9px] text-slate-400 truncate">Maks. 1 promo dipakai</p>
+                              <p className="text-[8px] text-slate-400 truncate mt-0.5">Maks. 1 promo dipakai</p>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
@@ -2848,39 +3011,32 @@ export default function CustomerPortal({
                                   ...pkg,
                                   type: 'hotspot_voucher',
                                   price,
-                                  validity,
-                                  unit,
+                                  validityDisplay,
                                   isFlashSale: canBuyFlashSale,
                                   promoPrice: fsPromoPrice
                                 });
                                 setShowDetailPackageModal(true);
                               }}
-                              className={`rounded-xl font-bold transition-all duration-200 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer flex items-center gap-1 shrink-0 ${
-                                voucherColumns === 2 ? 'px-2 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs' : 'px-3 py-2 text-xs'
-                              }`}
+                              className="rounded-xl font-bold transition-all duration-200 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer flex items-center gap-1 shrink-0 px-2 py-1.5 text-[11px]"
                               title="Lihat Detail Paket"
                             >
-                              <Info className="w-3.5 h-3.5 text-sky-400" />
+                              <Info className="w-3 h-3 text-sky-400" />
                               <span>Detail</span>
                             </button>
                             {canBuyFlashSale ? (
                               <button
                                 onClick={handleBuyFlashSale}
-                                className={`flex items-center justify-center gap-1 sm:gap-1.5 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse ${
-                                  voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs' : 'px-3.5 py-2 text-xs'
-                                }`}
+                                className="flex items-center justify-center gap-1 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-sm shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse px-2 py-1.5 text-[11px]"
                               >
-                                <Flame className="w-3.5 h-3.5" />
+                                <Flame className="w-3 h-3" />
                                 <span>Beli Promo</span>
                               </button>
                             ) : (
                               <button
                                 onClick={() => handleBuyVoucher(pkg)}
-                                className={`flex items-center justify-center gap-1 sm:gap-2 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 ${
-                                  voucherColumns === 2 ? 'px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs' : 'px-4 py-2.5 text-xs'
-                                }`}
+                                className="flex items-center justify-center gap-1 rounded-xl font-bold transition-all duration-200 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-500/20 cursor-pointer active:scale-95 shrink-0 px-2.5 py-1.5 text-[11px] sm:text-xs"
                               >
-                                <ShoppingCart className="w-3.5 h-3.5" />
+                                <ShoppingCart className="w-3 h-3" />
                                 <span>Beli</span>
                               </button>
                             )}
@@ -3539,7 +3695,7 @@ export default function CustomerPortal({
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-400">Speed</span>
-                      <span className="text-slate-300 font-medium">{selectedPackage.rate_limit || selectedPackage.speed || '10 Mbps'}</span>
+                      <span className="text-slate-300 font-medium">{formatSpeedDisplay(selectedPackage.rate_limit || selectedPackage.speed || '10 Mbps')}</span>
                     </div>
                     {(() => {
                       const itemPrice = Number(selectedPackage.price || 0);
@@ -4850,8 +5006,8 @@ export default function CustomerPortal({
                 </span>
               </div>
 
-              {/* Grid 4 Spesifikasi Utama */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Grid 5 Spesifikasi Utama */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {/* 1. Device Limit */}
                 <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
                   <div className="flex items-center gap-1.5 text-amber-400 text-xs font-bold">
@@ -4873,35 +5029,67 @@ export default function CustomerPortal({
                     <span>Kecepatan</span>
                   </div>
                   <p className="text-base font-extrabold text-emerald-400">
-                    {selectedDetailPackage.rate_limit || selectedDetailPackage.speed_limit || selectedDetailPackage.speed || 'Up to 10M'}
+                    {formatSpeedDisplay(selectedDetailPackage.rate_limit || selectedDetailPackage.speed_limit || selectedDetailPackage.speed || 'Up to 10M')}
                   </p>
                   <p className="text-[10px] text-slate-400">Download & upload stabil</p>
                 </div>
 
-                {/* 3. Masa Aktif */}
+                {/* 3. Masa Aktif (Validity) */}
                 <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
                   <div className="flex items-center gap-1.5 text-sky-400 text-xs font-bold">
                     <Clock className="w-4 h-4" />
                     <span>Masa Aktif</span>
                   </div>
                   <p className="text-base font-extrabold text-white">
-                    {selectedDetailPackage.validity || 1} {selectedDetailPackage.unit || 'Hari'}
+                    {selectedDetailPackage.validityDisplay || formatValidityDisplay(selectedDetailPackage.validity_iso, selectedDetailPackage.validity, selectedDetailPackage.unit)}
                   </p>
                   <p className="text-[10px] text-slate-400">
                     {selectedDetailPackage.type === 'monthly_package' ? 'Siklus tagihan 30 hari' : 'Mulai sejak login pertama'}
                   </p>
                 </div>
 
-                {/* 4. Kuota / FUP */}
+                {/* 4. Kuota Waktu (Uptime Limit) */}
                 <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                  <div className="flex items-center gap-1.5 text-violet-400 text-xs font-bold">
+                    <Timer className="w-4 h-4" />
+                    <span>Kuota Waktu</span>
+                  </div>
+                  <p className="text-base font-extrabold text-white">
+                    {(() => {
+                      const uptime = selectedDetailPackage.uptime_limit;
+                      if (!uptime || uptime === '0' || uptime.toLowerCase() === 'none' || uptime.toLowerCase() === 'unlimited') {
+                        return 'Unlimited';
+                      }
+                      return formatValidityDisplay(uptime);
+                    })()}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {!selectedDetailPackage.uptime_limit || selectedDetailPackage.uptime_limit === '0' || selectedDetailPackage.uptime_limit.toLowerCase() === 'none' || selectedDetailPackage.uptime_limit.toLowerCase() === 'unlimited'
+                      ? 'Bebas online tanpa batas durasi'
+                      : 'Batas durasi aktif terhubung'}
+                  </p>
+                </div>
+
+                {/* 5. Kuota Data (FUP) */}
+                <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1 col-span-2 sm:col-span-1">
                   <div className="flex items-center gap-1.5 text-indigo-400 text-xs font-bold">
                     <Database className="w-4 h-4" />
                     <span>Kuota Data</span>
                   </div>
                   <p className="text-base font-extrabold text-white">
-                    {selectedDetailPackage.quota || 'Unlimited FUP'}
+                    {(() => {
+                      const qMb = Number(selectedDetailPackage.quota_mb || (selectedDetailPackage.quota_bytes ? Math.round(selectedDetailPackage.quota_bytes / (1024 * 1024)) : 0));
+                      if (qMb > 0) {
+                        return qMb >= 1024 ? `${(qMb / 1024).toFixed(0)} GB` : `${qMb} MB`;
+                      }
+                      return selectedDetailPackage.quota || 'Unlimited FUP';
+                    })()}
                   </p>
-                  <p className="text-[10px] text-slate-400">Tanpa batas kuota harian</p>
+                  <p className="text-[10px] text-slate-400">
+                    {selectedDetailPackage.quota_mb && Number(selectedDetailPackage.quota_mb) > 0
+                      ? 'Total kuota volume internet'
+                      : 'Tanpa batas kuota harian'}
+                  </p>
                 </div>
               </div>
 

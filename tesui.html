@@ -264,44 +264,44 @@
     </div>
   </div>
 
-  <!-- Cek & Bayar Tagihan Form (Quick Billing) -->
-  <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 space-y-3">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-      <div>
-        <h3 class="font-heading font-bold text-sm sm:text-base text-white flex items-center gap-2">
-          <svg class="w-4 h-4 text-indigo-400 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-          <span>Cek & Bayar Tagihan Internet Bulanan</span>
-        </h3>
-        <p class="text-xs text-slate-400">Masukkan No. HP atau Username PPPoE Anda</p>
+  <!-- Cek & Bayar Tagihan Form (Quick Billing - Sleek Streamlined Search Bar) -->
+  <div class="w-full max-w-3xl mx-auto space-y-2.5">
+    <div class="relative flex items-center rounded-2xl border p-1.5 transition-all shadow-md bg-slate-900/90 border-slate-800 text-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
+      <div class="pl-3 pr-2 text-blue-400 shrink-0 flex items-center">
+        <svg class="w-4 h-4 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
       </div>
-      <span class="self-start sm:self-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300 border border-indigo-500/20">
-        🏠 Pelanggan Rumah
-      </span>
-    </div>
-
-    <div class="flex flex-col sm:flex-row gap-2">
-      <input type="text" id="billInput" placeholder="Contoh: 08123456789 atau user_pppoe" class="flex-1 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-xl px-4 py-2.5 text-xs text-white outline-none transition" />
-      <button onclick="checkBilling()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition cursor-pointer flex items-center justify-center gap-1.5 shrink-0">
-        <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        <span>Cek Tagihan</span>
+      <input type="text" id="billInput" placeholder="Cek & Bayar Tagihan: Masukkan No. HP atau Username PPPoE..." class="w-full bg-transparent text-xs sm:text-sm font-medium placeholder:text-slate-500 outline-none px-1 py-1.5 min-w-0" />
+      <button onclick="checkBilling()" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 shrink-0 shadow-md shadow-blue-600/20 cursor-pointer active:scale-95">
+        <svg class="w-3.5 h-3.5 stroke-current fill-none stroke-2" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        <span class="hidden sm:inline">Cek Tagihan</span>
+        <span class="sm:hidden">Cek</span>
       </button>
     </div>
 
     <!-- Mock Result Box -->
-    <div id="billResultMock" class="hidden p-4 bg-slate-950/80 border border-emerald-500/30 rounded-2xl animate-fade-in">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div id="billResultMock" class="hidden p-3.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-2.5 animate-fade-in shadow-lg">
+      <div class="flex items-center justify-between text-xs">
+        <span class="font-bold text-slate-200">
+          Budi Santoso <span class="text-slate-400 font-normal">(08123456789 / user_budi)</span>
+        </span>
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+          1 Tagihan
+        </span>
+      </div>
+      <div class="p-3 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between text-xs">
         <div>
-          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tagihan Ditemukan</span>
-          <h4 class="font-bold text-sm text-white" id="billCustName">Pelanggan: Budi Santoso (user_budi)</h4>
-          <p class="text-xs text-slate-400">Paket: PPPoE Home 20 Mbps • Tagihan September 2026</p>
+          <p class="font-bold text-white">Tagihan Internet PPPoE 20 Mbps</p>
+          <p class="text-slate-400 text-[11px]">Jatuh Tempo: 20 September 2026</p>
         </div>
-        <div class="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 border-slate-800 pt-2 sm:pt-0">
-          <div>
-            <span class="text-[10px] text-slate-400 block sm:text-right">Total:</span>
-            <strong class="font-mono text-base text-emerald-400 font-bold">Rp 150.000</strong>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <p class="font-mono font-bold text-emerald-400">Rp 150.000</p>
+            <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-500/20 text-rose-400">
+              BELUM BAYAR
+            </span>
           </div>
-          <button onclick="openPayInvoiceModal('Tagihan Internet 20 Mbps', 'Rp 150.000')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer">
-            Bayar Sekarang
+          <button onclick="openPayInvoiceModal('Tagihan Internet 20 Mbps', 'Rp 150.000')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-sm shadow-emerald-600/30 active:scale-95">
+            Bayar
           </button>
         </div>
       </div>

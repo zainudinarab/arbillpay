@@ -208,9 +208,12 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       package_name: p.name,
       price: Number(p.price) || 5000,
       rate_limit: p.speed_limit || '10 Mbps',
+      validity_iso: p.validity_iso || '',
+      uptime_limit: p.uptime_limit || '',
       validity_days: Number(p.validity_days || p.validity_value) || 1,
       validity_unit: p.validity_unit || 'day',
       validity_value: Number(p.validity_value) || 1,
+      shared_users: Number(p.shared_users) || 1,
       quota_mb: Number(p.quota_mb) || 0,
       router_id: p.router_id || 'rtr-cloud',
       router_name: p.router_name || 'Cloud Hotspot',
@@ -241,7 +244,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       SELECT
         rp.id as profile_id,
         rp.name as profile_name,
-        rp.rate_limit,
+        COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
         r.id as router_id,
         r.name as router_name,
         COALESCE(r.dns_name, 'arab.net') as dns_name,
@@ -262,7 +265,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       WHERE rp.package_id IS NOT NULL
         AND COALESCE(rp.is_active, true) = true
         AND COALESCE(p.is_active, true) = true
-      GROUP BY rp.id, rp.name, rp.rate_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
+      GROUP BY rp.id, rp.name, rp.rate_limit, p.speed_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
       ORDER BY COALESCE(p.price, 0) ASC
     `);
 

@@ -38,7 +38,7 @@ export const defaultPortalConfig = {
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
     { id: 'hero', label: 'Banner Sambutan & Info Hotspot', enabled: true, order: 2 },
     { id: 'flash_sale', label: 'Flash Sale & Promo Countdown', enabled: true, order: 3 },
-    { id: 'wallet_widget', label: 'Widget Saldo & Akun ArabPay', enabled: true, order: 4 },
+    { id: 'wallet_widget', label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)', enabled: true, order: 4 },
     { id: 'quick_billing', label: 'Form Cek & Bayar Tagihan Cepat', enabled: true, order: 5 },
     { id: 'vouchers', label: 'Katalog Voucher Hotspot', enabled: true, order: 6, variant: 'grid', columns: 2 },
     { id: 'monthly_packages', label: 'Paket Internet Bulanan / Pendaftaran Baru', enabled: true, order: 7 },
@@ -66,6 +66,19 @@ export async function getPortalConfig(req: Request, res: Response) {
     if (row.rows.length > 0 && row.rows[0].value) {
       try {
         const parsed = JSON.parse(row.rows[0].value);
+        let rawSections = Array.isArray(parsed.sections) && parsed.sections.length > 0 ? parsed.sections : defaultPortalConfig.sections;
+        // Normalisasi label dan id agar sinkron dengan 4 stat cards di tata letak
+        rawSections = rawSections.map((s: any) => {
+          if (s.id === 'wallet_widget' || s.id === 'dashboard_stats') {
+            return {
+              ...s,
+              id: 'wallet_widget',
+              label: 'Kartu Status & Dompet (Saldo, Voucher, Langganan, Tagihan)'
+            };
+          }
+          return s;
+        });
+
         // Merge with default to ensure backward compatibility if new keys are added
         const merged = {
           ...defaultPortalConfig,
@@ -74,7 +87,7 @@ export async function getPortalConfig(req: Request, res: Response) {
           branding: { ...defaultPortalConfig.branding, ...(parsed.branding || {}) },
           announcement: { ...defaultPortalConfig.announcement, ...(parsed.announcement || {}) },
           flash_sale: { ...defaultPortalConfig.flash_sale, ...(parsed.flash_sale || {}) },
-          sections: Array.isArray(parsed.sections) && parsed.sections.length > 0 ? parsed.sections : defaultPortalConfig.sections
+          sections: rawSections
         };
         try {
           await redisSet(REDIS_KEY, merged, 300); // 5 menit
