@@ -172,6 +172,28 @@ export async function initDatabaseSchema() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS flash_sales (
+        id VARCHAR(64) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        subtitle TEXT,
+        badge_label VARCHAR(64) DEFAULT 'FLASH SALE',
+        discount_text VARCHAR(255),
+        router_id VARCHAR(64) REFERENCES routers(id) ON DELETE SET NULL,
+        target_package_id VARCHAR(64),
+        target_package_name VARCHAR(255),
+        original_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        promo_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        quota_limit INT DEFAULT 50,
+        quota_sold INT DEFAULT 0,
+        max_per_user INT DEFAULT 1,
+        start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        button_text VARCHAR(100) DEFAULT 'Beli Promo Flash Sale',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS ftth_nodes (
         id VARCHAR(64) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -283,7 +305,8 @@ export async function initDatabaseSchema() {
       -- Alter & Patch invoices table for voucher relation
       ALTER TABLE invoices
       ADD COLUMN IF NOT EXISTS voucher_id VARCHAR(64),
-      ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64);
+      ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS flash_sale_id VARCHAR(64);
     `).catch((err) => console.warn('Patch router_profiles & packages notice:', err.message));
     console.log('✅ routers, router_profiles, packages, hotspot_vouchers & invoices schema patched successfully!');
 
@@ -490,6 +513,50 @@ export async function initDatabaseSchema() {
       }
     } catch (err: any) {
       console.warn('Package smart seeder notice:', err.message);
+    }
+
+    // 11. Smart Migration for Flash Sales
+    try {
+      const fsCheck = await pool.query('SELECT COUNT(*)::int as total FROM flash_sales');
+      if (fsCheck.rows[0]?.total === 0) {
+        const portalRow = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_portal_config' LIMIT 1");
+        if (portalRow.rows.length > 0 && portalRow.rows[0].value) {
+          try {
+            const parsed = JSON.parse(portalRow.rows[0].value);
+            if (parsed.flash_sale && parsed.flash_sale.title) {
+              const oldFs = parsed.flash_sale;
+              await pool.query(`
+                INSERT INTO flash_sales (
+                  id, title, subtitle, badge_label, discount_text,
+                  target_package_id, target_package_name,
+                  original_price, promo_price, quota_limit, quota_sold, max_per_user,
+                  end_time, is_active, button_text
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                ON CONFLICT (id) DO NOTHING
+              `, [
+                'fs_default_initial',
+                oldFs.title || '⚡ Promo Hotspot Spesial Akhir Pekan',
+                oldFs.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum kuota berakhir!',
+                oldFs.badge_label || 'FLASH SALE',
+                oldFs.discount_text || 'Diskon Terbatas 50%',
+                oldFs.target_package_id || '',
+                oldFs.target_package_name || '',
+                Number(oldFs.original_price) || 5000,
+                Number(oldFs.promo_price) || 2500,
+                Number(oldFs.quota_limit) || 50,
+                Number(oldFs.quota_sold) || 0,
+                Number(oldFs.max_per_user) || 1,
+                oldFs.end_time || new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+                oldFs.enabled !== false,
+                oldFs.button_text || 'Beli Promo Flash Sale'
+              ]);
+              console.log('✅ Migrated initial Flash Sale config into dedicated flash_sales table!');
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (fsErr: any) {
+      console.warn('Flash sales migration notice:', fsErr.message);
     }
 
     console.log('🚀 PostgreSQL schema initialization & high-speed indexes completed successfully!');

@@ -27,7 +27,9 @@ import {
   AlertCircle,
   Flame,
   Timer,
-  Clock
+  Clock,
+  ArrowRight,
+  Search
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile, CustomerPortalConfig, CustomerPortalSection } from '../types';
@@ -202,9 +204,8 @@ export default function PortalTemplateEditor({ profile, onNavigateView, onBack }
       if (data.success) {
         setSaveSuccess(true);
         try {
-          const applied = data.config || config;
-          localStorage.setItem('arbil_portal_config', JSON.stringify(applied));
-          localStorage.setItem('arbil_portal_config_time', Date.now().toString());
+          localStorage.removeItem('arbil_portal_config');
+          localStorage.removeItem('arbil_portal_config_time');
           window.dispatchEvent(new Event('storage'));
         } catch (_) {}
         setTimeout(() => setSaveSuccess(false), 3500);

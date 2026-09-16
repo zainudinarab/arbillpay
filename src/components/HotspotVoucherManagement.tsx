@@ -20,7 +20,8 @@ import {
   EyeOff,
   ShieldCheck,
   Globe,
-  CreditCard
+  CreditCard,
+  Clock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -279,7 +280,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
           code_length: parseInt(codeLength) || 6,
           code_prefix: codePrefix.trim(),
           char_type: charType,
-          admin_id: profile?.id || 'admin'
+          admin_id: (profile as any)?.id || 'admin'
         })
       });
 

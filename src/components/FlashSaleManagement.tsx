@@ -1,23 +1,50 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Flame, Sparkles, Clock, Calendar, CheckCircle2, AlertCircle,
   Save, RefreshCw, Zap, Shield, ShoppingCart, Tag, ExternalLink,
   ChevronRight, ArrowRight, Eye, Smartphone, Monitor, Info, RotateCcw,
-  Database, Users, Search, Copy, Check, Filter, Wifi, Radio, UserCheck
+  Database, Users, Search, Copy, Check, Filter, Wifi, Radio, UserCheck,
+  Plus, Edit3, Trash2, Power, ToggleLeft, ToggleRight, X
 } from 'lucide-react';
-import { BusinessProfile, CustomerPortalConfig } from '../types';
+import { BusinessProfile } from '../types';
 
 interface FlashSaleManagementProps {
   profile: BusinessProfile;
   onNavigateView?: (view: string) => void;
 }
 
-const defaultFlashSale = {
-  enabled: true,
-  badge_label: 'FLASH SALE AKHIR PEKAN',
-  discount_text: 'Diskon Terbatas 50%',
-  title: '⚡ Promo Hotspot Spesial Akhir Pekan',
-  subtitle: 'Dapatkan voucher hotspot dengan harga spesial sebelum kuota atau promo berakhir!',
+export interface FlashSaleItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge_label: string;
+  discount_text?: string;
+  router_id: string | null;
+  router_name?: string | null;
+  target_package_id: string | null;
+  target_package_name: string | null;
+  original_price: number;
+  promo_price: number;
+  quota_limit: number;
+  quota_sold: number;
+  max_per_user: number;
+  start_time?: string;
+  end_time: string;
+  is_active: boolean;
+  button_text: string;
+  created_at?: string;
+  remaining_quota?: number;
+  is_expired?: boolean;
+  is_sold_out?: boolean;
+  discount_percent?: number;
+}
+
+const defaultNewPromo: Omit<FlashSaleItem, 'id'> = {
+  title: '⚡ Promo Hotspot Spesial',
+  subtitle: 'Dapatkan voucher hotspot dengan harga spesial sebelum kuota berakhir!',
+  badge_label: 'PROMO TERBATAS',
+  discount_text: 'Diskon 50%',
+  router_id: null,
   target_package_id: '',
   target_package_name: '',
   original_price: 5000,
@@ -26,18 +53,66 @@ const defaultFlashSale = {
   quota_sold: 0,
   max_per_user: 1,
   end_time: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
-  button_text: 'Beli Promo Flash Sale',
-  button_url: ''
+  is_active: true,
+  button_text: 'Beli Promo Flash Sale'
+};
+
+// Helper: Konversi ISO date ke string lokal yyyy-MM-ddThh:mm untuk input datetime-local
+const formatToLocalDateTimeString = (dateInput: string | Date | undefined) => {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+// Helper: Tampilkan tanggal lokal bahasa Indonesia yang ramah & mudah dibaca
+const formatHumanDatePreview = (dateInput: string | Date | undefined) => {
+  if (!dateInput) return 'Belum ditentukan';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return 'Format waktu tidak valid';
+
+  const dateStr = d.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  });
+  const timeStr = d.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const diffMs = d.getTime() - Date.now();
+  if (diffMs <= 0) {
+    return `${dateStr}, pukul ${timeStr} WIB (⚠️ Promo Sudah Berakhir)`;
+  }
+
+  const diffHours = Math.floor(diffMs / (1000 * 3600));
+  const diffDays = Math.floor(diffHours / 24);
+  const remHours = diffHours % 24;
+  const timeRemaining = diffDays > 0 ? `${diffDays} hari ${remHours} jam lagi` : `${diffHours} jam lagi`;
+
+  return `${dateStr}, pukul ${timeStr} WIB (Sisa: ${timeRemaining})`;
 };
 
 export default function FlashSaleManagement({ profile, onNavigateView }: FlashSaleManagementProps) {
-  const [fullConfig, setFullConfig] = useState<CustomerPortalConfig | null>(null);
-  const [flashSale, setFlashSale] = useState(defaultFlashSale);
-  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+  const [flashSales, setFlashSales] = useState<FlashSaleItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+  const [routers, setRouters] = useState<any[]>([]);
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Omit<FlashSaleItem, 'id'>>(defaultNewPromo);
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [previewDevice, setPreviewDevice] = useState<'mobile' | 'desktop'>('mobile');
+  const [modalError, setModalError] = useState('');
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   // Database Buyers State
   const [buyers, setBuyers] = useState<any[]>([]);
@@ -48,113 +123,133 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     unused_count: 0,
     total_revenue: 0
   });
+  const [selectedBuyerCampaignId, setSelectedBuyerCampaignId] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'unused' | 'expired'>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Countdown timer for live preview
-  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false });
-
   useEffect(() => {
-    fetchInitialData();
+    fetchFlashSales();
+    fetchInitialAuxData();
+    fetchBuyers('all');
   }, []);
 
-  useEffect(() => {
-    if (!flashSale.end_time) return;
-
-    const updateTimer = () => {
-      const diff = new Date(flashSale.end_time).getTime() - Date.now();
-      if (diff <= 0) {
-        setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true });
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      setCountdown({ days, hours, minutes, seconds, isExpired: false });
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [flashSale.end_time]);
-
-  const fetchInitialData = async () => {
+  const fetchFlashSales = async () => {
     setLoading(true);
     try {
-      // 1. Fetch current portal config
-      const portalRes = await fetch('/api/portal-config');
-      const portalData = await portalRes.json();
-      if (portalData.success && portalData.config) {
-        setFullConfig(portalData.config);
-        if (portalData.config.flash_sale) {
-          setFlashSale({
-            ...defaultFlashSale,
-            ...portalData.config.flash_sale
-          });
-        }
+      const res = await fetch('/api/flash-sales');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.flash_sales)) {
+        setFlashSales(data.flash_sales);
       }
-
-      // 2. Fetch available voucher packages from Mikrotik / Database
-      const pkgRes = await fetch('/api/vouchers/available');
-      const pkgData = await pkgRes.json();
-      if (pkgData.success && Array.isArray(pkgData.groups)) {
-        setAvailablePackages(pkgData.groups);
-      }
-
-      // 3. Fetch real database buyers from PostgreSQL
-      await fetchBuyers();
     } catch (err) {
-      console.warn('Gagal memuat data Flash Sale:', err);
+      console.warn('Gagal memuat list flash sales:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchBuyers = async () => {
+  const fetchInitialAuxData = async () => {
+    try {
+      // Ambil paket voucher yang memiliki profil MikroTik aktif (/api/vouchers/available) & daftar router
+      const [vRes, rRes] = await Promise.all([
+        fetch('/api/vouchers/available').catch(() => null),
+        fetch('/api/routers').catch(() => null)
+      ]);
+      const vData = vRes && vRes.ok ? await vRes.json() : null;
+      const rData = rRes && rRes.ok ? await rRes.json() : null;
+
+      if (rData && rData.success && Array.isArray(rData.routers)) {
+        setRouters(rData.routers);
+      }
+
+      if (vData && vData.success && Array.isArray(vData.groups)) {
+        // Hanya paket yang terhubung ke profil MikroTik dan siap dibeli (persis seperti di customer portal)
+        setAvailablePackages(vData.groups);
+      }
+    } catch (e) {
+      console.warn('Gagal memuat data paket berprofil:', e);
+    }
+  };
+
+  const fetchBuyers = async (campaignId?: string) => {
     setBuyersLoading(true);
     try {
-      const res = await fetch('/api/vouchers/flash-sale/buyers');
+      const targetId = campaignId !== undefined ? campaignId : selectedBuyerCampaignId;
+      const url = targetId && targetId !== 'all'
+        ? `/api/flash-sales/buyers?flash_sale_id=${encodeURIComponent(targetId)}`
+        : '/api/flash-sales/buyers';
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success && Array.isArray(data.buyers)) {
         setBuyers(data.buyers);
-        const stats = {
-          total_buyers: data.total_buyers ?? data.buyers.length,
-          used_count: data.used_count ?? 0,
-          unused_count: data.unused_count ?? 0,
-          total_revenue: data.total_revenue ?? 0
-        };
-        setBuyersStats(stats);
-        // Automatically sync actual database buyers count into quota_sold
-        setFlashSale(prev => ({
-          ...prev,
-          quota_sold: stats.total_buyers
-        }));
+        setBuyersStats({
+          total_buyers: data.total_buyers || data.buyers.length,
+          used_count: data.used_count || 0,
+          unused_count: data.unused_count || 0,
+          total_revenue: data.total_revenue || 0
+        });
       }
     } catch (e) {
-      console.warn('Gagal memuat pembeli flash sale:', e);
+      console.warn('Gagal memuat pembeli:', e);
     } finally {
       setBuyersLoading(false);
     }
   };
 
-  const handlePackageSelect = (pkgId: string) => {
-    const selected = availablePackages.find(p => (p.profile_id || p.id) === pkgId);
+  const handleOpenCreate = () => {
+    fetchInitialAuxData();
+    setEditingId(null);
+    setFormData({
+      ...defaultNewPromo,
+      end_time: new Date(Date.now() + 48 * 3600 * 1000).toISOString()
+    });
+    setModalError('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (item: FlashSaleItem) => {
+    fetchInitialAuxData();
+    setEditingId(item.id);
+    setFormData({
+      title: item.title,
+      subtitle: item.subtitle,
+      badge_label: item.badge_label || 'FLASH SALE',
+      discount_text: item.discount_text || '',
+      router_id: item.router_id || null,
+      target_package_id: item.target_package_id || '',
+      target_package_name: item.target_package_name || '',
+      original_price: Number(item.original_price) || 0,
+      promo_price: Number(item.promo_price) || 0,
+      quota_limit: Number(item.quota_limit) || 50,
+      quota_sold: Number(item.quota_sold) || 0,
+      max_per_user: Number(item.max_per_user) || 1,
+      end_time: item.end_time || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      is_active: Boolean(item.is_active),
+      button_text: item.button_text || 'Beli Promo Flash Sale'
+    });
+    setModalError('');
+    setIsModalOpen(true);
+  };
+
+  const handlePackageSelect = (profileId: string) => {
+    const selected = availablePackages.find(p => p.profile_id === profileId || p.id === profileId);
     if (selected) {
-      const orig = Number(selected.price) || 5000;
-      const promo = Math.round(orig / 2);
-      setFlashSale(prev => ({
+      const orig = Number(selected.price || selected.nominal || 0);
+      const halfPromo = Math.round(orig * 0.5);
+      setFormData(prev => ({
         ...prev,
-        target_package_id: selected.profile_id || selected.id,
+        target_package_id: profileId,
         target_package_name: selected.package_name || selected.name || selected.profile_name || 'Voucher Hotspot',
         original_price: orig,
-        promo_price: promo
+        promo_price: halfPromo,
+        router_id: selected.router_id || prev.router_id || null,
+        discount_text: `Hemat 50% (Rp ${formatRupiah(orig - halfPromo)})`
       }));
     } else {
-      setFlashSale(prev => ({
+      setFormData(prev => ({
         ...prev,
-        target_package_id: '',
+        target_package_id: profileId,
         target_package_name: ''
       }));
     }
@@ -162,7 +257,7 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
 
   const applyPresetEndTime = (hoursFromNow: number) => {
     const target = new Date(Date.now() + hoursFromNow * 3600 * 1000);
-    setFlashSale(prev => ({ ...prev, end_time: target.toISOString() }));
+    setFormData(prev => ({ ...prev, end_time: target.toISOString() }));
   };
 
   const applyWeekendPreset = () => {
@@ -170,54 +265,107 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     const dayOfWeek = now.getDay();
     const daysUntilSunday = (7 - dayOfWeek) % 7;
     const sunday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday, 23, 59, 59);
-    setFlashSale(prev => ({ ...prev, end_time: sunday.toISOString() }));
+    setFormData(prev => ({ ...prev, end_time: sunday.toISOString() }));
   };
 
-  const handleSave = async () => {
+  const openDatePicker = () => {
+    if (dateInputRef.current) {
+      try {
+        dateInputRef.current.showPicker?.();
+      } catch (_) {
+        dateInputRef.current.focus();
+      }
+    }
+  };
+
+  const handleSavePromo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title.trim()) {
+      setModalError('Judul promo Flash Sale wajib diisi.');
+      return;
+    }
+
     setSaving(true);
-    setSaveSuccess(false);
+    setModalError('');
 
     try {
-      const updatedConfig = {
-        ...(fullConfig || {}),
-        flash_sale: {
-          ...flashSale,
-          original_price: Number(flashSale.original_price) || 0,
-          promo_price: Number(flashSale.promo_price) || 0,
-          quota_limit: Number(flashSale.quota_limit) || 50,
-          quota_sold: Number(flashSale.quota_sold) || 0,
-          max_per_user: Number(flashSale.max_per_user) || 1
-        }
+      const payload = {
+        ...formData,
+        original_price: Number(formData.original_price) || 0,
+        promo_price: Number(formData.promo_price) || 0,
+        quota_limit: Number(formData.quota_limit) || 50,
+        max_per_user: Number(formData.max_per_user) || 1
       };
 
-      const res = await fetch('/api/portal-config', {
-        method: 'POST',
+      const url = editingId ? `/api/flash-sales/${editingId}` : '/api/flash-sales';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: updatedConfig })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
+
       if (data.success) {
-        setFullConfig(data.config || updatedConfig);
-        setSaveSuccess(true);
-        try {
-          localStorage.setItem('arbil_portal_config', JSON.stringify(data.config || updatedConfig));
-          localStorage.setItem('arbil_portal_config_time', Date.now().toString());
-          window.dispatchEvent(new Event('storage'));
-        } catch (_) {}
-        setTimeout(() => setSaveSuccess(false), 3500);
+        setIsModalOpen(false);
+        await fetchFlashSales();
       } else {
-        alert(data.message || 'Gagal menyimpan pengaturan Flash Sale.');
+        setModalError(data.message || 'Gagal menyimpan paket promo.');
       }
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + err.message);
+      setModalError('Terjadi kesalahan: ' + err.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleResetQuotaSold = () => {
-    if (!window.confirm('Reset jumlah kuota voucher terjual kembali ke 0 untuk memulai promo baru?')) return;
-    setFlashSale(prev => ({ ...prev, quota_sold: 0 }));
+  const handleDeletePromo = async (id: string, title: string) => {
+    if (!window.confirm(`Hapus paket promo Flash Sale "${title}"?`)) return;
+
+    try {
+      const res = await fetch(`/api/flash-sales/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchFlashSales();
+      } else {
+        alert(data.message || 'Gagal menghapus.');
+      }
+    } catch (e: any) {
+      alert('Error: ' + e.message);
+    }
+  };
+
+  const handleToggleStatus = async (id: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/flash-sales/${id}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !currentStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchFlashSales();
+      }
+    } catch (e) {
+      console.warn('Gagal toggle status:', e);
+    }
+  };
+
+  const handleResetQuota = async (id: string, title: string) => {
+    if (!window.confirm(`Reset kuota terjual promo "${title}" kembali ke 0?`)) return;
+
+    try {
+      const res = await fetch(`/api/flash-sales/${id}/reset-quota`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchFlashSales();
+      } else {
+        alert(data.message || 'Error reset kuota: ' + data.message);
+      }
+    } catch (e: any) {
+      alert('Error reset kuota: ' + e.message);
+    }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -230,825 +378,757 @@ export default function FlashSaleManagement({ profile, onNavigateView }: FlashSa
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
   };
 
-  const discountPercent = flashSale.original_price > 0 && flashSale.promo_price > 0
-    ? Math.max(1, Math.round((1 - (flashSale.promo_price / flashSale.original_price)) * 100))
-    : 0;
+  const activeCount = flashSales.filter(fs => fs.is_active && !fs.is_expired).length;
+  const totalSoldAll = flashSales.reduce((sum, fs) => sum + (Number(fs.quota_sold) || 0), 0);
+  const totalQuotaAll = flashSales.reduce((sum, fs) => sum + (Number(fs.quota_limit) || 0), 0);
 
-  const actualSold = buyersStats.total_buyers || flashSale.quota_sold || 0;
-  const quotaProgress = Math.min(100, Math.round((actualSold / (flashSale.quota_limit || 50)) * 100));
+  const filteredBuyers = useMemo(() => {
+    return buyers.filter(b => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        !searchTerm ||
+        (b.customer_name && b.customer_name.toLowerCase().includes(q)) ||
+        (b.customer_phone && b.customer_phone.includes(q)) ||
+        (b.voucher_code && b.voucher_code.toLowerCase().includes(q)) ||
+        (b.invoice_number && b.invoice_number.toLowerCase().includes(q)) ||
+        (b.package_name && b.package_name.toLowerCase().includes(q));
 
-  // Filtered buyers list
-  const filteredBuyers = buyers.filter(b => {
-    const q = searchTerm.toLowerCase();
-    const matchesSearch =
-      !searchTerm ||
-      (b.customer_name && b.customer_name.toLowerCase().includes(q)) ||
-      (b.customer_phone && b.customer_phone.includes(q)) ||
-      (b.voucher_code && b.voucher_code.toLowerCase().includes(q)) ||
-      (b.invoice_number && b.invoice_number.toLowerCase().includes(q));
+      const matchesStatus =
+        statusFilter === 'all' ||
+        b.usage_status === statusFilter;
 
-    const matchesStatus =
-      statusFilter === 'all' ? true : b.usage_status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
+      return matchesSearch && matchesStatus;
+    });
+  }, [buyers, searchTerm, statusFilter]);
 
   return (
-    <div className="space-y-6 pb-20 max-w-7xl mx-auto animate-fade-in text-slate-100">
-      {/* Top Header Card */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-rose-950/70 via-slate-900 to-amber-950/60 border border-rose-500/30 p-6 md:p-8 shadow-2xl backdrop-blur-xl">
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-60 h-60 bg-rose-500/15 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-red-600 text-white flex items-center justify-center shadow-lg shadow-rose-600/30">
-                <Flame className="w-5 h-5 animate-pulse" />
-              </div>
-              <span className="px-3 py-1 bg-rose-500/20 border border-rose-500/40 rounded-full text-rose-300 text-xs font-black uppercase tracking-wider">
-                Manajemen Promo Khusus
+    <div className="p-3 sm:p-5 max-w-7xl mx-auto space-y-3.5 sm:space-y-4">
+      {/* Top Header - Compact */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 p-4 rounded-xl border border-rose-900/30 shadow-md text-white">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="p-2 bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/30 shrink-0">
+            <Flame size={20} className="animate-pulse text-rose-400" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2 truncate">
+              <span>Manajemen Flash Sale</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500 text-white font-bold tracking-wider uppercase shrink-0">
+                PostgreSQL
               </span>
-              <span className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-300 text-xs font-bold flex items-center gap-1">
-                <Database className="w-3.5 h-3.5" /> Database Synced
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Flash Sale & Promo Hotspot
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-medium">
-              Atur paket voucher promo MikroTik dengan diskon harga coret, kuota kuantitas stok, countdown hitung mundur, serta batasan proteksi 1 voucher per akun user.
+            <p className="text-xs text-rose-200/70 truncate">
+              Kelola promo, waktu countdown, batas kuota, dan pantau pembeli riil.
             </p>
           </div>
+        </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <a
-              href="/#/portal"
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-2 cursor-pointer shadow-sm"
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>Buka Portal Pelanggan</span>
-            </a>
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+          <button
+            onClick={() => { fetchFlashSales(); fetchBuyers(); }}
+            disabled={loading}
+            className="p-1.5 sm:px-3 sm:py-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            title="Muat Ulang"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin text-rose-400' : ''} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
 
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs sm:text-sm font-extrabold rounded-xl shadow-lg shadow-rose-600/30 transition flex items-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
-            >
-              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : saveSuccess ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-              <span>{saving ? 'Menyimpan...' : saveSuccess ? 'Tersimpan!' : 'Simpan Promo'}</span>
-            </button>
-          </div>
+          <button
+            onClick={handleOpenCreate}
+            className="px-3 py-1.5 bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 active:scale-95 text-white font-bold rounded-lg shadow-md shadow-rose-500/20 transition flex items-center gap-1.5 text-xs cursor-pointer"
+          >
+            <Plus size={15} />
+            <span>Buat Promo Baru</span>
+          </button>
         </div>
       </div>
 
-      {/* KPI Overview Strip (Real Database Counters) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status Promo</span>
-          <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${flashSale.enabled ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
-            <span className={`text-sm sm:text-base font-black ${flashSale.enabled ? 'text-emerald-400' : 'text-slate-400'}`}>
-              {flashSale.enabled ? 'AKTIF BERJALAN' : 'NONAKTIF'}
-            </span>
+      {/* Metric Cards - Compact Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-medium">Promo Aktif</span>
+            <span className="p-1 rounded bg-emerald-500/10 text-emerald-400"><Zap size={13} /></span>
           </div>
-          <span className="text-[10px] text-slate-400 block truncate">
-            {flashSale.badge_label || 'Flash Sale'}
-          </span>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-white">{activeCount}</span>
+            <span className="text-[11px] text-slate-500">/ {flashSales.length} total</span>
+          </div>
+          <div className="text-[10px] text-emerald-400 font-medium truncate mt-0.5">Tampil di Portal Mandiri</div>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Kuota Terjual (DB)</span>
-            <span className="text-[10px] font-mono text-emerald-400 font-bold">{quotaProgress}%</span>
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-medium">Kuota Terjual</span>
+            <span className="p-1 rounded bg-rose-500/10 text-rose-400"><ShoppingCart size={13} /></span>
           </div>
-          <div className="flex items-baseline gap-1.5">
-            <p className="text-sm sm:text-base font-black text-rose-400 font-mono">
-              {actualSold}
-            </p>
-            <span className="text-xs text-slate-400 font-mono">/ {flashSale.quota_limit || 50} User</span>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-rose-400">{totalSoldAll}</span>
+            <span className="text-[11px] text-slate-500">/ {totalQuotaAll} kuota</span>
           </div>
-          <p className="text-[10px] text-slate-400 block">
-            {actualSold >= (flashSale.quota_limit || 50) ? '❌ Kuota Habis' : `Sisa ${Math.max(0, (flashSale.quota_limit || 50) - actualSold)} voucher`}
-          </p>
-        </div>
-
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Penggunaan WiFi</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {buyersStats.used_count} Aktif/Login
-            </span>
-          </div>
-          <span className="text-[10px] text-amber-400 block">
-            {buyersStats.unused_count} Belum Dipakai
-          </span>
-        </div>
-
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-1">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Omset Promo</span>
-          <p className="text-sm sm:text-base font-black text-amber-300 font-mono">
-            {formatRupiah(buyersStats.total_revenue)}
-          </p>
-          <p className="text-[10px] text-slate-400 block">
-            Dari {actualSold} transaksi database
-          </p>
-        </div>
-      </div>
-
-      {/* Main Content: Form Inputs on Left, Live Preview on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Form Controls (7 cols) */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* Card 1: Saklar & Informasi Waktu Promo */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-5 shadow-lg">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-extrabold text-white">Status & Waktu Promo</h3>
-                  <p className="text-xs text-slate-400">Aktifkan promo dan atur tanggal batas waktu countdown</p>
-                </div>
-              </div>
-
-              {/* Master Switch */}
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={flashSale.enabled}
-                  onChange={e => setFlashSale({ ...flashSale, enabled: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Label Badge Promo</label>
-                <input
-                  type="text"
-                  value={flashSale.badge_label}
-                  onChange={e => setFlashSale({ ...flashSale, badge_label: e.target.value })}
-                  placeholder="Contoh: FLASH SALE AKHIR PEKAN"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Teks Diskon Promo</label>
-                <input
-                  type="text"
-                  value={flashSale.discount_text}
-                  onChange={e => setFlashSale({ ...flashSale, discount_text: e.target.value })}
-                  placeholder="Contoh: Diskon Terbatas 50%"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Judul Banner Promo</label>
-                <input
-                  type="text"
-                  value={flashSale.title}
-                  onChange={e => setFlashSale({ ...flashSale, title: e.target.value })}
-                  placeholder="Contoh: ⚡ Promo Hotspot Spesial Akhir Pekan"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Deskripsi / Subtitle</label>
-                <textarea
-                  value={flashSale.subtitle}
-                  onChange={e => setFlashSale({ ...flashSale, subtitle: e.target.value })}
-                  rows={2}
-                  placeholder="Penjelasan ringkas promo flash sale..."
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none resize-none"
-                />
-              </div>
-
-              <div className="sm:col-span-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Waktu Selesai Promo (Countdown End Time)</span>
-                  </label>
-                  <span className="text-[11px] font-mono text-amber-400">
-                    {new Date(flashSale.end_time).toLocaleString('id-ID')}
-                  </span>
-                </div>
-
-                <input
-                  type="datetime-local"
-                  value={flashSale.end_time ? new Date(flashSale.end_time).toISOString().slice(0, 16) : ''}
-                  onChange={e => {
-                    if (e.target.value) {
-                      setFlashSale({ ...flashSale, end_time: new Date(e.target.value).toISOString() });
-                    }
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
-                />
-
-                {/* Preset Fast Buttons */}
-                <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                  <span className="text-[10px] font-bold text-slate-500 mr-1">Preset Cepat:</span>
-                  <button
-                    type="button"
-                    onClick={() => applyPresetEndTime(3)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300 font-bold transition cursor-pointer"
-                  >
-                    +3 Jam
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPresetEndTime(12)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300 font-bold transition cursor-pointer"
-                  >
-                    +12 Jam
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPresetEndTime(24)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300 font-bold transition cursor-pointer"
-                  >
-                    +24 Jam (1 Hari)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyPresetEndTime(72)}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg text-[11px] text-slate-300 font-bold transition cursor-pointer"
-                  >
-                    +3 Hari
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyWeekendPreset}
-                    className="px-2.5 py-1 bg-rose-950/80 border border-rose-800/80 hover:bg-rose-900 rounded-lg text-[11px] text-rose-300 font-bold transition cursor-pointer"
-                  >
-                    ⚡ Akhir Pekan (Minggu Malam)
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Produk Sasaran & Penetapan Harga Promo */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-5 shadow-lg">
-            <div className="flex items-center gap-2.5 border-b border-slate-800 pb-4">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                <Tag className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-extrabold text-white">Produk Sasaran & Harga Promo</h3>
-                <p className="text-xs text-slate-400">Pilih paket voucher yang ingin didiskon & tentukan harga flash sale</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Pilih Produk Voucher Sasaran Flash Sale</label>
-                <select
-                  value={flashSale.target_package_id || ''}
-                  onChange={e => handlePackageSelect(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-amber-500 focus:outline-none cursor-pointer"
-                >
-                  <option value="">-- Pilih Paket Voucher MikroTik --</option>
-                  {availablePackages.map(pkg => (
-                    <option key={pkg.profile_id || pkg.id} value={pkg.profile_id || pkg.id}>
-                      {pkg.package_name || pkg.profile_name || pkg.name} — Normal: {formatRupiah(Number(pkg.price || 0))} ({pkg.rate_limit || pkg.speed_limit || 'Normal'})
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-slate-400">
-                  Paket ini akan otomatis terhubung ke MikroTik RouterOS saat pelanggan membeli lewat promo flash sale.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-300">Harga Normal (Dicoret)</label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-2.5 text-xs text-slate-500 font-bold">Rp</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={500}
-                      value={flashSale.original_price}
-                      onChange={e => setFlashSale({ ...flashSale, original_price: Number(e.target.value) || 0 })}
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white font-mono focus:border-amber-500 focus:outline-none"
-                      placeholder="5000"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-amber-400">Harga Flash Sale (Promo)</label>
-                    {discountPercent > 0 && (
-                      <span className="px-2 py-0.5 bg-rose-500/20 border border-rose-500/40 rounded-full text-rose-300 text-[10px] font-black">
-                        HEMAT {discountPercent}%
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-2.5 text-xs text-amber-400 font-bold">Rp</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={500}
-                      value={flashSale.promo_price}
-                      onChange={e => setFlashSale({ ...flashSale, promo_price: Number(e.target.value) || 0 })}
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-amber-500/40 rounded-xl text-xs sm:text-sm text-amber-300 font-bold font-mono focus:border-amber-400 focus:outline-none"
-                      placeholder="2500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {discountPercent > 0 && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span className="text-slate-300">
-                      Pelanggan menghemat <strong>{formatRupiah(Math.max(0, flashSale.original_price - flashSale.promo_price))}</strong> per voucher!
-                    </span>
-                  </div>
-                  <span className="font-mono font-black text-amber-400">
-                    Diskon {discountPercent}%
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Card 3: Kuota Promo & Batasan 1 Per User */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-5 shadow-lg">
-            <div className="flex items-center gap-2.5 border-b border-slate-800 pb-4">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <Shield className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-extrabold text-white">Stok Kuota & Batasan Akun (Anti-Abuse)</h3>
-                <p className="text-xs text-slate-400">Batasi total kuota voucher promo dan batasi 1 akun hanya boleh 1 voucher</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Total Kuota Promo (Qty)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={flashSale.quota_limit}
-                  onChange={e => setFlashSale({ ...flashSale, quota_limit: Number(e.target.value) || 1 })}
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white font-mono focus:border-emerald-500 focus:outline-none"
-                  placeholder="50"
-                />
-                <p className="text-[11px] text-slate-400">Jumlah kuota yang ingin dilepas ke publik (misal: 50 user).</p>
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-300">Kuota Terjual di Database</label>
-                  <button
-                    type="button"
-                    onClick={handleResetQuotaSold}
-                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 transition cursor-pointer"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Reset ke 0
-                  </button>
-                </div>
-                <input
-                  type="number"
-                  min={0}
-                  value={actualSold}
-                  readOnly
-                  className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs sm:text-sm text-rose-300 font-mono focus:outline-none"
-                />
-                <p className="text-[11px] text-slate-400">Tersinkron otomatis dengan jumlah transaksi di tabel database.</p>
-              </div>
-
-              <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Maksimal Pembelian Per Akun (User Limit)</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={flashSale.max_per_user || 1}
-                    onChange={e => setFlashSale({ ...flashSale, max_per_user: Number(e.target.value) || 1 })}
-                    className="w-24 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-emerald-400 font-mono font-bold focus:border-emerald-500 focus:outline-none text-center"
-                  />
-                  <div className="text-xs text-slate-300 space-y-0.5">
-                    <p className="font-bold text-emerald-300">Terkunci Rekomendasi: 1 Voucher / Akun</p>
-                    <p className="text-slate-400 text-[11px]">
-                      Sistem backend memverifikasi histori invoice pengguna berdasarkan no. HP & User ID. Jika akun sudah pernah membeli promo, pembelian berikutnya otomatis diblokir.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="sm:col-span-2 space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Teks Tombol Aksi Pelanggan</label>
-                <input
-                  type="text"
-                  value={flashSale.button_text}
-                  onChange={e => setFlashSale({ ...flashSale, button_text: e.target.value })}
-                  placeholder="Contoh: Beli Promo Flash Sale"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Live Interactive Preview (5 cols) */}
-        <div className="lg:col-span-5 space-y-5 lg:sticky lg:top-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3.5">
-              <div className="flex items-center gap-2">
-                <Eye className="w-4 h-4 text-rose-400" />
-                <h3 className="text-sm font-extrabold text-white">Live Preview Tampilan Pelanggan</h3>
-              </div>
-
-              {/* Device Selector */}
-              <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice('mobile')}
-                  className={`p-1.5 rounded-lg text-xs transition cursor-pointer ${previewDevice === 'mobile' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  title="Tampilan Layar HP"
-                >
-                  <Smartphone className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDevice('desktop')}
-                  className={`p-1.5 rounded-lg text-xs transition cursor-pointer ${previewDevice === 'desktop' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  title="Tampilan Desktop / Laptop"
-                >
-                  <Monitor className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-slate-400">
-              Berikut adalah banner Flash Sale persis seperti yang akan dilihat oleh pelanggan di Customer Portal:
-            </p>
-
-            {/* Mockup Frame */}
-            <div className={`mx-auto transition-all ${previewDevice === 'mobile' ? 'max-w-sm' : 'w-full'}`}>
-              <div className="relative overflow-hidden p-5 rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/40 shadow-2xl backdrop-blur-xl space-y-4">
-                {/* Ambient Glow */}
-                <div className="absolute top-0 right-0 -mt-6 -mr-6 w-40 h-40 bg-rose-500/15 rounded-full blur-2xl pointer-events-none"></div>
-                <div className="absolute bottom-0 left-0 -mb-6 -ml-6 w-40 h-40 bg-amber-500/15 rounded-full blur-2xl pointer-events-none"></div>
-
-                {/* Top Badges */}
-                <div className="relative flex items-center gap-2 flex-wrap">
-                  <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-full text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md shadow-rose-600/30">
-                    <Flame className="w-3 h-3 animate-bounce" />
-                    <span>{flashSale.badge_label || 'FLASH SALE'}</span>
-                  </span>
-                  <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-amber-400" />
-                    <span>{flashSale.discount_text || 'Diskon Terbatas'}</span>
-                  </span>
-                  {discountPercent > 0 && (
-                    <span className="px-2 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-300 text-[10px] font-black uppercase">
-                      Hemat {discountPercent}%
-                    </span>
-                  )}
-                </div>
-
-                {/* Title & Subtitle */}
-                <div className="relative space-y-1">
-                  <h4 className="text-lg sm:text-xl font-black text-white tracking-tight leading-tight">
-                    {flashSale.title || '⚡ Promo Hotspot Spesial'}
-                  </h4>
-                  <p className="text-xs text-slate-300 font-medium">
-                    {flashSale.subtitle || 'Dapatkan voucher hotspot dengan harga spesial sebelum promo berakhir!'}
-                  </p>
-                </div>
-
-                {/* Linked Target Product Card Box */}
-                <div className="relative p-3.5 rounded-2xl bg-black/40 border border-rose-500/30 backdrop-blur-md space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Paket Promo</span>
-                    <span className="text-[10px] font-semibold text-slate-300 bg-slate-800/90 px-2 py-0.5 rounded-md border border-slate-700/60">
-                      🛡️ Maks. {flashSale.max_per_user || 1} voucher / akun
-                    </span>
-                  </div>
-
-                  <div className="text-sm font-bold text-white flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span className="truncate">{flashSale.target_package_name || 'Voucher Hotspot Pilihan'}</span>
-                  </div>
-
-                  <div className="flex items-baseline gap-2">
-                    {flashSale.original_price > flashSale.promo_price && (
-                      <span className="text-xs text-slate-400 line-through font-mono">
-                        {formatRupiah(flashSale.original_price)}
-                      </span>
-                    )}
-                    <span className="text-base font-black text-amber-300 font-mono">
-                      {formatRupiah(flashSale.promo_price)}
-                    </span>
-                  </div>
-
-                  {/* Quota Progress */}
-                  <div className="space-y-1 pt-1 border-t border-rose-500/20">
-                    <div className="flex justify-between text-[10px] font-semibold">
-                      <span className="text-slate-400">Kuota Promo</span>
-                      <span className="text-rose-300 font-mono">
-                        {actualSold} / {flashSale.quota_limit || 50}
-                      </span>
-                    </div>
-                    <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all"
-                        style={{ width: `${quotaProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Countdown Digit Boxes */}
-                <div className="relative flex items-center justify-center gap-1.5 pt-1">
-                  {countdown.days > 0 && (
-                    <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2.5 py-1.5 rounded-xl min-w-[42px]">
-                      <span className="text-base font-black font-mono text-white leading-none">
-                        {String(countdown.days).padStart(2, '0')}
-                      </span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Hari</span>
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2.5 py-1.5 rounded-xl min-w-[42px]">
-                    <span className="text-base font-black font-mono text-amber-300 leading-none">
-                      {String(countdown.hours).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Jam</span>
-                  </div>
-                  <span className="text-sm font-bold text-rose-400 font-mono -mt-2">:</span>
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2.5 py-1.5 rounded-xl min-w-[42px]">
-                    <span className="text-base font-black font-mono text-amber-300 leading-none">
-                      {String(countdown.minutes).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Menit</span>
-                  </div>
-                  <span className="text-sm font-bold text-rose-400 font-mono -mt-2">:</span>
-                  <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2.5 py-1.5 rounded-xl min-w-[42px]">
-                    <span className="text-base font-black font-mono text-rose-400 leading-none animate-pulse">
-                      {String(countdown.seconds).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Detik</span>
-                  </div>
-                </div>
-
-                {/* Claim CTA Button Preview */}
-                <div className="relative pt-1">
-                  <div className="w-full py-3 bg-gradient-to-r from-rose-600 to-amber-600 text-white font-extrabold text-xs rounded-2xl shadow-xl shadow-rose-600/30 flex items-center justify-center gap-2 cursor-pointer">
-                    <Flame className="w-4 h-4 fill-white" />
-                    <span>{flashSale.button_text || 'Beli Promo Flash Sale'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-2 text-xs text-slate-400">
-              <div className="flex items-center gap-2 text-slate-300 font-bold">
-                <Info className="w-4 h-4 text-sky-400 shrink-0" />
-                <span>Koneksi Otomatis ke Portal Pelanggan</span>
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                Setiap kali Anda menekan tombol <strong>Simpan Promo</strong> di atas, banner di Portal Pelanggan langsung terupdate secara real-time. Pelanggan dapat langsung mengklaim voucher dengan harga promo yang ditentukan.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* FULL-WIDTH SECTION: DAFTAR TRANSAKSI & PEMBELI FLASH SALE (POSTGRESQL DB) */}
-      {/* ========================================================================= */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Database className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-                <span>Daftar Pembeli Flash Sale</span>
-                <span className="px-2.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded-full text-xs font-bold">
-                  {actualSold} dari {flashSale.quota_limit || 50} Kuota
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Data transaksi riil tersimpan di database PostgreSQL beserta status pemakaian login di router MikroTik.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={fetchBuyers}
-              disabled={buyersLoading}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Perbarui Data dari Database"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${buyersLoading ? 'animate-spin text-rose-400' : ''}`} />
-              <span>{buyersLoading ? 'Memuat...' : 'Segarkan Data'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Filter & Search Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Cari nama, no HP, kode voucher, atau invoice..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-white focus:border-rose-500 focus:outline-none"
+          <div className="w-full bg-slate-800 h-1 rounded-full mt-1.5 overflow-hidden">
+            <div
+              className="bg-gradient-to-r from-rose-500 to-amber-500 h-full rounded-full transition-all"
+              style={{ width: `${totalQuotaAll > 0 ? Math.min(100, Math.round((totalSoldAll / totalQuotaAll) * 100)) : 0}%` }}
             />
           </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-bold flex items-center gap-1 shrink-0">
-              <Filter className="w-3.5 h-3.5" /> Status:
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-medium">Total Pembeli</span>
+            <span className="p-1 rounded bg-amber-500/10 text-amber-400"><Users size={13} /></span>
+          </div>
+          <div className="mt-1 flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-amber-400">{buyersStats.total_buyers}</span>
+            <span className="text-[11px] text-slate-500">voucher</span>
+          </div>
+          <div className="text-[10px] text-slate-400 truncate mt-0.5">
+            {buyersStats.used_count} login • {buyersStats.unused_count} standby
+          </div>
+        </div>
+
+        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span className="font-medium">Omzet Flash Sale</span>
+            <span className="p-1 rounded bg-indigo-500/10 text-indigo-400"><Tag size={13} /></span>
+          </div>
+          <div className="mt-1">
+            <span className="text-base sm:text-lg font-black text-indigo-400 font-mono truncate block">
+              {formatRupiah(buyersStats.total_revenue)}
             </span>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value as any)}
-              className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-rose-500 focus:outline-none cursor-pointer"
+          </div>
+          <div className="text-[10px] text-emerald-400 font-medium truncate mt-0.5">Via ArabPay E-Wallet</div>
+        </div>
+      </div>
+
+      {/* Flash Sale Cards Grid - Compact */}
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <Flame size={16} className="text-rose-500" />
+            <h2 className="text-sm font-bold text-white">Daftar Paket Promo Flash Sale</h2>
+            <span className="text-[11px] px-2 py-0.2 rounded bg-slate-800 text-slate-300 font-mono">
+              {flashSales.length}
+            </span>
+          </div>
+        </div>
+
+        {loading && flashSales.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 bg-slate-900/50 rounded-xl border border-slate-800">
+            <RefreshCw size={22} className="animate-spin text-rose-500 mx-auto mb-1.5" />
+            <p className="text-xs">Memuat daftar paket promo Flash Sale...</p>
+          </div>
+        ) : flashSales.length === 0 ? (
+          <div className="p-8 text-center bg-slate-900/40 rounded-xl border border-dashed border-slate-800">
+            <Flame size={36} className="text-slate-600 mx-auto mb-2" />
+            <h3 className="text-sm font-bold text-white">Belum Ada Paket Flash Sale</h3>
+            <p className="text-xs text-slate-400 mt-0.5 max-w-sm mx-auto">
+              Klik tombol Buat Promo Baru untuk menambahkan promo diskon voucher hotspot.
+            </p>
+            <button
+              onClick={handleOpenCreate}
+              className="mt-3 px-3 py-1.5 bg-rose-500 hover:bg-rose-600 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer"
             >
-              <option value="all">Semua Status ({buyers.length})</option>
-              <option value="active">Sedang Digunakan ({buyersStats.used_count})</option>
-              <option value="unused">Belum Dipakai ({buyersStats.unused_count})</option>
-              <option value="expired">Masa Aktif Habis</option>
+              <Plus size={14} />
+              <span>Buat Promo Pertama</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {flashSales.map((item) => {
+              const isExpired = item.is_expired;
+              const isSoldOut = item.is_sold_out;
+              const quotaPercent = Math.min(100, Math.round(((item.quota_sold || 0) / (item.quota_limit || 1)) * 100));
+
+              return (
+                <div
+                  key={item.id}
+                  className={`bg-slate-900/90 border rounded-xl p-3.5 relative overflow-hidden transition-all shadow-sm flex flex-col justify-between ${
+                    !item.is_active
+                      ? 'border-slate-800 opacity-60'
+                      : isExpired
+                      ? 'border-amber-900/40 bg-gradient-to-b from-slate-900 to-amber-950/15'
+                      : 'border-rose-900/40 hover:border-rose-500/50 bg-gradient-to-b from-slate-900 to-rose-950/15'
+                  }`}
+                >
+                  {/* Status Banner */}
+                  <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-500 text-white shadow-xs">
+                        {item.badge_label || 'FLASH SALE'}
+                      </span>
+                      {item.discount_percent && item.discount_percent > 0 ? (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Hemat {item.discount_percent}%
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Toggle Active Button */}
+                    <button
+                      onClick={() => handleToggleStatus(item.id, item.is_active)}
+                      className={`p-0.5 rounded transition text-xs font-semibold flex items-center gap-1 cursor-pointer ${
+                        item.is_active
+                          ? 'text-emerald-400 hover:text-emerald-300'
+                          : 'text-slate-500 hover:text-slate-400'
+                      }`}
+                      title={item.is_active ? 'Klik untuk nonaktifkan' : 'Klik untuk aktifkan'}
+                    >
+                      {item.is_active ? <ToggleRight size={18} className="text-emerald-400" /> : <ToggleLeft size={18} />}
+                      <span className="text-[10px]">{item.is_active ? 'Aktif' : 'Nonaktif'}</span>
+                    </button>
+                  </div>
+
+                  {/* Title & Subtitle */}
+                  <div className="space-y-0.5 mb-2.5">
+                    <h3 className="text-sm font-bold text-white line-clamp-1">
+                      {item.title}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 line-clamp-1">
+                      {item.subtitle || 'Promo diskon voucher hotspot'}
+                    </p>
+                    <div className="text-[11px] text-slate-300 font-medium flex items-center gap-1 pt-0.5 truncate">
+                      <Wifi size={11} className="text-rose-400 shrink-0" />
+                      <span className="truncate">Paket: <strong className="text-white">{item.target_package_name || 'Voucher Hotspot'}</strong></span>
+                      {item.router_name && <span className="text-slate-500 font-mono text-[10px]">({item.router_name})</span>}
+                    </div>
+                  </div>
+
+                  {/* Pricing Box - Compact */}
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-2.5 mb-2.5">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        {item.original_price > item.promo_price && (
+                          <div className="text-[10px] text-slate-500 line-through font-mono">
+                            {formatRupiah(item.original_price)}
+                          </div>
+                        )}
+                        <div className="text-base font-black text-rose-400 tracking-tight font-mono">
+                          {formatRupiah(item.promo_price)}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-300 bg-slate-900 border border-slate-700 px-1.5 py-0.5 rounded">
+                          Maks. {item.max_per_user}x/akun
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quota Progress */}
+                    <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-slate-400">Kuota Terjual:</span>
+                        <span className="font-mono text-white font-bold">
+                          {item.quota_sold} / {item.quota_limit}
+                          {isSoldOut && <span className="text-rose-400 ml-1">(Habis)</span>}
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isSoldOut ? 'bg-rose-500' : 'bg-gradient-to-r from-rose-500 to-amber-400'
+                          }`}
+                          style={{ width: `${quotaPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* End Time Info */}
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2.5 pb-1.5 border-b border-slate-800/60">
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} className={isExpired ? 'text-amber-500' : 'text-rose-400'} />
+                      <span>Berakhir:</span>
+                    </span>
+                    <span className={`font-mono text-[11px] ${isExpired ? 'text-amber-400 font-bold' : 'text-slate-300'}`}>
+                      {isExpired ? 'Promo Berakhir' : new Date(item.end_time).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </div>
+
+                  {/* Action Buttons - Compact */}
+                  <div className="flex items-center gap-1.5 pt-0.5">
+                    <button
+                      onClick={() => {
+                        setSelectedBuyerCampaignId(item.id);
+                        fetchBuyers(item.id);
+                        const buyersSection = document.getElementById('buyers-section');
+                        if (buyersSection) buyersSection.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="flex-1 py-1 px-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition cursor-pointer"
+                      title="Lihat Pembeli Paket Ini"
+                    >
+                      <Users size={12} className="text-amber-400" />
+                      <span>Pembeli ({item.quota_sold})</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleResetQuota(item.id, item.title)}
+                      className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                      title="Reset Kuota Terjual ke 0"
+                    >
+                      <RotateCcw size={13} />
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenEdit(item)}
+                      className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                      title="Edit Promo"
+                    >
+                      <Edit3 size={13} />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeletePromo(item.id, item.title)}
+                      className="p-1 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-400 rounded-lg transition cursor-pointer"
+                      title="Hapus Promo"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Database Buyers Section - Compact */}
+      <div id="buyers-section" className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 sm:p-4 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-800">
+          <div>
+            <h2 className="text-sm font-bold text-white flex items-center gap-1.5">
+              <Database size={16} className="text-rose-500" />
+              Database Pembeli Voucher Flash Sale
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Riwayat riil voucher promo yang dibeli pelanggan melalui portal mandiri (PostgreSQL & MikroTik).
+            </p>
+          </div>
+
+          {/* Campaign Selector Filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-medium shrink-0">Filter:</span>
+            <select
+              value={selectedBuyerCampaignId}
+              onChange={(e) => {
+                setSelectedBuyerCampaignId(e.target.value);
+                fetchBuyers(e.target.value);
+              }}
+              className="bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1 focus:outline-none focus:border-rose-500 cursor-pointer"
+            >
+              <option value="all">Semua Paket Flash Sale</option>
+              {flashSales.map(fs => (
+                <option key={fs.id} value={fs.id}>
+                  {fs.title} ({fs.target_package_name || 'Voucher'})
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
-        {/* Table Content */}
-        {buyersLoading && buyers.length === 0 ? (
-          <div className="py-16 text-center text-slate-500 flex flex-col items-center gap-3">
-            <RefreshCw className="w-8 h-8 animate-spin text-rose-500" />
-            <span className="text-xs font-bold">Mengambil data pembeli dari database...</span>
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Cari pelanggan, no HP, kode voucher, invoice..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+            />
           </div>
-        ) : filteredBuyers.length === 0 ? (
-          <div className="py-16 text-center bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-3">
-            <Users className="w-12 h-12 text-slate-600 mx-auto" />
-            <h4 className="text-base font-bold text-slate-300">
-              {searchTerm ? 'Tidak ada data pembeli yang cocok dengan pencarian' : 'Belum Ada Transaksi Flash Sale'}
-            </h4>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              {searchTerm
-                ? 'Coba gunakan kata kunci lain (nama pembeli, nomor HP, atau nomor invoice).'
-                : 'Saat pelanggan membeli voucher promo lewat Customer Portal, riwayat transaksi otomatis tersimpan di sini secara real-time.'}
-            </p>
+
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
+            {(['all', 'unused', 'active', 'expired'] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition shrink-0 cursor-pointer ${
+                  statusFilter === st
+                    ? 'bg-rose-500 text-white'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {st === 'all' && 'Semua'}
+                {st === 'unused' && 'Belum Login'}
+                {st === 'active' && 'Aktif di WiFi'}
+                {st === 'expired' && 'Expired'}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-800">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800">
+        </div>
+
+        {/* Table of Buyers - Compact Rows */}
+        <div className="overflow-x-auto rounded-lg border border-slate-800">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase tracking-wider font-semibold border-b border-slate-800">
+              <tr>
+                <th className="py-2 px-3">Invoice & Waktu</th>
+                <th className="py-2 px-3">Pelanggan</th>
+                <th className="py-2 px-3">Paket / Kampanye</th>
+                <th className="py-2 px-3">Kode Voucher</th>
+                <th className="py-2 px-3">Nominal</th>
+                <th className="py-2 px-3">Status Pemakaian</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-medium text-xs">
+              {buyersLoading ? (
                 <tr>
-                  <th className="py-3.5 px-4"># Invoice & Waktu</th>
-                  <th className="py-3.5 px-4">Pembeli (User)</th>
-                  <th className="py-3.5 px-4">Voucher Hotspot</th>
-                  <th className="py-3.5 px-4">Nominal</th>
-                  <th className="py-3.5 px-4">Status Pemakaian MikroTik</th>
+                  <td colSpan={6} className="py-6 text-center text-slate-500">
+                    <RefreshCw size={18} className="animate-spin text-rose-500 mx-auto mb-1" />
+                    Memuat data pembeli...
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
-                {filteredBuyers.map((b, idx) => {
-                  const isUsed = b.usage_status === 'active' || b.usage_status === 'expired';
-                  return (
-                    <tr key={b.invoice_id || idx} className="hover:bg-slate-800/40 transition">
-                      {/* Invoice & Time */}
-                      <td className="py-3.5 px-4">
-                        <span className="font-mono font-bold text-slate-200 block">
-                          #{b.invoice_number || b.invoice_id}
-                        </span>
-                        <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3 h-3" /> {b.purchased_at}
-                        </span>
-                      </td>
+              ) : filteredBuyers.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-slate-500 text-xs">
+                    Tidak ada transaksi pembeli yang sesuai dengan kriteria filter.
+                  </td>
+                </tr>
+              ) : (
+                filteredBuyers.map((b) => (
+                  <tr key={b.invoice_id || b.voucher_id} className="hover:bg-slate-800/40 transition">
+                    <td className="py-2 px-3">
+                      <div className="font-mono text-white text-xs">{b.invoice_number}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {new Date(b.purchased_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })}
+                      </div>
+                    </td>
 
-                      {/* Buyer Name & Phone */}
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-0.5">
-                          <span className="font-bold text-white block text-sm">
-                            {b.customer_name || 'Pelanggan Hotspot'}
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-mono block">
-                            {b.customer_phone || 'Tanpa No. HP'}
-                          </span>
-                          {b.arabpay_user_id && (
-                            <span className="text-[9px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-md inline-block font-mono">
-                              ArabPay ID: {b.arabpay_user_id}
-                            </span>
-                          )}
+                    <td className="py-2 px-3">
+                      <div className="text-white font-semibold text-xs">{b.customer_name}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{b.customer_phone || '-'}</div>
+                    </td>
+
+                    <td className="py-2 px-3">
+                      <div className="text-slate-200 text-xs">{b.package_name}</div>
+                      {b.flash_sale_title && (
+                        <div className="text-[10px] text-rose-400 flex items-center gap-1 truncate max-w-[200px]">
+                          <Flame size={10} className="shrink-0" />
+                          <span className="truncate">{b.flash_sale_title}</span>
                         </div>
-                      </td>
+                      )}
+                    </td>
 
-                      {/* Voucher Credentials */}
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400 text-[10px]">User:</span>
-                            <span className="font-mono font-bold text-amber-300 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800">
-                              {b.voucher_code || '-'}
-                            </span>
-                            {b.voucher_code && (
-                              <button
-                                type="button"
-                                onClick={() => copyToClipboard(b.voucher_code, `code-${b.invoice_id}`)}
-                                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition cursor-pointer"
-                                title="Salin Kode Voucher"
-                              >
-                                {copiedId === `code-${b.invoice_id}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                              </button>
-                            )}
-                          </div>
-
-                          {b.voucher_password && b.voucher_password !== b.voucher_code && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-slate-400 text-[10px]">Pass:</span>
-                              <span className="font-mono text-slate-300 bg-slate-950 px-2 py-0.5 rounded-md border border-slate-800 text-[11px]">
-                                {b.voucher_password}
-                              </span>
-                            </div>
-                          )}
-
-                          <span className="text-[10px] text-slate-500 block truncate">
-                            {b.package_name}
-                          </span>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1">
+                        <span className="font-mono font-bold text-amber-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 text-xs">
+                          {b.voucher_code}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(b.voucher_code, b.invoice_id)}
+                          className="text-slate-500 hover:text-white transition p-0.5 cursor-pointer"
+                          title="Salin Kode Voucher"
+                        >
+                          {copiedId === b.invoice_id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                        </button>
+                      </div>
+                      {b.voucher_password && b.voucher_password !== b.voucher_code && (
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                          Pass: {b.voucher_password}
                         </div>
-                      </td>
+                      )}
+                    </td>
 
-                      {/* Nominal & Channel */}
-                      <td className="py-3.5 px-4">
-                        <span className="font-mono font-black text-amber-300 block text-sm">
-                          {formatRupiah(b.amount)}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
-                          {b.payment_method || 'ArabPay E-Wallet'}
-                        </span>
-                      </td>
+                    <td className="py-2 px-3 font-bold text-white text-xs">
+                      {formatRupiah(b.amount)}
+                      <div className="text-[10px] text-emerald-400 font-normal">{b.payment_method}</div>
+                    </td>
 
-                      {/* MikroTik Usage Status */}
-                      <td className="py-3.5 px-4">
-                        {isUsed ? (
-                          <div className="space-y-1">
-                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 inline-flex items-center gap-1">
-                              <Wifi className="w-3 h-3 text-emerald-400" />
-                              {b.usage_label}
-                            </span>
-                            {b.first_login_at && (
-                              <p className="text-[10px] text-slate-400">
-                                Login pertama: <strong className="text-slate-200">{b.first_login_at}</strong>
-                              </p>
-                            )}
-                            {b.mac_address && (
-                              <p className="text-[10px] text-slate-400 font-mono">
-                                MAC HP: <strong className="text-slate-300">{b.mac_address}</strong>
-                              </p>
-                            )}
-                            {b.ip_address && (
-                              <p className="text-[10px] text-slate-400 font-mono">
-                                IP: {b.ip_address}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-0.5">
-                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 inline-flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-amber-400" />
-                              Belum Dipakai (Siap Login)
-                            </span>
-                            <p className="text-[10px] text-slate-500">
-                              Voucher belum pernah diinput login ke hotspot MikroTik
-                            </p>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    <td className="py-2 px-3">
+                      {b.usage_status === 'active' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Aktif di WiFi
+                        </span>
+                      )}
+                      {b.usage_status === 'unused' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                          Belum Dipakai
+                        </span>
+                      )}
+                      {b.usage_status === 'expired' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">
+                          Expired
+                        </span>
+                      )}
+                      {b.first_login_at && (
+                        <div className="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                          <Clock size={10} />
+                          Login: {new Date(b.first_login_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+
+      {/* Modal Add / Edit Flash Sale - Compact & Desktop Friendly */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl my-auto">
+            {/* Modal Header */}
+            <div className="px-4 py-3 bg-gradient-to-r from-rose-950/70 via-slate-900 to-slate-900 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <Flame size={17} />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    {editingId ? 'Edit Paket Flash Sale' : 'Buat Paket Promo Flash Sale Baru'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Konfigurasi diskon, target paket, dan timer countdown
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleSavePromo} className="p-4 space-y-3">
+              {modalError && (
+                <div className="p-2.5 bg-rose-950/50 border border-rose-800 text-rose-300 rounded-lg text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-12 gap-2.5">
+                {/* Judul Promo */}
+                <div className="col-span-12 sm:col-span-8 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Judul Promo *</label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData(p => ({ ...p, title: e.target.value }))}
+                    placeholder="Contoh: ⚡ Promo Hotspot Spesial"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                    required
+                  />
+                </div>
+
+                {/* Badge Label */}
+                <div className="col-span-12 sm:col-span-4 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Label Badge</label>
+                  <input
+                    type="text"
+                    value={formData.badge_label}
+                    onChange={(e) => setFormData(p => ({ ...p, badge_label: e.target.value }))}
+                    placeholder="FLASH SALE"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {/* Subtitle */}
+                <div className="col-span-12 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Deskripsi / Subtitle</label>
+                  <input
+                    type="text"
+                    value={formData.subtitle}
+                    onChange={(e) => setFormData(p => ({ ...p, subtitle: e.target.value }))}
+                    placeholder="Contoh: Dapatkan voucher hotspot dengan harga spesial sebelum kuota berakhir!"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {/* Target Paket Voucher */}
+                <div className="col-span-12 sm:col-span-7 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-semibold text-slate-300">Pilih Paket Hotspot Target *</label>
+                    <span className="text-[10px] text-emerald-400 font-mono">
+                      {availablePackages.length > 0 ? `${availablePackages.length} paket siap jual` : 'Memuat...'}
+                    </span>
+                  </div>
+                  <select
+                    value={formData.target_package_id || ''}
+                    onChange={(e) => handlePackageSelect(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="">
+                      {availablePackages.length === 0 ? '-- Memuat paket yang memiliki profil... --' : '-- Pilih Paket Hotspot (Sesuai Profil MikroTik) --'}
+                    </option>
+                    {availablePackages.map(pkg => (
+                      <option key={pkg.profile_id || pkg.id} value={pkg.profile_id || pkg.id}>
+                        {pkg.package_name || pkg.profile_name} — Rp {Number(pkg.price || 0).toLocaleString('id-ID')}{pkg.profile_name ? ` (Profile: ${pkg.profile_name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Target Router */}
+                <div className="col-span-12 sm:col-span-5 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Router MikroTik (Opsional)</label>
+                  <select
+                    value={formData.router_id || ''}
+                    onChange={(e) => setFormData(p => ({ ...p, router_id: e.target.value || null }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+                  >
+                    <option value="">Semua Router / Otomatis</option>
+                    {routers.map(r => (
+                      <option key={r.id} value={r.id}>{r.name} ({r.ip_address})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 4 Quick Metric Inputs in a neat horizontal row */}
+                {/* Harga Normal */}
+                <div className="col-span-6 sm:col-span-3 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Harga Normal (Rp)</label>
+                  <input
+                    type="number"
+                    value={formData.original_price}
+                    onChange={(e) => setFormData(p => ({ ...p, original_price: Number(e.target.value) }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  />
+                </div>
+
+                {/* Harga Promo */}
+                <div className="col-span-6 sm:col-span-3 space-y-1">
+                  <label className="text-[11px] font-semibold text-rose-400">Harga Promo (Rp) *</label>
+                  <input
+                    type="number"
+                    value={formData.promo_price}
+                    onChange={(e) => setFormData(p => ({ ...p, promo_price: Number(e.target.value) }))}
+                    className="w-full bg-slate-950 border border-rose-800/80 rounded-lg px-2.5 py-1.5 text-xs text-rose-300 focus:outline-none focus:border-rose-500 font-mono font-bold"
+                    required
+                  />
+                </div>
+
+                {/* Kuota Limit */}
+                <div className="col-span-6 sm:col-span-3 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Batas Kuota Total</label>
+                  <input
+                    type="number"
+                    value={formData.quota_limit}
+                    onChange={(e) => setFormData(p => ({ ...p, quota_limit: Number(e.target.value) }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  />
+                </div>
+
+                {/* Maks per Akun */}
+                <div className="col-span-6 sm:col-span-3 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Batas/Akun</label>
+                  <input
+                    type="number"
+                    value={formData.max_per_user}
+                    onChange={(e) => setFormData(p => ({ ...p, max_per_user: Number(e.target.value) }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                  />
+                </div>
+
+                {/* Waktu Berakhir Promo (Countdown Picker with Native Trigger & Live Indonesian Preview) */}
+                <div className="col-span-12 space-y-1.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <label className="text-[11px] font-bold text-rose-300 flex items-center gap-1">
+                      <Calendar size={13} className="text-rose-400" />
+                      <span>Waktu Berakhir Promo (Countdown)</span>
+                    </label>
+                    {/* Preset Buttons */}
+                    <div className="flex items-center gap-1 text-[10px] flex-wrap">
+                      <span className="text-slate-500 text-[10px] mr-0.5">Preset:</span>
+                      <button type="button" onClick={() => applyPresetEndTime(6)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">+6 Jam</button>
+                      <button type="button" onClick={() => applyPresetEndTime(12)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">+12 Jam</button>
+                      <button type="button" onClick={() => applyPresetEndTime(24)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">+24 Jam</button>
+                      <button type="button" onClick={() => applyPresetEndTime(48)} className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">+48 Jam</button>
+                      <button type="button" onClick={applyWeekendPreset} className="px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800/60 hover:bg-rose-900 text-rose-300 cursor-pointer">Weekend</button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      ref={dateInputRef}
+                      type="datetime-local"
+                      value={formatToLocalDateTimeString(formData.end_time)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const localD = new Date(e.target.value);
+                          setFormData(p => ({ ...p, end_time: localD.toISOString() }));
+                        }
+                      }}
+                      onClick={openDatePicker}
+                      onFocus={openDatePicker}
+                      className="w-full bg-slate-900 border border-slate-700 hover:border-rose-500 focus:border-rose-500 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none font-mono cursor-pointer transition pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={openDatePicker}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-rose-400 hover:text-rose-300 p-1 rounded transition cursor-pointer"
+                      title="Buka Kalender & Waktu"
+                    >
+                      <Calendar size={14} />
+                    </button>
+                  </div>
+
+                  {/* Live Human-Readable Date Display to avoid any mistakes */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-black/40 border border-amber-500/20 px-2 py-1 rounded-md font-medium">
+                    <Clock size={12} className="text-amber-400 shrink-0" />
+                    <span className="truncate">
+                      <strong>Jadwal:</strong> {formatHumanDatePreview(formData.end_time)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Teks Tombol */}
+                <div className="col-span-12 sm:col-span-7 space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Teks Tombol Beli</label>
+                  <input
+                    type="text"
+                    value={formData.button_text}
+                    onChange={(e) => setFormData(p => ({ ...p, button_text: e.target.value }))}
+                    placeholder="Beli Promo Flash Sale"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                  />
+                </div>
+
+                {/* Status Aktif */}
+                <div className="col-span-12 sm:col-span-5 flex items-center pt-5">
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg w-full">
+                    <input
+                      type="checkbox"
+                      checked={formData.is_active}
+                      onChange={(e) => setFormData(p => ({ ...p, is_active: e.target.checked }))}
+                      className="w-3.5 h-3.5 rounded text-rose-500 focus:ring-rose-500 bg-slate-900 border-slate-700"
+                    />
+                    <span className="text-xs font-bold text-white">Status Promo Aktif</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer - Compact */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-lg text-xs transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-1.5 bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white font-bold rounded-lg text-xs shadow-md shadow-rose-500/20 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save size={13} />
+                  <span>{saving ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Buat Promo Sekarang')}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

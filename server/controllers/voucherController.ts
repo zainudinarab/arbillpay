@@ -341,7 +341,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
  * Body: { profile_id, mode ('pregenerated' | 'ondemand'), buyer_name, buyer_phone, payment_method, amount }
  */
 export async function buyVoucher(req: Request, res: Response) {
-  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount, skip_arabpay_deduction, is_flash_sale } = req.body;
+  const { profile_id, mode, buyer_name, buyer_phone, payment_method, arabpay_user_id, amount, skip_arabpay_deduction, is_flash_sale, flash_sale_id } = req.body;
 
   if (!profile_id) {
     return res.status(400).json({ success: false, message: 'Profile voucher wajib dipilih.' });
@@ -349,26 +349,38 @@ export async function buyVoucher(req: Request, res: Response) {
 
   try {
     let finalAmount = Number(amount || 0);
+    let matchedFlashSaleId: string | null = null;
+    let flashSaleTitle: string = 'FLASH SALE PROMO';
 
     // ==================== VALIDASI FLASH SALE (KUOTA & BATASAN 1 VOUCHER PER USER) ====================
-    if (is_flash_sale) {
-      const cfgRes = await pool.query("SELECT value FROM system_settings WHERE key = 'customer_portal_config'");
-      if (cfgRes.rows.length > 0) {
-        try {
-          const cfg = JSON.parse(cfgRes.rows[0].value);
-          const fs = cfg.flash_sale;
-          if (!fs || fs.enabled === false) {
+    if (is_flash_sale || flash_sale_id) {
+      try {
+        let fsRow: any = null;
+        if (flash_sale_id) {
+          const fsRes = await pool.query('SELECT * FROM flash_sales WHERE id = $1', [flash_sale_id]);
+          if (fsRes.rows.length > 0) fsRow = fsRes.rows[0];
+        } else {
+          // Cari promo aktif yang mencakup profile_id ini
+          const fsRes = await pool.query(`
+            SELECT * FROM flash_sales 
+            WHERE is_active = true AND end_time > NOW() AND (target_package_id = $1 OR target_package_id IS NULL OR target_package_id = '')
+            ORDER BY created_at DESC LIMIT 1
+          `, [profile_id]);
+          if (fsRes.rows.length > 0) fsRow = fsRes.rows[0];
+        }
+
+        if (fsRow) {
+          if (!fsRow.is_active) {
             return res.status(400).json({ success: false, message: 'Promo Flash Sale saat ini sedang tidak aktif.' });
           }
-          if (fs.end_time && new Date(fs.end_time).getTime() < Date.now()) {
+          if (fsRow.end_time && new Date(fsRow.end_time).getTime() < Date.now()) {
             return res.status(400).json({ success: false, message: 'Periode promo Flash Sale telah berakhir.' });
           }
-          if (fs.quota_limit && (fs.quota_sold || 0) >= fs.quota_limit) {
+          if (fsRow.quota_limit && (fsRow.quota_sold || 0) >= fsRow.quota_limit) {
             return res.status(400).json({ success: false, message: 'Kuota voucher promo Flash Sale telah habis terjual.' });
           }
 
-          // Batasan maksimal pembelian per akun (default: 1 user hanya boleh 1)
-          const maxPerUser = Number(fs.max_per_user || 1);
+          const maxPerUser = Number(fsRow.max_per_user || 1);
           const userPhone = buyer_phone ? String(buyer_phone).replace(/[^0-9]/g, '') : '';
           const userId = arabpay_user_id ? String(arabpay_user_id).trim() : '';
 
@@ -376,32 +388,29 @@ export async function buyVoucher(req: Request, res: Response) {
             const checkPrior = await pool.query(`
               SELECT COUNT(*)::int as cnt
               FROM invoices
-              WHERE notes LIKE '%FLASH SALE%'
+              WHERE flash_sale_id = $1
                 AND (
-                  (customer_phone IS NOT NULL AND $1 <> '' AND (customer_phone = $1 OR customer_phone LIKE '%' || $1 || '%'))
-                  OR (user_id IS NOT NULL AND $2 <> '' AND user_id = $2)
+                  (customer_phone IS NOT NULL AND $2 <> '' AND (customer_phone = $2 OR customer_phone LIKE '%' || $2 || '%'))
+                  OR (user_id IS NOT NULL AND $3 <> '' AND user_id = $3)
                 )
-            `, [userPhone, userId]);
+            `, [fsRow.id, userPhone, userId]);
 
             if ((checkPrior.rows[0]?.cnt || 0) >= maxPerUser) {
               return res.status(400).json({
                 success: false,
-                message: `⚠️ Batasan promo: Setiap akun hanya boleh membeli maksimal ${maxPerUser} voucher promo Flash Sale! Kuota akun Anda sudah digunakan.`
+                message: `⚠️ Batasan promo: Setiap akun hanya boleh membeli maksimal ${maxPerUser} voucher pada promo "${fsRow.title}". Kuota akun Anda sudah digunakan.`
               });
             }
           }
 
-          // Terapkan harga promo yang sah dari server (mencegah manipulasi harga)
-          if (fs.promo_price && fs.promo_price > 0) {
-            finalAmount = Number(fs.promo_price);
+          if (fsRow.promo_price && Number(fsRow.promo_price) > 0) {
+            finalAmount = Number(fsRow.promo_price);
           }
-
-          // Tambah counter kuota terjual
-          fs.quota_sold = (fs.quota_sold || 0) + 1;
-          await pool.query("UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = 'customer_portal_config'", [JSON.stringify(cfg)]).catch(() => {});
-        } catch (e: any) {
-          console.warn('Flash sale validation warning:', e?.message);
+          matchedFlashSaleId = fsRow.id;
+          flashSaleTitle = fsRow.title || 'FLASH SALE';
         }
+      } catch (e: any) {
+        console.warn('Flash sale validation warning:', e?.message);
       }
     }
 
@@ -633,10 +642,10 @@ export async function buyVoucher(req: Request, res: Response) {
     await pool.query(`
       INSERT INTO invoices (
         id, invoice_number, customer_id, user_id, customer_name, customer_phone, 
-        connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, voucher_id, voucher_code, created_at
+        connection_type, package_name, amount, total, status, issue_date, due_date, payment_method, notes, paid_at, voucher_id, voucher_code, flash_sale_id, created_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, 
-        'hotspot_voucher', $7, $8, $8, 'paid', CURRENT_DATE, CURRENT_DATE, $9, $10, NOW(), $11, $12, NOW()
+        'hotspot_voucher', $7, $8, $8, 'paid', CURRENT_DATE, CURRENT_DATE, $9, $10, NOW(), $11, $12, $13, NOW()
       )
     `, [
       invoiceId,
@@ -648,12 +657,22 @@ export async function buyVoucher(req: Request, res: Response) {
       targetProfileName || 'Voucher Hotspot',
       finalAmount || 0,
       payment_method || 'ArabPay E-Wallet',
-      is_flash_sale
-        ? `Pembelian Voucher Hotspot (⚡ FLASH SALE PROMO) - Kode: ${voucherCode}`
+      (is_flash_sale || matchedFlashSaleId)
+        ? `Pembelian Voucher Hotspot (⚡ ${flashSaleTitle}) - Kode: ${voucherCode}`
         : `Pembelian Voucher Hotspot (${isFromPreGenerated ? 'Stok Diskon' : 'Instant On-Demand'}) - Kode: ${voucherCode}`,
       voucherId,
-      voucherCode
+      voucherCode,
+      matchedFlashSaleId
     ]);
+
+    // Tambah kuota terjual di tabel flash_sales hanya jika transaksi invoice berhasil disimpan
+    if (matchedFlashSaleId) {
+      try {
+        await pool.query('UPDATE flash_sales SET quota_sold = quota_sold + 1, updated_at = NOW() WHERE id = $1', [matchedFlashSaleId]);
+      } catch (fsUpErr) {
+        console.warn('Gagal menambah quota_sold flash sale:', fsUpErr);
+      }
+    }
 
     // Cari hotspot_ip dan dns_name router terkait
     let targetHotspotIp = '10.0.0.1';
@@ -728,7 +747,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         COALESCE(r.dns_name, 'arab.net') as dns_name,
         COALESCE(i.amount, p.price, 0)::int as price,
         COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel,
-        i.notes as invoice_notes
+        i.notes as invoice_notes,
+        i.flash_sale_id
       FROM hotspot_vouchers v
       LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
       LEFT JOIN routers r ON (v.router_id = r.id OR rp.router_id = r.id)
@@ -763,7 +783,8 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         first_login_at: row.first_login_at,
         expired_at: row.expired_at,
         paymentChannel: row.payment_channel,
-        is_flash_sale: Boolean((row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
+        flash_sale_id: row.flash_sale_id || null,
+        is_flash_sale: Boolean(row.flash_sale_id || (row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
       };
     });
 
@@ -1284,10 +1305,7 @@ export async function getFlashSaleBuyers(req: Request, res: Response) {
         OR i.invoice_number = v.invoice_number
       )
       LEFT JOIN routers r ON v.router_id = r.id
-      WHERE (
-        i.notes ILIKE '%FLASH SALE%' 
-        OR (v.comment IS NOT NULL AND v.comment ILIKE '%FLASH SALE%')
-      )
+      WHERE i.flash_sale_id IS NOT NULL
       ORDER BY COALESCE(i.paid_at, i.created_at) DESC
     `);
 

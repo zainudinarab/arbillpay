@@ -175,15 +175,8 @@ export default function CustomerPortal({
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
-  // Portal Template & Layout Configuration (Loaded dynamically from Admin)
-  const [portalConfig, setPortalConfig] = useState<CustomerPortalConfig | null>(() => {
-    try {
-      const saved = localStorage.getItem('arbil_portal_config');
-      return saved ? JSON.parse(saved) : null;
-    } catch (_) {
-      return null;
-    }
-  });
+  // Portal Template & Layout Configuration (Loaded dynamically from PostgreSQL Database)
+  const [portalConfig, setPortalConfig] = useState<CustomerPortalConfig | null>(null);
 
   const defaultSections: CustomerPortalSection[] = useMemo(() => [
     { id: 'announcement', label: 'Teks Berjalan / Pengumuman', enabled: true, order: 1 },
@@ -233,12 +226,24 @@ export default function CustomerPortal({
       const data = await res.json();
       if (data.success && data.config) {
         setPortalConfig(data.config);
-        try {
-          localStorage.setItem('arbil_portal_config', JSON.stringify(data.config));
-        } catch (_) {}
       }
     } catch (err) {
       console.warn('Gagal memuat portal config:', err);
+    }
+  };
+
+  // Dedicated Multi-Flash Sale List from PostgreSQL
+  const [flashSaleList, setFlashSaleList] = useState<any[]>([]);
+
+  const fetchFlashSaleList = async () => {
+    try {
+      const res = await fetch(`/api/flash-sales?active_only=true&_t=${Date.now()}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.flash_sales)) {
+        setFlashSaleList(data.flash_sales);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat list flash sales:', err);
     }
   };
 
@@ -323,9 +328,16 @@ export default function CustomerPortal({
     return voucherGroups.filter((pkg: any) => matchesDuration(pkg, durationFilter));
   }, [voucherGroups, durationFilter]);
 
-  // --- INITIAL & LIVE AUTO-REFRESH DATA FETCHING ---
+  // --- INITIAL & LIVE REALTIME DATA (Langsung dari PostgreSQL, tanpa cache localStorage usang) ---
   useEffect(() => {
+    // Bersihkan cache usang dari localStorage agar selalu sinkron dengan database
+    try {
+      localStorage.removeItem('arbil_portal_config');
+      localStorage.removeItem('arbil_portal_config_time');
+    } catch (_) {}
+
     fetchPortalConfig();
+    fetchFlashSaleList();
     fetchCheckoutInit();
     fetchAvailableVouchers();
     fetchMonthlyMemberPackages();
@@ -333,66 +345,87 @@ export default function CustomerPortal({
 
     const handleSync = () => {
       fetchPortalConfig();
+      fetchFlashSaleList();
+      fetchAvailableVouchers();
     };
     window.addEventListener('focus', handleSync);
     window.addEventListener('storage', handleSync);
 
-    if (currentUser) {
-      fetchCustomerProfile();
+    // Auto-refresh setiap 20 detik agar kuota flash sale, promo baru, dan template langsung update otomatis
+    const autoRefreshInterval = setInterval(() => {
+      fetchPortalConfig();
+      fetchFlashSaleList();
+      fetchAvailableVouchers();
+    }, 20000);
+
+    return () => {
+      window.removeEventListener('focus', handleSync);
+      window.removeEventListener('storage', handleSync);
+      clearInterval(autoRefreshInterval);
+    };
+  }, []);
+
+  // --- USER SPECIFIC LIVE DATA (Saldo ArabPay & Riwayat Voucher) ---
+  useEffect(() => {
+    if (!currentUser) return;
+
+    fetchCustomerProfile();
+    fetchLiveArabPayBalance();
+    fetchMyPurchasedVouchers();
+
+    // 1. Auto-refresh live balance when returning to tab/window
+    const handleFocus = () => {
       fetchLiveArabPayBalance();
       fetchMyPurchasedVouchers();
+    };
+    window.addEventListener('focus', handleFocus);
 
-      // 1. Auto-refresh live balance when returning to tab/window
-      const handleFocus = () => {
-        fetchLiveArabPayBalance();
-      };
-      window.addEventListener('focus', handleFocus);
+    // 2. Realtime Polling: Refresh live balance & vouchers every 15 seconds
+    const balanceInterval = setInterval(() => {
+      fetchLiveArabPayBalance();
+      fetchMyPurchasedVouchers();
+    }, 15000);
 
-      // 2. Realtime Polling: Refresh live balance every 15 seconds
-      const balanceInterval = setInterval(() => {
-        fetchLiveArabPayBalance();
-      }, 15000);
+    // 3. Real-time Server-Sent Events (SSE) Stream Subscriber
+    let eventSource: EventSource | null = null;
+    const uId = currentUser.arabpay_user_id || currentUser.id;
+    if (uId) {
+      try {
+        const arabpayUrl = (import.meta as any).env?.VITE_ARABPAY_URL || 'https://arabpay.my.id';
+        eventSource = new EventSource(`${arabpayUrl}/api/v1/wallet/stream?user_id=${encodeURIComponent(uId)}`);
 
-      // 3. Real-time Server-Sent Events (SSE) Stream Subscriber
-      let eventSource: EventSource | null = null;
-      const uId = currentUser.arabpay_user_id || currentUser.id;
-      if (uId) {
-        try {
-          const arabpayUrl = (import.meta as any).env?.VITE_ARABPAY_URL || 'https://arabpay.my.id';
-          eventSource = new EventSource(`${arabpayUrl}/api/v1/wallet/stream?user_id=${encodeURIComponent(uId)}`);
+        eventSource.addEventListener('balance_update', (e: any) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data && data.balance !== undefined && data.balance !== null) {
+              onLoginSuccess({
+                ...currentUser,
+                arabpay_balance: Number(data.balance)
+              });
+            }
+          } catch (err) { }
+        });
 
-          eventSource.addEventListener('balance_update', (e: any) => {
-            try {
-              const data = JSON.parse(e.data);
-              if (data && data.balance !== undefined && data.balance !== null) {
-                onLoginSuccess({
-                  ...currentUser,
-                  arabpay_balance: Number(data.balance)
-                });
-              }
-            } catch (err) { }
-          });
-
-          eventSource.addEventListener('checkout_status', (e: any) => {
-            try {
-              const data = JSON.parse(e.data);
-              if (data && data.status === 'PAID') {
-                fetchAvailableVouchers();
-                fetchMyPurchasedVouchers();
-              }
-            } catch (err) { }
-          });
-        } catch (sseErr) {
-          console.warn('SSE EventSource setup warning:', sseErr);
-        }
+        eventSource.addEventListener('checkout_status', (e: any) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data && data.status === 'PAID') {
+              fetchAvailableVouchers();
+              fetchMyPurchasedVouchers();
+              fetchFlashSaleList();
+            }
+          } catch (err) { }
+        });
+      } catch (sseErr) {
+        console.warn('SSE EventSource setup warning:', sseErr);
       }
-
-      return () => {
-        window.removeEventListener('focus', handleFocus);
-        clearInterval(balanceInterval);
-        if (eventSource) eventSource.close();
-      };
     }
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(balanceInterval);
+      if (eventSource) eventSource.close();
+    };
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
 
   // Fetch purchased vouchers history directly from PostgreSQL Database
@@ -582,10 +615,14 @@ export default function CustomerPortal({
       if (fbData.success && Array.isArray(fbData.customers)) {
         setMyRegistrations(fbData.customers);
       }
-      const fbVouchers = await getPurchasedVouchersFromFirestore(targetId);
-      if (fbVouchers.success && Array.isArray(fbVouchers.vouchers)) {
-        setLocalPurchasedVouchers(fbVouchers.vouchers);
-      }
+      try {
+        if (typeof (window as any).getPurchasedVouchersFromFirestore === 'function') {
+          const fbVouchers = await (window as any).getPurchasedVouchersFromFirestore(targetId);
+          if (fbVouchers && fbVouchers.success && Array.isArray(fbVouchers.vouchers)) {
+            setLocalPurchasedVouchers(fbVouchers.vouchers);
+          }
+        }
+      } catch (_) {}
     }
 
     // 2. PostgreSQL Backend status check if backend URL is configured
@@ -970,46 +1007,62 @@ export default function CustomerPortal({
 
   const userHasClaimedFlashSale = useMemo(() => {
     if (!currentUser) return false;
-    return localPurchasedVouchers.some((v: any) => Boolean(v.is_flash_sale));
-  }, [currentUser, localPurchasedVouchers]);
+    const targetFsId = portalConfig?.flash_sale?.id || 'fs_default_initial';
+    return localPurchasedVouchers.some((v: any) => 
+      v.flash_sale_id === targetFsId || 
+      (targetFsId === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+    );
+  }, [currentUser, localPurchasedVouchers, portalConfig?.flash_sale?.id]);
 
   const fsQuotaLimit = Number(portalConfig?.flash_sale?.quota_limit) || 100;
   const fsQuotaSold = Number(portalConfig?.flash_sale?.quota_sold) || 0;
   const isFlashSaleSoldOut = fsQuotaSold >= fsQuotaLimit;
 
-  const handleBuyFlashSale = () => {
+  const handleBuyFlashSale = (promoItem?: any) => {
     if (!currentUser) {
       setShowLoginModal(true);
       return;
     }
-    if (userHasClaimedFlashSale) {
-      alert('⚠️ Anda sudah pernah mengklaim promo Flash Sale ini. Batasan promo: maksimal 1 voucher per akun!');
-      return;
-    }
-    if (isFlashSaleSoldOut) {
-      alert('⚠️ Maaf, kuota promo Flash Sale sudah habis terjual!');
+
+    const fs = promoItem || (flashSaleList.length > 0 ? flashSaleList[0] : null);
+    if (!fs) return;
+
+    const sold = Number(fs.quota_sold) || 0;
+    const limit = Number(fs.quota_limit) || 100;
+    if (sold >= limit) {
+      alert('⚠️ Maaf, kuota promo Flash Sale ini sudah habis terjual!');
       return;
     }
 
-    const fs = portalConfig?.flash_sale;
+    const maxPerUser = Number(fs.max_per_user || 1);
+    const claimedCount = localPurchasedVouchers.filter((v: any) => 
+      v.flash_sale_id === fs.id ||
+      (fs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+    ).length;
+    if (claimedCount >= maxPerUser) {
+      alert(`⚠️ Anda sudah pernah mengklaim promo Flash Sale "${fs.title}". Batasan promo: maksimal ${maxPerUser} voucher per akun!`);
+      return;
+    }
+
     const targetPkg = voucherGroups.find(
-      (g: any) => g.profile_id === fs?.target_package_id || g.id === fs?.target_package_id
+      (g: any) => g.profile_id === fs.target_package_id || g.id === fs.target_package_id
     ) || {
-      profile_id: fs?.target_package_id,
-      id: fs?.target_package_id,
-      package_name: fs?.target_package_name || 'Voucher Hotspot Flash Sale',
-      name: fs?.target_package_name || 'Voucher Hotspot Flash Sale',
+      profile_id: fs.target_package_id,
+      id: fs.target_package_id,
+      package_name: fs.target_package_name || fs.title || 'Voucher Hotspot Flash Sale',
+      name: fs.target_package_name || fs.title || 'Voucher Hotspot Flash Sale',
       rate_limit: 'High Speed Promo',
       mode: 'auto'
     };
 
-    const promoPrice = Number(fs?.promo_price) || 0;
+    const promoPrice = Number(fs.promo_price) || 0;
 
     handleBuyVoucher({
       ...targetPkg,
       price: promoPrice,
-      original_price: Number(fs?.original_price) || targetPkg.price,
-      is_flash_sale: true
+      original_price: Number(fs.original_price) || targetPkg.price,
+      is_flash_sale: true,
+      flash_sale_id: fs.id
     });
   };
 
@@ -1128,7 +1181,8 @@ export default function CustomerPortal({
           arabpay_user_id: currentUser?.id,
           payment_method: 'ArabPay QRIS Transfer',
           amount: price,
-          is_flash_sale: Boolean(selectedPackage.is_flash_sale)
+          is_flash_sale: Boolean(selectedPackage.is_flash_sale),
+          flash_sale_id: selectedPackage.flash_sale_id
         })
       });
 
@@ -1358,7 +1412,8 @@ export default function CustomerPortal({
               payment_method: 'ArabPay E-Wallet',
               amount: price,
               skip_arabpay_deduction: true,
-              is_flash_sale: Boolean(selectedPackage.is_flash_sale)
+              is_flash_sale: Boolean(selectedPackage.is_flash_sale),
+              flash_sale_id: selectedPackage.flash_sale_id
             })
           });
           const buyData = await buyRes.json().catch(() => null);
@@ -1676,137 +1731,183 @@ export default function CustomerPortal({
     );
   };
 
-  const renderFlashSaleSection = (section: CustomerPortalSection) => {
-    if (!portalConfig?.flash_sale?.enabled) return null;
+  const renderCountdownTimerBox = (targetIso: string) => {
+    const diff = new Date(targetIso).getTime() - Date.now();
+    if (diff <= 0) return <span className="text-xs text-amber-400 font-bold">Promo Berakhir</span>;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
     return (
-      <div
-        key={section.id}
-        className="p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-rose-950/95 via-slate-900 to-amber-950/90 border border-rose-500/40 text-white relative overflow-hidden shadow-2xl shadow-rose-950/30 transition-all duration-300"
-      >
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-56 h-56 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-56 h-56 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="flex items-center gap-1">
+        {days > 0 && (
+          <div className="bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-white">
+            {days}h
+          </div>
+        )}
+        <div className="bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-amber-300">
+          {String(hours).padStart(2, '0')}j
+        </div>
+        <span className="text-rose-400 font-bold font-mono text-xs">:</span>
+        <div className="bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-amber-300">
+          {String(minutes).padStart(2, '0')}m
+        </div>
+        <span className="text-rose-400 font-bold font-mono text-xs">:</span>
+        <div className="bg-black/60 border border-rose-500/30 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-rose-400 animate-pulse">
+          {String(seconds).padStart(2, '0')}d
+        </div>
+      </div>
+    );
+  };
 
-        <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-2 max-w-xl">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
-                <Flame className="w-3.5 h-3.5 animate-bounce" />
-                <span>{portalConfig.flash_sale.badge_label || 'FLASH SALE'}</span>
-              </span>
+  const renderFlashSaleSection = (section: CustomerPortalSection) => {
+    // Hanya tampilkan jika ada promo flash sale aktif di database PostgreSQL (tabel flash_sales)
+    if (!flashSaleList || flashSaleList.length === 0) {
+      return null;
+    }
 
-              {portalConfig.flash_sale.original_price && portalConfig.flash_sale.promo_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
-                  Hemat {Math.max(1, Math.round((1 - (Number(portalConfig.flash_sale.promo_price) / Number(portalConfig.flash_sale.original_price))) * 100))}%
-                </span>
-              )}
-
-              <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
-                🛡️ Maks. {portalConfig.flash_sale.max_per_user || 1}/akun
-              </span>
-            </div>
-
+    return (
+      <div key={section.id} className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-sm flex items-center justify-center">
+              <Flame size={18} className="animate-pulse text-white" />
+            </span>
             <div>
-              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-400 shrink-0" />
-                <span>{portalConfig.flash_sale.title || 'Promo Flash Sale'}</span>
-              </h3>
-              <p className="text-xs sm:text-sm text-rose-200/90 font-medium mt-0.5">
-                {portalConfig.flash_sale.target_package_name ? `Paket: ${portalConfig.flash_sale.target_package_name}` : (portalConfig.flash_sale.subtitle || 'Voucher Hotspot Pilihan')}
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
+                Promo Flash Sale WiFi Hotspot
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 uppercase">
+                  {flashSaleList.length} Promo Aktif
+                </span>
+              </h2>
+              <p className="text-[11px] text-slate-400">
+                Dapatkan diskon terbatas sebelum kuota atau durasi countdown berakhir!
               </p>
             </div>
-
-            <div className="flex items-center gap-3 flex-wrap pt-1">
-              <div className="flex items-baseline gap-2">
-                {portalConfig.flash_sale.original_price && Number(portalConfig.flash_sale.original_price) > Number(portalConfig.flash_sale.promo_price) && (
-                  <span className="text-xs text-slate-400 line-through font-mono">
-                    {formatRupiah(Number(portalConfig.flash_sale.original_price))}
-                  </span>
-                )}
-                <span className="text-xl sm:text-2xl font-black text-amber-300 font-mono">
-                  {formatRupiah(Number(portalConfig.flash_sale.promo_price || 0))}
-                </span>
-              </div>
-
-              <div className="h-3 w-px bg-slate-700 hidden sm:block" />
-
-              <div className="flex items-center gap-2 text-[11px] text-slate-300">
-                <span className="text-slate-400">Kuota:</span>
-                <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${Math.min(100, Math.round(((portalConfig.flash_sale.quota_sold || 0) / (portalConfig.flash_sale.quota_limit || 100)) * 100))}%`
-                    }}
-                  />
-                </div>
-                <span className="font-mono text-amber-300 font-bold">
-                  {portalConfig.flash_sale.quota_sold || 0}/{portalConfig.flash_sale.quota_limit || 100}
-                </span>
-                <span className="text-slate-400">
-                  ({isFlashSaleSoldOut ? 'Habis' : `Sisa ${Math.max(0, (portalConfig.flash_sale.quota_limit || 100) - (portalConfig.flash_sale.quota_sold || 0))}`})
-                </span>
-              </div>
-            </div>
           </div>
+        </div>
 
-          <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-3 shrink-0 pt-2 lg:pt-0">
-            <div className="flex items-center gap-1.5">
-              {countdown.days > 0 && (
-                <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                  <span className="text-sm font-black font-mono text-white leading-none">
-                    {String(countdown.days).padStart(2, '0')}
-                  </span>
-                  <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Hari</span>
+        <div className={`grid gap-4 ${flashSaleList.length === 1 ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+          {flashSaleList.map((fsItem: any) => {
+            const orig = Number(fsItem.original_price) || 0;
+            const promo = Number(fsItem.promo_price) || 0;
+            const sold = Number(fsItem.quota_sold) || 0;
+            const limit = Number(fsItem.quota_limit) || 50;
+            const isItemSoldOut = sold >= limit;
+            const isItemExpired = fsItem.end_time ? new Date(fsItem.end_time).getTime() < Date.now() : false;
+            const discountP = orig > promo && orig > 0 ? Math.max(1, Math.round(((orig - promo) / orig) * 100)) : 0;
+            const quotaPercent = Math.min(100, Math.round((sold / limit) * 100));
+
+            const maxPerUser = Number(fsItem.max_per_user || 1);
+            const myClaimedCount = localPurchasedVouchers.filter((v: any) => 
+              v.flash_sale_id === fsItem.id ||
+              (fsItem.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+            ).length;
+            const isClaimed = myClaimedCount >= maxPerUser;
+
+            return (
+              <div
+                key={fsItem.id}
+                className="p-5 sm:p-6 rounded-3xl bg-gradient-to-br from-rose-950/90 via-slate-900 to-amber-950/80 border border-rose-500/40 text-white relative overflow-hidden shadow-xl shadow-rose-950/20 flex flex-col justify-between"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2.5 py-0.5 bg-gradient-to-r from-rose-600 to-red-600 rounded-md text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                        <Flame className="w-3.5 h-3.5 animate-bounce" />
+                        <span>{fsItem.badge_label || 'FLASH SALE'}</span>
+                      </span>
+                      {discountP > 0 && (
+                        <span className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/30 rounded-md text-amber-300 text-[10px] font-bold">
+                          Hemat {discountP}%
+                        </span>
+                      )}
+                      <span className="text-[10px] font-medium text-slate-300 bg-black/40 border border-white/10 px-2 py-0.5 rounded-md">
+                        🛡️ Maks. {maxPerUser}/akun
+                      </span>
+                    </div>
+
+                    {renderCountdownTimerBox(fsItem.end_time)}
+                  </div>
+
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{fsItem.title}</span>
+                    </h3>
+                    <p className="text-xs text-rose-200/90 font-medium mt-0.5">
+                      {fsItem.target_package_name ? `Paket: ${fsItem.target_package_name}` : (fsItem.subtitle || 'Voucher Hotspot Promo')}
+                    </p>
+                  </div>
+
+                  {/* Price & Quota */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
+                    <div className="flex items-baseline gap-2">
+                      {orig > promo && (
+                        <span className="text-xs text-slate-400 line-through font-mono">
+                          {formatRupiah(orig)}
+                        </span>
+                      )}
+                      <span className="text-xl sm:text-2xl font-black text-amber-300 font-mono">
+                        {formatRupiah(promo)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                      <span className="text-slate-400">Kuota:</span>
+                      <div className="w-20 sm:w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-rose-500/20">
+                        <div
+                          className="h-full bg-gradient-to-r from-amber-500 to-rose-500 rounded-full transition-all duration-500"
+                          style={{ width: `${quotaPercent}%` }}
+                        />
+                      </div>
+                      <span className="font-mono text-amber-300 font-bold">
+                        {sold}/{limit}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              )}
-              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                <span className="text-sm font-black font-mono text-amber-300 leading-none">
-                  {String(countdown.hours).padStart(2, '0')}
-                </span>
-                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Jam</span>
-              </div>
-              <span className="text-rose-400 font-bold font-mono">:</span>
-              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                <span className="text-sm font-black font-mono text-amber-300 leading-none">
-                  {String(countdown.minutes).padStart(2, '0')}
-                </span>
-                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Mnt</span>
-              </div>
-              <span className="text-rose-400 font-bold font-mono">:</span>
-              <div className="flex flex-col items-center bg-black/60 border border-rose-500/30 px-2 py-1 rounded-xl min-w-[36px]">
-                <span className="text-sm font-black font-mono text-rose-400 leading-none animate-pulse">
-                  {String(countdown.seconds).padStart(2, '0')}
-                </span>
-                <span className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Dtk</span>
-              </div>
-            </div>
 
-            {userHasClaimedFlashSale ? (
-              <button
-                disabled
-                className="px-5 py-2.5 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
-              >
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>Sudah Diklaim (Maks. 1)</span>
-              </button>
-            ) : isFlashSaleSoldOut ? (
-              <button
-                disabled
-                className="px-5 py-2.5 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
-              >
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>Kuota Promo Habis</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleBuyFlashSale}
-                className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-600/30 flex items-center gap-2 transition cursor-pointer"
-              >
-                <Flame className="w-4 h-4" />
-                <span>{portalConfig.flash_sale.button_text || 'Beli Promo Flash Sale'}</span>
-              </button>
-            )}
-          </div>
+                {/* Buy Button */}
+                <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-end">
+                  {isClaimed ? (
+                    <button
+                      disabled
+                      className="w-full sm:w-auto px-4 py-2 bg-slate-800/90 border border-emerald-500/40 text-emerald-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed opacity-90 shadow-sm"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Sudah Diklaim ({maxPerUser}x)</span>
+                    </button>
+                  ) : isItemSoldOut ? (
+                    <button
+                      disabled
+                      className="w-full sm:w-auto px-4 py-2 bg-slate-800/90 border border-rose-500/30 text-rose-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
+                    >
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>Kuota Habis</span>
+                    </button>
+                  ) : isItemExpired ? (
+                    <button
+                      disabled
+                      className="w-full sm:w-auto px-4 py-2 bg-slate-800/90 border border-slate-700 text-slate-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed opacity-80 shadow-sm"
+                    >
+                      <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span>Promo Berakhir</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleBuyFlashSale(fsItem)}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-rose-600/30 flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Flame className="w-4 h-4" />
+                      <span>{fsItem.button_text || 'Beli Promo Flash Sale'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -2739,14 +2840,21 @@ export default function CustomerPortal({
                   const validityDisplay = formatValidityDisplay(pkg.validity_iso, pkg.validity_value, pkg.validity_unit);
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
-                  const isTargetFlashSale = Boolean(
-                    portalConfig?.flash_sale?.enabled &&
-                    portalConfig.flash_sale.target_package_id &&
-                    (pkg.profile_id === portalConfig.flash_sale.target_package_id || pkg.id === portalConfig.flash_sale.target_package_id)
-                  );
-                  const fsPromoPrice = Number(portalConfig?.flash_sale?.promo_price || 0);
-                  const fsOrigPrice = Number(portalConfig?.flash_sale?.original_price || price);
-                  const canBuyFlashSale = isTargetFlashSale && !userHasClaimedFlashSale && !isFlashSaleSoldOut;
+                  const matchingFs = flashSaleList.find((fs: any) =>
+                    fs.is_active && !fs.is_expired && (fs.target_package_id === pkg.profile_id || fs.target_package_id === pkg.id)
+                  ) || null;
+
+                  const isTargetFlashSale = Boolean(matchingFs);
+                  const fsPromoPrice = Number(matchingFs?.promo_price || 0);
+                  const fsOrigPrice = Number(matchingFs?.original_price || price);
+                  const isMatchingFsSoldOut = matchingFs ? (Number(matchingFs.quota_sold || 0) >= Number(matchingFs.quota_limit || 100)) : false;
+                  const isMatchingFsClaimed = matchingFs ? (
+                    localPurchasedVouchers.filter((v: any) => 
+                      v.flash_sale_id === matchingFs.id ||
+                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+                    ).length >= Number(matchingFs.max_per_user || 1)
+                  ) : false;
+                  const canBuyFlashSale = isTargetFlashSale && !isMatchingFsClaimed && !isMatchingFsSoldOut;
 
                   return (
                     <div
@@ -2821,8 +2929,8 @@ export default function CustomerPortal({
                           <p className={`text-lg sm:text-xl font-black font-mono leading-tight mt-0.5 ${canBuyFlashSale ? 'text-amber-300' : 'text-emerald-400'}`}>
                             {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
                           </p>
-                          {isTargetFlashSale && userHasClaimedFlashSale && (
-                            <span className="text-[9px] text-slate-400 block sm:text-right mt-0.5">Maks. 1 promo sudah diklaim</span>
+                          {isTargetFlashSale && isMatchingFsClaimed && (
+                            <span className="text-[9px] text-slate-400 block sm:text-right mt-0.5">Maks. promo sudah diklaim</span>
                           )}
                         </div>
 
@@ -2842,7 +2950,7 @@ export default function CustomerPortal({
 
                           {canBuyFlashSale ? (
                             <button
-                              onClick={handleBuyFlashSale}
+                              onClick={() => handleBuyFlashSale(matchingFs)}
                               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-md shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
                             >
                               <Flame className="w-4 h-4" />
@@ -2876,14 +2984,21 @@ export default function CustomerPortal({
                   const validityDisplay = formatValidityDisplay(pkg.validity_iso, pkg.validity_value, pkg.validity_unit);
                   const color = pkg.color || (idx % 6 === 0 ? 'cyan' : idx % 6 === 1 ? 'blue' : idx % 6 === 2 ? 'violet' : idx % 6 === 3 ? 'indigo' : idx % 6 === 4 ? 'emerald' : 'amber');
 
-                  const isTargetFlashSale = Boolean(
-                    portalConfig?.flash_sale?.enabled &&
-                    portalConfig.flash_sale.target_package_id &&
-                    (pkg.profile_id === portalConfig.flash_sale.target_package_id || pkg.id === portalConfig.flash_sale.target_package_id)
-                  );
-                  const fsPromoPrice = Number(portalConfig?.flash_sale?.promo_price || 0);
-                  const fsOrigPrice = Number(portalConfig?.flash_sale?.original_price || price);
-                  const canBuyFlashSale = isTargetFlashSale && !userHasClaimedFlashSale && !isFlashSaleSoldOut;
+                  const matchingFs = flashSaleList.find((fs: any) =>
+                    fs.is_active && !fs.is_expired && (fs.target_package_id === pkg.profile_id || fs.target_package_id === pkg.id)
+                  ) || null;
+
+                  const isTargetFlashSale = Boolean(matchingFs);
+                  const fsPromoPrice = Number(matchingFs?.promo_price || 0);
+                  const fsOrigPrice = Number(matchingFs?.original_price || price);
+                  const isMatchingFsSoldOut = matchingFs ? (Number(matchingFs.quota_sold || 0) >= Number(matchingFs.quota_limit || 100)) : false;
+                  const isMatchingFsClaimed = matchingFs ? (
+                    localPurchasedVouchers.filter((v: any) => 
+                      v.flash_sale_id === matchingFs.id ||
+                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+                    ).length >= Number(matchingFs.max_per_user || 1)
+                  ) : false;
+                  const canBuyFlashSale = isTargetFlashSale && !isMatchingFsClaimed && !isMatchingFsSoldOut;
 
                   return (
                     <div
@@ -2999,8 +3114,8 @@ export default function CustomerPortal({
                                 {canBuyFlashSale ? formatRupiah(fsPromoPrice) : price === 0 ? 'GRATIS' : formatRupiah(price)}
                               </p>
                             </div>
-                            {isTargetFlashSale && userHasClaimedFlashSale && (
-                              <p className="text-[8px] text-slate-400 truncate mt-0.5">Maks. 1 promo dipakai</p>
+                            {isTargetFlashSale && isMatchingFsClaimed && (
+                              <p className="text-[8px] text-slate-400 truncate mt-0.5">Maks. promo sudah diklaim</p>
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
@@ -3025,7 +3140,7 @@ export default function CustomerPortal({
                             </button>
                             {canBuyFlashSale ? (
                               <button
-                                onClick={handleBuyFlashSale}
+                                onClick={() => handleBuyFlashSale(matchingFs)}
                                 className="flex items-center justify-center gap-1 rounded-xl font-bold transition-all duration-200 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-sm shadow-rose-500/30 cursor-pointer active:scale-95 shrink-0 animate-pulse px-2 py-1.5 text-[11px]"
                               >
                                 <Flame className="w-3 h-3" />
