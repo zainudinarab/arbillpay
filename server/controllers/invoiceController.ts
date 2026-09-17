@@ -30,7 +30,7 @@ export async function createManualInvoice(req: Request, res: Response) {
 
   try {
     const custRes = await pool.query(`
-      SELECT c.*, p.name as package_name, p.price as package_price, p.validity_iso
+      SELECT c.*, p.name as package_name, COALESCE(c.custom_price, p.price, 0) as package_price, p.validity_iso
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE c.id = $1
@@ -121,7 +121,7 @@ export async function createBatchInvoices(req: Request, res: Response) {
 
   try {
     let queryStr = `
-      SELECT c.*, COALESCE(p.name, 'Paket Internet') as package_name, COALESCE(p.price, 0) as package_price
+      SELECT c.*, COALESCE(p.name, 'Paket Internet') as package_name, COALESCE(c.custom_price, p.price, 0) as package_price
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE (c.status = 'active' OR c.status = 'isolated' OR c.status IS NULL)

@@ -373,7 +373,16 @@ export default function CustomerDetailView({
             </div>
             <div className="text-xs text-slate-300 border-t border-white/10 pt-2 flex items-center justify-between">
               <span>Tarif Bulanan</span>
-              <span className="font-black text-white">{formatRupiah(customer.package_price)}</span>
+              <div className="text-right">
+                <div className="font-black text-white">
+                  {formatRupiah(customer.custom_price || customer.package_price)}
+                </div>
+                {customer.custom_price && (
+                  <div className="text-[10px] text-emerald-300 font-bold flex items-center justify-end gap-1">
+                    <span>🔒 Tarif Terkunci</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

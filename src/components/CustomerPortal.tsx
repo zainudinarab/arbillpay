@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { UserAccount, CustomerPortalConfig, CustomerPortalSection } from '../types';
 import {
   Wifi, Zap, Clock, Shield, ShoppingCart, Wallet, X,
@@ -159,6 +159,8 @@ export default function CustomerPortal({
   const [checkoutId, setCheckoutId] = useState('');
   const [directCheckoutInfo, setDirectCheckoutInfo] = useState<any>(null);
   const [voucherResult, setVoucherResult] = useState<{ code: string; password: string; invoice: string; hotspot_ip?: string; dns_name?: string } | null>(null);
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestName, setGuestName] = useState('');
 
   // Status Check State for History
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -172,7 +174,13 @@ export default function CustomerPortal({
   const [topupError, setTopupError] = useState('');
   const [paymentChannels, setPaymentChannels] = useState<any[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
-  const [selectedChannel, setSelectedChannel] = useState<any>(null);
+  const [selectedChannel, setSelectedChannel] = useState<any>({
+    id: 'qris',
+    code: 'qris',
+    name: 'QRIS Instant',
+    category: 'ewallet',
+    fee_percent: 0.7
+  });
   const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   // Portal Template & Layout Configuration (Loaded dynamically from PostgreSQL Database)
@@ -973,15 +981,51 @@ export default function CustomerPortal({
 
   // --- VOUCHER PURCHASE FLOW (Persis arbiljs Vouchers.vue) ---
   const handleBuyVoucher = (pkg: any) => {
-    if (!currentUser) {
-      setShowLoginModal(true);
-      return;
+    let finalPkg = { ...pkg };
+
+    if (pkg.promo_claimed_notice) {
+      finalPkg.is_flash_sale = false;
+      finalPkg.flash_sale_id = null;
+      finalPkg.flash_sale = null;
+      finalPkg.price = Number(pkg.original_price || pkg.price);
+      finalPkg.promo_claimed_notice = pkg.promo_claimed_notice;
+    } else {
+      // Cek apakah user sudah pernah mengklaim promo flash sale untuk paket ini
+      const isPromoClaimed = Boolean(currentUser && localPurchasedVouchers.some((v: any) => 
+        (pkg.flash_sale?.id && v.flash_sale_id === pkg.flash_sale.id) ||
+        (pkg.flash_sale_id && v.flash_sale_id === pkg.flash_sale_id) ||
+        (v.is_flash_sale && (
+          (v.packageName && (v.packageName === (pkg.package_name || pkg.name) || (pkg.package_name && v.packageName.includes(pkg.package_name)))) ||
+          (v.package_name && (v.package_name === (pkg.package_name || pkg.name) || (pkg.package_name && v.package_name.includes(pkg.package_name))))
+        ))
+      ));
+
+      const isPromoSoldOut = Boolean(pkg.flash_sale && (
+        Number(pkg.flash_sale.quota_sold || 0) >= Number(pkg.flash_sale.quota_limit || 100)
+      ));
+
+      // Jika kuota promo akun sudah habis atau kuota promo flash sale habis atau pembelian reguler:
+      // WAJIB reset is_flash_sale = false dan gunakan harga normal!
+      if (isPromoClaimed || isPromoSoldOut || !pkg.is_flash_sale) {
+        finalPkg = {
+          ...pkg,
+          is_flash_sale: false,
+          flash_sale_id: null,
+          flash_sale: null,
+          price: Number(pkg.original_price || pkg.price),
+          promo_claimed_notice: isPromoClaimed 
+            ? 'Jatah promo Anda untuk voucher ini telah habis (Maks. 1 per akun). Pembelian dialihkan ke tarif normal.' 
+            : (isPromoSoldOut ? 'Kuota promo Flash Sale telah habis terjual. Pembelian dialihkan ke tarif normal.' : null)
+        };
+      }
     }
-    setSelectedPackage(pkg);
+
+    setSelectedPackage(finalPkg);
     setPaymentStep('confirm');
     setPinCode('');
     setPinError('');
-    setPaymentMethod('balance');
+    // Jika sudah login ArabPay, default bayar pakai Saldo; jika belum login (tamu WiFi), default Bayar Langsung (QRIS / VA)
+    setPaymentMethod(currentUser ? 'balance' : 'direct');
     fetchCheckoutInit();
     setShowPaymentModal(true);
   };
@@ -1018,61 +1062,233 @@ export default function CustomerPortal({
   const fsQuotaSold = Number(portalConfig?.flash_sale?.quota_sold) || 0;
   const isFlashSaleSoldOut = fsQuotaSold >= fsQuotaLimit;
 
-  const handleBuyFlashSale = (promoItem?: any) => {
-    if (!currentUser) {
-      setShowLoginModal(true);
-      return;
-    }
-
+  const handleBuyFlashSale = async (promoItem?: any) => {
     const fs = promoItem || (flashSaleList.length > 0 ? flashSaleList[0] : null);
     if (!fs) return;
 
+    const urlPkgId = getUrlParam('buy_package_id') || getUrlParam('package_id');
+    let targetPkg = voucherGroups.find(
+      (g: any) => (urlPkgId && (g.profile_id === urlPkgId || g.package_id === urlPkgId || g.id === urlPkgId)) ||
+                  g.profile_id === fs.target_package_id || g.package_id === fs.target_package_id || g.id === fs.target_package_id
+    );
+
+    if (!targetPkg) {
+      targetPkg = {
+        profile_id: fs.target_package_id || urlPkgId,
+        id: fs.target_package_id || urlPkgId,
+        package_name: fs.target_package_name || fs.title || 'Voucher Hotspot',
+        name: fs.target_package_name || fs.title || 'Voucher Hotspot',
+        rate_limit: 'High Speed Promo',
+        mode: 'auto',
+        price: Number(fs.original_price || 5000)
+      };
+    }
+
+    const origPrice = Number(fs.original_price || targetPkg.price || 5000);
+    const promoPrice = Number(fs.promo_price || origPrice);
     const sold = Number(fs.quota_sold) || 0;
     const limit = Number(fs.quota_limit) || 100;
-    if (sold >= limit) {
-      alert('⚠️ Maaf, kuota promo Flash Sale ini sudah habis terjual!');
-      return;
+    const isSoldOut = sold >= limit;
+
+    // Pastikan riwayat pembelian user sudah termuat (ambil langsung via API jika state masih kosong)
+    let userVouchers = localPurchasedVouchers;
+    if (currentUser && (!userVouchers || userVouchers.length === 0)) {
+      try {
+        const uId = currentUser.phone_number || currentUser.arabpay_user_id || currentUser.id;
+        const phone = currentUser.phone_number || '';
+        const apiUrl = getApiUrl();
+        if (apiUrl && (uId || phone)) {
+          const res = await fetch(`${apiUrl}/api/vouchers/my-vouchers?user_id=${encodeURIComponent(uId || '')}&phone=${encodeURIComponent(phone)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.vouchers)) {
+              userVouchers = data.vouchers;
+              setLocalPurchasedVouchers(data.vouchers);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to pre-fetch my vouchers for quota check:', err);
+      }
     }
 
     const maxPerUser = Number(fs.max_per_user || 1);
-    const claimedCount = localPurchasedVouchers.filter((v: any) => 
-      v.flash_sale_id === fs.id ||
-      (fs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
-    ).length;
-    if (claimedCount >= maxPerUser) {
-      alert(`⚠️ Anda sudah pernah mengklaim promo Flash Sale "${fs.title}". Batasan promo: maksimal ${maxPerUser} voucher per akun!`);
+    let isUserClaimed = false;
+    if (currentUser && userVouchers && userVouchers.length > 0) {
+      const claimedCount = userVouchers.filter((v: any) => {
+        if (v.flash_sale_id && String(v.flash_sale_id) === String(fs.id)) return true;
+        if (fs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale)) return true;
+        const vName = (v.packageName || v.package_name || v.name || '').toLowerCase().trim();
+        const targetName = (fs.target_package_name || targetPkg.package_name || targetPkg.name || fs.title || '').toLowerCase().trim();
+        if (Boolean(v.is_flash_sale) && vName && targetName && (vName === targetName || vName.includes(targetName) || targetName.includes(vName))) {
+          return true;
+        }
+        return false;
+      }).length;
+      isUserClaimed = claimedCount >= maxPerUser;
+    }
+
+    // JIKA JATAH PROMO HABIS ATAU FLASH SALE SUDAH SOLD OUT:
+    // Otomatis beralih ke tarif normal & beri tahu di modal secara jelas
+    if (isUserClaimed || isSoldOut) {
+      const noticeText = isUserClaimed
+        ? `Jatah promo Anda untuk voucher ini telah habis (Maks. ${maxPerUser} per akun). Pembelian dialihkan ke tarif normal.`
+        : 'Kuota promo Flash Sale telah habis terjual. Pembelian dialihkan ke tarif normal.';
+
+      handleBuyVoucher({
+        ...targetPkg,
+        is_flash_sale: false,
+        flash_sale_id: null,
+        flash_sale: null,
+        price: origPrice,
+        original_price: origPrice,
+        promo_claimed_notice: noticeText
+      });
       return;
     }
 
-    const targetPkg = voucherGroups.find(
-      (g: any) => g.profile_id === fs.target_package_id || g.id === fs.target_package_id
-    ) || {
-      profile_id: fs.target_package_id,
-      id: fs.target_package_id,
-      package_name: fs.target_package_name || fs.title || 'Voucher Hotspot Flash Sale',
-      name: fs.target_package_name || fs.title || 'Voucher Hotspot Flash Sale',
-      rate_limit: 'High Speed Promo',
-      mode: 'auto'
-    };
-
-    const promoPrice = Number(fs.promo_price) || 0;
-
+    // Masih punya jatah promo:
     handleBuyVoucher({
       ...targetPkg,
       price: promoPrice,
-      original_price: Number(fs.original_price) || targetPkg.price,
+      original_price: origPrice,
       is_flash_sale: true,
-      flash_sale_id: fs.id
+      flash_sale_id: fs.id,
+      promo_claimed_notice: null
     });
   };
 
+  // --- DEEP LINKING URL PARAMETER LISTENER (MikroTik -> ArbilBaru Konfirmasi Pembelian) ---
+  const getUrlParam = (key: string): string | null => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const val = searchParams.get(key);
+      if (val) return val;
+
+      if (window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        const hashParams = new URLSearchParams(hashQuery);
+        return hashParams.get(key);
+      }
+    } catch (_) {}
+    return null;
+  };
+
+  // Membersihkan parameter URL agar tidak memicu modal terbuka kembali setelah selesai beli atau reload
+  const cleanUrlDeepLink = () => {
+    try {
+      const hash = window.location.hash || '#/portal';
+      const cleanHash = hash.split('?')[0] || '#/portal';
+      const cleanUrl = window.location.pathname + cleanHash;
+      window.history.replaceState(null, '', cleanUrl);
+    } catch (_) {}
+  };
+
+  const handleClosePaymentModal = () => {
+    setShowPaymentModal(false);
+    setPaymentStep('confirm');
+    setSelectedPackage(null);
+    cleanUrlDeepLink();
+  };
+
+  const deepLinkProcessedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const checkDeepLink = async () => {
+      const targetPkgId = getUrlParam('buy_package_id') || getUrlParam('package_id') || getUrlParam('buy') || getUrlParam('profile_id');
+      const targetFsId = getUrlParam('flash_sale_id') || getUrlParam('fs_id');
+      const targetName = getUrlParam('buy_name') || getUrlParam('name');
+
+      if (!targetPkgId && !targetFsId && !targetName) return;
+
+      const currentQueryKey = window.location.hash + window.location.search;
+      if (deepLinkProcessedRef.current === currentQueryKey && showPaymentModal) return;
+
+      // 1. Jika ada flash sale yang dituju dan data flash sale sudah termuat
+      if (targetFsId && flashSaleList.length > 0) {
+        const matchedFs = flashSaleList.find((fs: any) => 
+          String(fs.id) === String(targetFsId) || 
+          String(fs.target_package_id) === String(targetFsId)
+        );
+        if (matchedFs) {
+          deepLinkProcessedRef.current = currentQueryKey;
+          cleanUrlDeepLink();
+          await handleBuyFlashSale(matchedFs);
+          return;
+        }
+      }
+
+      // 2. Jika paket voucher reguler sudah termuat di voucherGroups
+      if (voucherGroups.length > 0) {
+        let matchedPkg = null;
+        if (targetPkgId) {
+          matchedPkg = voucherGroups.find((g: any) => 
+            String(g.package_id) === String(targetPkgId) || 
+            String(g.profile_id) === String(targetPkgId) || 
+            String(g.id) === String(targetPkgId)
+          );
+        }
+        if (!matchedPkg && targetName) {
+          const decodedName = decodeURIComponent(targetName).toLowerCase().trim();
+          matchedPkg = voucherGroups.find((g: any) => {
+            const pName = (g.package_name || g.name || '').toLowerCase().trim();
+            return pName === decodedName || pName.includes(decodedName) || decodedName.includes(pName);
+          });
+        }
+
+        if (matchedPkg) {
+          deepLinkProcessedRef.current = currentQueryKey;
+          cleanUrlDeepLink();
+          handleBuyVoucher(matchedPkg);
+          return;
+        }
+      }
+
+      // 3. Jika voucherGroups belum termuat atau kosong, gunakan parameter langsung dari URL
+      const priceParam = getUrlParam('price');
+      if ((targetPkgId || targetName) && priceParam && !voucherLoading) {
+        deepLinkProcessedRef.current = currentQueryKey;
+        cleanUrlDeepLink();
+        handleBuyVoucher({
+          profile_id: targetPkgId || 'pkg-instant',
+          id: targetPkgId || 'pkg-instant',
+          package_name: targetName ? decodeURIComponent(targetName) : 'Voucher Hotspot',
+          price: Number(priceParam) || 2000,
+          rate_limit: getUrlParam('speed') || 'High Speed',
+          duration: getUrlParam('duration') || '3 Jam',
+          mode: 'auto'
+        });
+      }
+    };
+
+    checkDeepLink();
+    window.addEventListener('hashchange', checkDeepLink);
+    window.addEventListener('popstate', checkDeepLink);
+    return () => {
+      window.removeEventListener('hashchange', checkDeepLink);
+      window.removeEventListener('popstate', checkDeepLink);
+    };
+  }, [voucherGroups, flashSaleList, voucherLoading, currentUser, localPurchasedVouchers]);
+
   const handleProceedPayment = async () => {
     if (paymentMethod === 'balance') {
+      if (!currentUser) {
+        setShowLoginModal(true);
+        return;
+      }
       const price = Number(selectedPackage?.price || 0);
-      const balance = currentUser?.arabpay_balance ?? 150000;
+      const balance = currentUser?.arabpay_balance ?? 0;
 
       if (price > 0 && balance < price) {
         alert(`⚠️ Saldo ArabPay Anda (${formatRupiah(balance)}) tidak mencukupi untuk paket ${formatRupiah(price)}.\n\nSilakan pilih metode Transfer QRIS/VA atau lakukan Top-Up Saldo ArabPay.`);
+        return;
+      }
+    }
+
+    if (paymentMethod === 'direct' && !currentUser) {
+      const cleanPhone = guestPhone.replace(/\D/g, '');
+      if (!cleanPhone || cleanPhone.length < 9) {
+        alert('⚠️ Silakan masukkan nomor WhatsApp yang valid (contoh: 081234567890) untuk menerima informasi kode voucher Anda.');
         return;
       }
     }
@@ -1084,6 +1300,8 @@ export default function CustomerPortal({
     try {
       const invoiceCode = 'VCH-' + Date.now().toString(36).toUpperCase();
       const price = Number(selectedPackage?.price || 0);
+      const buyerPhone = currentUser?.phone_number || guestPhone || '081234567890';
+      const buyerName = currentUser?.name || guestName || `Pelanggan WiFi (${buyerPhone.slice(-4)})`;
 
       const checkoutRes = await fetch(`${apiUrl}/api/invoices/checkouts`, {
         method: 'POST',
@@ -1093,9 +1311,9 @@ export default function CustomerPortal({
           reference_id: invoiceCode,
           payment_method: paymentMethod === 'direct' ? 'arabpay_direct' : 'arabpay',
           payment_channel: (paymentMethod === 'direct' && selectedChannel) ? (selectedChannel.id || selectedChannel.code) : null,
-          customer_name: currentUser?.name || 'Pelanggan Hotspot',
+          customer_name: buyerName,
           customer_email: currentUser?.email || 'user@hotspot.local',
-          customer_phone: currentUser?.phone_number || '081234567890',
+          customer_phone: buyerPhone,
           order_items: [{
             sku: selectedPackage.profile_id || selectedPackage.id,
             name: 'Voucher WiFi ' + (selectedPackage.package_name || selectedPackage.name),
@@ -1170,16 +1388,19 @@ export default function CustomerPortal({
     }
 
     try {
+      const buyerPhone = currentUser?.phone_number || guestPhone || '081234567890';
+      const buyerName = currentUser?.name || guestName || `Pelanggan WiFi (${buyerPhone.slice(-4)})`;
+
       const buyRes = await fetch(`${apiUrl}/api/vouchers/buy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           profile_id: selectedPackage.profile_id || selectedPackage.id,
           mode: selectedPackage.mode || 'auto',
-          buyer_name: currentUser?.name,
-          buyer_phone: currentUser?.phone_number,
-          arabpay_user_id: currentUser?.id,
-          payment_method: 'ArabPay QRIS Transfer',
+          buyer_name: buyerName,
+          buyer_phone: buyerPhone,
+          arabpay_user_id: currentUser?.id || null,
+          payment_method: selectedChannel ? `ArabPay ${selectedChannel.name || 'QRIS'}` : 'ArabPay QRIS Transfer',
           amount: price,
           is_flash_sale: Boolean(selectedPackage.is_flash_sale),
           flash_sale_id: selectedPackage.flash_sale_id
@@ -2851,7 +3072,8 @@ export default function CustomerPortal({
                   const isMatchingFsClaimed = matchingFs ? (
                     localPurchasedVouchers.filter((v: any) => 
                       v.flash_sale_id === matchingFs.id ||
-                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale)) ||
+                      (v.is_flash_sale && (v.package_name === (matchingFs.target_package_name || matchingFs.title) || v.name === (matchingFs.target_package_name || matchingFs.title)))
                     ).length >= Number(matchingFs.max_per_user || 1)
                   ) : false;
                   const canBuyFlashSale = isTargetFlashSale && !isMatchingFsClaimed && !isMatchingFsSoldOut;
@@ -2995,7 +3217,8 @@ export default function CustomerPortal({
                   const isMatchingFsClaimed = matchingFs ? (
                     localPurchasedVouchers.filter((v: any) => 
                       v.flash_sale_id === matchingFs.id ||
-                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale))
+                      (matchingFs.id === 'fs_default_initial' && !v.flash_sale_id && Boolean(v.is_flash_sale)) ||
+                      (v.is_flash_sale && (v.package_name === (matchingFs.target_package_name || matchingFs.title) || v.name === (matchingFs.target_package_name || matchingFs.title)))
                     ).length >= Number(matchingFs.max_per_user || 1)
                   ) : false;
                   const canBuyFlashSale = isTargetFlashSale && !isMatchingFsClaimed && !isMatchingFsSoldOut;
@@ -3769,7 +3992,7 @@ export default function CustomerPortal({
       {/* ==================== ARBILJS PAYMENT MODAL (Persis arbiljs) ==================== */}
       {showPaymentModal && selectedPackage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => paymentStep !== 'processing' && setShowPaymentModal(false)}></div>
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => paymentStep !== 'processing' && handleClosePaymentModal()}></div>
 
           <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in text-slate-100">
 
@@ -3780,7 +4003,7 @@ export default function CustomerPortal({
                   <h3 className="font-extrabold text-lg text-slate-100 flex items-center gap-2">
                     <ShoppingCart className="w-5 h-5 text-indigo-400" /> Konfirmasi Pembelian
                   </h3>
-                  <button onClick={() => setShowPaymentModal(false)} className="p-1.5 hover:bg-slate-800 rounded-lg transition cursor-pointer">
+                  <button onClick={handleClosePaymentModal} className="p-1.5 hover:bg-slate-800 rounded-lg transition cursor-pointer">
                     <X className="w-4 h-4 text-slate-400" />
                   </button>
                 </div>
@@ -3788,7 +4011,7 @@ export default function CustomerPortal({
                 <div className="p-5 space-y-5">
                   {/* Package Summary Box */}
                   <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2.5">
-                    {selectedPackage.is_flash_sale && (
+                    {selectedPackage.is_flash_sale && !selectedPackage.promo_claimed_notice && (
                       <div className="flex items-center justify-between text-xs bg-rose-500/10 border border-rose-500/30 px-3 py-1.5 rounded-xl">
                         <span className="font-bold text-rose-400 flex items-center gap-1">
                           <Flame className="w-3.5 h-3.5 text-rose-400 animate-bounce" /> PROMO FLASH SALE
@@ -3796,6 +4019,22 @@ export default function CustomerPortal({
                         <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-md">
                           Maks. 1 Per Akun
                         </span>
+                      </div>
+                    )}
+                    {selectedPackage.promo_claimed_notice && (
+                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs space-y-1">
+                        <div className="flex items-center justify-between font-bold text-amber-400">
+                          <span className="flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                            Jatah Promo Habis (Maks. 1 Per Akun)
+                          </span>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-mono font-semibold">
+                            TARIF NORMAL
+                          </span>
+                        </div>
+                        <p className="text-slate-300 text-[11px] leading-relaxed">
+                          {selectedPackage.promo_claimed_notice}
+                        </p>
                       </div>
                     )}
                     <div className="flex items-center justify-between text-sm">
@@ -3895,9 +4134,15 @@ export default function CustomerPortal({
                           </div>
 
                           {/* Saldo Aktif Badge */}
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-950/60 border border-emerald-500/30 rounded-md text-xs font-bold text-emerald-400 font-mono">
-                            <span>Saldo Aktif: {formatRupiah(currentUser?.arabpay_balance ?? 150000)}</span>
-                          </div>
+                          {currentUser ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-950/60 border border-emerald-500/30 rounded-md text-xs font-bold text-emerald-400 font-mono">
+                              <span>Saldo Aktif: {formatRupiah(currentUser?.arabpay_balance ?? 0)}</span>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-amber-950/50 border border-amber-500/30 rounded-md text-[11px] font-bold text-amber-300">
+                              <span>Masuk Akun ArabPay untuk Bayar Pakai Saldo</span>
+                            </div>
+                          )}
 
                           <p className="text-[11px] text-slate-400 leading-relaxed pt-0.5">
                             Bayar instan menggunakan saldo dompet digital ArabPay Anda.
@@ -3931,6 +4176,26 @@ export default function CustomerPortal({
                           <p className="text-[11px] text-slate-400 leading-relaxed">
                             Bayar langsung menggunakan transfer bank VA atau scan QRIS secara instant melalui perantara ArabPay.
                           </p>
+
+                          {/* Input Nomor WhatsApp Tamu (Jika Belum Login) */}
+                          {paymentMethod === 'direct' && !currentUser && (
+                            <div className="mt-2.5 p-3 bg-slate-900/90 border border-indigo-500/30 rounded-xl space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                              <label className="block text-[11px] font-bold text-slate-200 flex items-center justify-between">
+                                <span className="flex items-center gap-1">📱 Nomor WhatsApp Penerima Voucher</span>
+                                <span className="text-[10px] text-rose-400 font-bold">*Wajib</span>
+                              </label>
+                              <input
+                                type="tel"
+                                value={guestPhone}
+                                onChange={(e) => setGuestPhone(e.target.value)}
+                                placeholder="Contoh: 081234567890"
+                                className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                              />
+                              <p className="text-[10px] text-slate-400 leading-tight">
+                                Struk bayar & kode voucher WiFi akan otomatis dikirimkan ke WhatsApp Anda.
+                              </p>
+                            </div>
+                          )}
 
                           {/* Sub-pilihan Channel Pembayaran (persis arbiljs) */}
                           {paymentMethod === 'direct' && (
@@ -4153,9 +4418,7 @@ export default function CustomerPortal({
                   </div>
                   <button
                     onClick={() => {
-                      setShowPaymentModal(false);
-                      setPaymentStep('confirm');
-                      setSelectedPackage(null);
+                      handleClosePaymentModal();
                       fetchLiveMemberRegistrationsStatus();
                       fetchCustomerProfile();
                     }}
@@ -4206,8 +4469,11 @@ export default function CustomerPortal({
                       type="button"
                       onClick={() => {
                         navigator.clipboard?.writeText(voucherResult.code).catch(() => { });
-                        setShowPaymentModal(false);
-                        setActiveTab('history');
+                        handleClosePaymentModal();
+                        setActiveTab('buy');
+                        fetchMyPurchasedVouchers();
+                        setVoucherModalTab('all');
+                        setShowVoucherSayaModal(true);
                       }}
                       className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl cursor-pointer"
                     >

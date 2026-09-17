@@ -244,6 +244,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       SELECT
         rp.id as profile_id,
         rp.name as profile_name,
+        p.id as package_id,
         COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
         r.id as router_id,
         r.name as router_name,
@@ -265,7 +266,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       WHERE rp.package_id IS NOT NULL
         AND COALESCE(rp.is_active, true) = true
         AND COALESCE(p.is_active, true) = true
-      GROUP BY rp.id, rp.name, rp.rate_limit, p.speed_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
+      GROUP BY rp.id, rp.name, p.id, rp.rate_limit, p.speed_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
       ORDER BY COALESCE(p.price, 0) ASC
     `);
 
@@ -275,6 +276,7 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       SELECT
         rp.id as profile_id,
         rp.name as profile_name,
+        p.id as package_id,
         p.name as package_name,
         COALESCE(p.price, 5000)::int as price,
         COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
@@ -302,19 +304,102 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       ORDER BY p.price ASC
     `);
 
+    // 3. Ambil seluruh kampanye Flash Sale yang sedang aktif & belum habis kuotanya
+    const fsResult = await pool.query(`
+      SELECT 
+        fs.*,
+        r.name as router_name,
+        r.hotspot_ip,
+        r.dns_name
+      FROM flash_sales fs
+      LEFT JOIN routers r ON fs.router_id = r.id
+      WHERE fs.is_active = true 
+        AND fs.end_time > NOW()
+        AND (fs.start_time IS NULL OR fs.start_time <= NOW())
+        AND fs.quota_sold < fs.quota_limit
+      ORDER BY fs.created_at DESC
+    `).catch(() => ({ rows: [] }));
+    const activeFlashSales = fsResult.rows || [];
+
+    // Helper untuk mencocokkan Flash Sale ke paket
+    const attachFlashSaleInfo = (item: any) => {
+      const matchedFs = activeFlashSales.find((fs: any) => {
+        // Cek kecocokan router jika flash sale mengunci router tertentu
+        if (fs.router_id && item.router_id && fs.router_id !== item.router_id) {
+          return false;
+        }
+
+        const matchId = fs.target_package_id && (
+          fs.target_package_id === item.profile_id || 
+          fs.target_package_id === item.package_id
+        );
+
+        const matchName = fs.target_package_name && (
+          fs.target_package_name.trim().toLowerCase() === (item.package_name || '').trim().toLowerCase() ||
+          fs.target_package_name.trim().toLowerCase() === (item.profile_name || '').trim().toLowerCase()
+        );
+
+        return Boolean(matchId || matchName);
+      });
+
+      if (matchedFs) {
+        const origPrice = Number(matchedFs.original_price) || Number(item.price);
+        const promoPrice = Number(matchedFs.promo_price);
+        const discountPercent = origPrice > promoPrice && origPrice > 0 
+          ? Math.max(1, Math.round(((origPrice - promoPrice) / origPrice) * 100)) 
+          : 0;
+        const remainingSec = Math.max(0, Math.floor((new Date(matchedFs.end_time).getTime() - Date.now()) / 1000));
+        const limit = Number(matchedFs.quota_limit) || 50;
+        const sold = Number(matchedFs.quota_sold) || 0;
+
+        return {
+          ...item,
+          is_flash_sale: true,
+          original_price: origPrice,
+          promo_price: promoPrice,
+          effective_price: promoPrice,
+          flash_sale: {
+            id: matchedFs.id,
+            title: matchedFs.title,
+            subtitle: matchedFs.subtitle,
+            badge_label: matchedFs.badge_label || 'FLASH SALE',
+            discount_text: matchedFs.discount_text || (discountPercent > 0 ? `HEMAT ${discountPercent}%` : 'PROMO SPESIAL'),
+            discount_percent: discountPercent,
+            original_price: origPrice,
+            promo_price: promoPrice,
+            quota_limit: limit,
+            quota_sold: sold,
+            quota_remaining: Math.max(0, limit - sold),
+            end_time: matchedFs.end_time,
+            seconds_remaining: remainingSec,
+            button_text: matchedFs.button_text || 'Beli Promo Flash Sale'
+          }
+        };
+      }
+
+      return {
+        ...item,
+        is_flash_sale: false,
+        effective_price: Number(item.price),
+        flash_sale: null
+      };
+    };
+
     // Gabungkan seluruh paket yang memiliki harga valid > 0
     const groupMap = new Map<string, any>();
     
     // Utamakan paket on-demand (murni dari router_profiles & packages yang di-link)
-    onDemandResult.rows.forEach((item: any) => {
-      if (Number(item.price) > 0) {
+    onDemandResult.rows.forEach((rawItem: any) => {
+      if (Number(rawItem.price) > 0) {
+        const item = attachFlashSaleInfo(rawItem);
         groupMap.set(item.profile_id, item);
       }
     });
 
     // Tambahkan paket pregenerated jika ada
-    stockResult.rows.forEach((item: any) => {
-      if (Number(item.price) > 0) {
+    stockResult.rows.forEach((rawItem: any) => {
+      if (Number(rawItem.price) > 0) {
+        const item = attachFlashSaleInfo(rawItem);
         groupMap.set(item.profile_id, item);
       }
     });
@@ -323,9 +408,36 @@ export async function listAvailableVouchers(req: Request, res: Response) {
 
     res.json({
       success: true,
-      pregenerated: stockResult.rows,
-      ondemand: onDemandResult.rows,
-      groups: allGroups.length > 0 ? allGroups : onDemandResult.rows
+      has_flash_sale: activeFlashSales.length > 0,
+      flash_sales_count: activeFlashSales.length,
+      flash_sales: activeFlashSales.map((fs: any) => {
+        const orig = Number(fs.original_price) || 0;
+        const promo = Number(fs.promo_price) || 0;
+        const limit = Number(fs.quota_limit) || 50;
+        const sold = Number(fs.quota_sold) || 0;
+        const remainingSec = Math.max(0, Math.floor((new Date(fs.end_time).getTime() - Date.now()) / 1000));
+        const cleanDiscount = (fs.discount_text || '').replace(/Rp\s*Rp/gi, 'Rp');
+        return {
+          id: fs.id,
+          title: fs.title,
+          subtitle: fs.subtitle,
+          badge_label: fs.badge_label || 'FLASH SALE',
+          discount_text: cleanDiscount,
+          target_package_id: fs.target_package_id,
+          target_package_name: fs.target_package_name,
+          original_price: orig,
+          promo_price: promo,
+          quota_limit: limit,
+          quota_sold: sold,
+          quota_remaining: Math.max(0, limit - sold),
+          end_time: fs.end_time,
+          seconds_remaining: remainingSec
+        };
+      }),
+      pregenerated: stockResult.rows.map(attachFlashSaleInfo),
+      ondemand: onDemandResult.rows.map(attachFlashSaleInfo),
+      packages: allGroups.length > 0 ? allGroups : onDemandResult.rows.map(attachFlashSaleInfo),
+      groups: allGroups.length > 0 ? allGroups : onDemandResult.rows.map(attachFlashSaleInfo)
     });
   } catch (err: any) {
     console.warn('[VOUCHERS AVAILABLE] Postgres query error, attempting Cloud Firestore fallback:', err.message);
@@ -353,21 +465,12 @@ export async function buyVoucher(req: Request, res: Response) {
     let flashSaleTitle: string = 'FLASH SALE PROMO';
 
     // ==================== VALIDASI FLASH SALE (KUOTA & BATASAN 1 VOUCHER PER USER) ====================
-    if (is_flash_sale || flash_sale_id) {
+    // Hanya validasi jika pembelian explicitly mengklaim promo flash sale (is_flash_sale = true dan ada flash_sale_id)
+    if (is_flash_sale && flash_sale_id) {
       try {
         let fsRow: any = null;
-        if (flash_sale_id) {
-          const fsRes = await pool.query('SELECT * FROM flash_sales WHERE id = $1', [flash_sale_id]);
-          if (fsRes.rows.length > 0) fsRow = fsRes.rows[0];
-        } else {
-          // Cari promo aktif yang mencakup profile_id ini
-          const fsRes = await pool.query(`
-            SELECT * FROM flash_sales 
-            WHERE is_active = true AND end_time > NOW() AND (target_package_id = $1 OR target_package_id IS NULL OR target_package_id = '')
-            ORDER BY created_at DESC LIMIT 1
-          `, [profile_id]);
-          if (fsRes.rows.length > 0) fsRow = fsRes.rows[0];
-        }
+        const fsRes = await pool.query('SELECT * FROM flash_sales WHERE id = $1', [flash_sale_id]);
+        if (fsRes.rows.length > 0) fsRow = fsRes.rows[0];
 
         if (fsRow) {
           if (!fsRow.is_active) {
@@ -377,7 +480,7 @@ export async function buyVoucher(req: Request, res: Response) {
             return res.status(400).json({ success: false, message: 'Periode promo Flash Sale telah berakhir.' });
           }
           if (fsRow.quota_limit && (fsRow.quota_sold || 0) >= fsRow.quota_limit) {
-            return res.status(400).json({ success: false, message: 'Kuota voucher promo Flash Sale telah habis terjual.' });
+            return res.status(400).json({ success: false, message: 'Kuota voucher promo Flash Sale telah habis terjual. Silakan beli dengan tarif reguler.' });
           }
 
           const maxPerUser = Number(fsRow.max_per_user || 1);
@@ -398,7 +501,7 @@ export async function buyVoucher(req: Request, res: Response) {
             if ((checkPrior.rows[0]?.cnt || 0) >= maxPerUser) {
               return res.status(400).json({
                 success: false,
-                message: `⚠️ Batasan promo: Setiap akun hanya boleh membeli maksimal ${maxPerUser} voucher pada promo "${fsRow.title}". Kuota akun Anda sudah digunakan.`
+                message: `⚠️ Batasan promo: Setiap akun hanya boleh membeli maksimal ${maxPerUser} voucher promo pada "${fsRow.title}". Kuota promo akun Anda sudah digunakan. Anda tetap dapat membeli paket ini dengan harga normal.`
               });
             }
           }

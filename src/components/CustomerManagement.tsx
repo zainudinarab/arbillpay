@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CustomerMapModal } from './CustomerMapModal';
 import { CustomerMapViewModal } from './CustomerMapViewModal';
 import { 
@@ -151,6 +151,8 @@ export interface CustomerItem {
   is_synced?: boolean;
   is_voucher?: boolean;
   package_id: string;
+  custom_price?: number | null;
+  effective_price?: number | null;
   router_id?: string | null;
   router_profile_id?: string | null;
   package_name?: string;
@@ -168,6 +170,8 @@ export interface CustomerItem {
   longitude?: string;
   maps_url?: string;
   is_online?: boolean;
+  is_in_database?: boolean;
+  uptime?: string;
   created_at?: string;
 }
 
@@ -228,6 +232,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   // Live Mikrotik PPP Active Users & FTTH Map States
   const [onlineUsernames, setOnlineUsernames] = useState<string[]>([]);
+  const [activePppConnections, setActivePppConnections] = useState<any[]>([]);
   const [ftthNodes, setFtthNodes] = useState<any[]>([]);
   const [ftthLines, setFtthLines] = useState<any[]>([]);
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<CustomerItem | null>(null);
@@ -685,7 +690,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
       for (const cust of customers) {
         if (cust.status === 'active' || cust.status === 'isolated' || !cust.status) {
           const matchedPkg = packages.find(p => p.id === cust.package_id);
-          const pkgPrice = matchedPkg ? Number(matchedPkg.price) : 150000;
+          const pkgPrice = cust.custom_price ? Number(cust.custom_price) : (matchedPkg ? Number(matchedPkg.price) : 150000);
           const pkgName = matchedPkg ? matchedPkg.name : 'Paket Internet PPPoE';
           const custCode = cust.customer_code || `CUST-${cust.id.slice(-5).toUpperCase()}`;
 
@@ -745,7 +750,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
       // Cloud Firestore Fallback Mode (Runs when hosted on Firebase or Express API offline)
       const matchedPkg = packages.find(p => p.id === cust.package_id);
-      const pkgPrice = matchedPkg ? Number(matchedPkg.price) : 150000;
+      const pkgPrice = cust.custom_price ? Number(cust.custom_price) : (matchedPkg ? Number(matchedPkg.price) : 150000);
       const pkgName = matchedPkg ? matchedPkg.name : 'Paket Internet PPPoE';
       const custCode = cust.customer_code || `CUST-${cust.id.slice(-5).toUpperCase()}`;
 
@@ -803,6 +808,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const [pppoePassword, setPppoePassword] = useState('');
   const [selectedRouterId, setSelectedRouterId] = useState<string>('');
   const [packageId, setPackageId] = useState<string>('');
+  const [customPrice, setCustomPrice] = useState<string>('');
   const [staticIp, setStaticIp] = useState('');
   const [ipAllocationMode, setIpAllocationMode] = useState<'profile' | 'auto' | 'manual'>('profile');
   const [ipPools, setIpPools] = useState<any[]>([]);
@@ -920,11 +926,16 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           }
           if (resActive && resActive.ok) {
             const dataActive = await parseJsonResponse(resActive).catch(() => null);
-            if (dataActive && dataActive.success && Array.isArray(dataActive.onlineUsernames)) {
-              const activeList = dataActive.onlineUsernames.map((u: any) => 
-                typeof u === 'string' ? u.toLowerCase().trim() : String(u.name || u.username || '').toLowerCase().trim()
-              );
-              setOnlineUsernames(activeList);
+            if (dataActive && dataActive.success) {
+              if (Array.isArray(dataActive.onlineUsernames)) {
+                const activeList = dataActive.onlineUsernames.map((u: any) => 
+                  typeof u === 'string' ? u.toLowerCase().trim() : String(u.name || u.username || '').toLowerCase().trim()
+                );
+                setOnlineUsernames(activeList);
+              }
+              if (Array.isArray(dataActive.activeConnections)) {
+                setActivePppConnections(dataActive.activeConnections);
+              }
             }
           }
           if (resMap && resMap.ok) {
@@ -1154,6 +1165,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     if (routers.length > 0) setSelectedRouterId(routers[0].id);
     // Kosongkan paket secara default agar admin harus memilih dari paket yang tertaut
     setPackageId('');
+    setCustomPrice('');
     setExpiredAt('');
     setGraceUntil('');
   };
@@ -1218,6 +1230,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         device_model: deviceModel,
         device_lan_ports: deviceLanPorts,
         package_id: packageId,
+        custom_price: customPrice ? parseFloat(customPrice) : null,
         router_id: selectedRouterId || null,
         router_profile_id: matchedProfile ? matchedProfile.id : null,
         status
@@ -1321,6 +1334,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     } else {
       setPackageId('');
     }
+    setCustomPrice(cust.custom_price !== undefined && cust.custom_price !== null ? String(cust.custom_price) : '');
 
     if (cust.static_ip && cust.static_ip.trim()) {
       setIpAllocationMode('manual');
@@ -1402,6 +1416,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         device_model: deviceModel,
         device_lan_ports: deviceLanPorts,
         package_id: packageId,
+        custom_price: customPrice ? parseFloat(customPrice) : null,
         package_name: pkg ? pkg.name : editingCustomer.package_name,
         router_id: selectedRouterId || null,
         router_profile_id: matchedProfile ? matchedProfile.id : null,
@@ -1470,12 +1485,79 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     return s === 'pending' || s === 'non-active' || s === 'inactive' || s === 'menunggu persetujuan' || s === 'pending_approval' || (s !== 'active' && s !== 'aktif' && s !== 'terminated' && s !== 'isolir' && s !== 'isolated');
   };
 
+  const handleRegisterFromMikrotik = (item: CustomerItem) => {
+    resetForm();
+    setName(item.name || item.pppoe_username || '');
+    setPppoeUsername(item.pppoe_username || '');
+    setPppoePassword('123456');
+    if (item.static_ip && item.static_ip !== '-') {
+      setIpAllocationMode('manual');
+      setStaticIp(item.static_ip);
+    }
+    if (item.router_id) {
+      setSelectedRouterId(item.router_id);
+    }
+    setShowAddModal(true);
+  };
+
+  // Gabungkan pelanggan database dengan sesi PPP MikroTik yang sedang aktif
+  const combinedCustomers = useMemo(() => {
+    // 1. Pelanggan database yang sudah ada (tandai is_in_database: true)
+    const list: CustomerItem[] = customers.map(c => {
+      const liveConn = activePppConnections.find(conn => 
+        String(conn.username || '').toLowerCase().trim() === String(c.pppoe_username || '').toLowerCase().trim()
+      );
+      return {
+        ...c,
+        is_in_database: true,
+        uptime: liveConn ? liveConn.uptime : undefined,
+        static_ip: c.static_ip || (liveConn ? liveConn.address : undefined)
+      };
+    });
+
+    const existingUsernames = new Set(
+      customers.map(c => String(c.pppoe_username || '').toLowerCase().trim()).filter(Boolean)
+    );
+
+    // 2. Tambahkan sesi aktif MikroTik (PPPoE) yang belum terdaftar di database
+    activePppConnections.forEach(conn => {
+      const uName = String(conn.username || '').trim();
+      const uLower = uName.toLowerCase();
+      // Hanya masukkan yang bertipe PPPoE (atau default) dan belum ada di database
+      if (uName && !existingUsernames.has(uLower) && (!conn.service || conn.service.toLowerCase() === 'pppoe')) {
+        existingUsernames.add(uLower);
+        list.push({
+          id: `mikrotik-ppp-${uName}`,
+          customer_code: 'MIKROTIK-PPP',
+          name: uName,
+          phone_number: '',
+          address: `Router: ${conn.router_name || 'MikroTik'}`,
+          connection_type: 'pppoe',
+          pppoe_username: uName,
+          static_ip: conn.address || '-',
+          package_id: 'unregistered',
+          package_name: 'PPPoE Active Session',
+          speed_limit: conn.service ? `${conn.service.toUpperCase()} Active` : 'PPPoE',
+          status: 'active',
+          is_online: true,
+          uptime: conn.uptime,
+          router_name: conn.router_name,
+          router_id: conn.router_id,
+          is_in_database: false // ⚠️ Tanda status tidak ada di database
+        });
+      }
+    });
+
+    return list;
+  }, [customers, activePppConnections]);
+
   // Status Filter counts (Matching Live Mikrotik Active PPP Connections)
-  const pendingCount = customers.filter(c => isPendingStatus(c.status)).length;
-  const activeOnlineCount = customers.filter(c => c.status === 'active' && isUserOnline(c)).length;
-  const activeOfflineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
-  const nonActiveCount = customers.filter(c => c.status === 'isolated' || c.status === 'non-active' || c.status === 'off').length;
-  const terminatedCount = customers.filter(c => c.status === 'terminated').length;
+  const pendingCount = combinedCustomers.filter(c => isPendingStatus(c.status) && c.is_in_database !== false).length;
+  const activeOnlineCount = combinedCustomers.filter(c => c.status === 'active' && isUserOnline(c)).length;
+  const activeOfflineCount = combinedCustomers.filter(c => c.status === 'active' && !isUserOnline(c) && c.is_in_database !== false).length;
+  const nonActiveCount = combinedCustomers.filter(c => (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off') && c.is_in_database !== false).length;
+  const terminatedCount = combinedCustomers.filter(c => c.status === 'terminated' && c.is_in_database !== false).length;
+  const unregisteredCount = combinedCustomers.filter(c => c.is_in_database === false).length;
 
   const handleApprovePendingCustomer = async (cust: CustomerItem) => {
     setActionLoadingId(cust.id);
@@ -1506,13 +1588,17 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   // Package Distribution Counts (Right Card in Screenshot 1)
   const packageCounts: { [pkgName: string]: number } = {};
-  customers.forEach(c => {
-    const pName = c.package_name || 'Default Package';
-    packageCounts[pName] = (packageCounts[pName] || 0) + 1;
+  combinedCustomers.forEach(c => {
+    if (c.is_in_database !== false) {
+      const pName = c.package_name || 'Default Package';
+      packageCounts[pName] = (packageCounts[pName] || 0) + 1;
+    } else {
+      packageCounts['⚠️ Belum Terdaftar di DB'] = (packageCounts['⚠️ Belum Terdaftar di DB'] || 0) + 1;
+    }
   });
 
   // Filter Customers
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomers = combinedCustomers.filter(c => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = (c.name || '').toLowerCase().includes(term) ||
                           (c.customer_code || '').toLowerCase().includes(term) ||
@@ -1524,7 +1610,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                           (c.kecamatan || '').toLowerCase().includes(term) ||
                           (c.kabupaten || '').toLowerCase().includes(term) ||
                           (c.provinsi || '').toLowerCase().includes(term);
-    const matchesPackage = selectedPackageFilter === 'all' || c.package_id === selectedPackageFilter;
+    const matchesPackage = selectedPackageFilter === 'all' || 
+                           (selectedPackageFilter === 'unregistered' ? c.is_in_database === false : c.package_id === selectedPackageFilter);
     const matchesStatus = statusFilter === 'all' || 
                           (statusFilter === 'pending' && c.status === 'pending') ||
                           (statusFilter === 'online' && c.status === 'active' && isUserOnline(c)) ||
@@ -1740,6 +1827,9 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 className="w-full sm:w-48 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Semua Paket</option>
+                {unregisteredCount > 0 && (
+                  <option value="unregistered">⚠️ Belum Ada di DB ({unregisteredCount})</option>
+                )}
                 {packages.map(p => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -1789,8 +1879,18 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                       {paginatedCustomers.map(cust => (
                         <tr
                           key={cust.id}
-                          onClick={() => setSelectedCustomerDetail(cust)}
-                          className="hover:bg-indigo-50/40 transition-colors cursor-pointer group"
+                          onClick={() => {
+                            if (cust.is_in_database === false) {
+                              handleRegisterFromMikrotik(cust);
+                            } else {
+                              setSelectedCustomerDetail(cust);
+                            }
+                          }}
+                          className={`transition-colors cursor-pointer group ${
+                            cust.is_in_database === false 
+                              ? 'bg-amber-50/30 hover:bg-amber-100/50' 
+                              : 'hover:bg-indigo-50/40'
+                          }`}
                         >
                           {/* PELANGGAN */}
                           <td className="py-3.5 px-4 space-y-0.5">
@@ -1803,6 +1903,11 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                               <span className="font-extrabold text-slate-800 text-xs group-hover:text-indigo-600 transition-colors">
                                 {cust.name}
                               </span>
+                              {cust.is_in_database === false && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                  Hanya di MikroTik
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono pl-4.5 flex items-center gap-2">
                               <span>{cust.customer_code || `CUST-${cust.id.substring(0, 5).toUpperCase()}`}</span>
@@ -1812,30 +1917,55 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                   <span className="text-slate-500 font-sans">{cust.phone_number}</span>
                                 </>
                               )}
+                              {cust.router_name && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-slate-400 font-sans">{cust.router_name}</span>
+                                </>
+                              )}
                             </div>
                           </td>
 
                           {/* PAKET */}
                           <td className="py-3.5 px-4">
-                            <span className="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 font-bold text-[11px] text-slate-700 inline-block">
-                              {cust.package_name || 'Default Package'}
-                            </span>
-                            {cust.speed_limit && (
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5 pl-1">
-                                ⚡ {cust.speed_limit}
-                              </div>
-                            )}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] inline-block ${
+                                cust.is_in_database === false 
+                                  ? 'bg-amber-50 border-amber-200 text-amber-800' 
+                                  : 'bg-slate-100 border-slate-200 text-slate-700'
+                              }`}>
+                                {cust.package_name || 'Default Package'}
+                              </span>
+                              {cust.custom_price && (
+                                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-0.5" title="Tarif bulanan pelanggan ini dikunci flat">
+                                  🔒 Rp {Number(cust.custom_price).toLocaleString('id-ID')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5 pl-1">
+                              {cust.speed_limit && <span>⚡ {cust.speed_limit}</span>}
+                              {!cust.custom_price && cust.package_price ? (
+                                <span className="text-slate-500 font-sans">Rp {Number(cust.package_price).toLocaleString('id-ID')}</span>
+                              ) : null}
+                            </div>
                           </td>
 
                           {/* USERNAME / IP */}
                           <td className="py-3.5 px-4 space-y-0.5 font-mono">
                             <div className="text-pink-600 font-bold text-xs">{cust.pppoe_username || '-'}</div>
-                            <div className="text-slate-400 text-[11px]">{cust.static_ip || 'DHCP Pool'}</div>
+                            <div className="text-slate-500 text-[11px] flex items-center gap-1.5">
+                              <span>{cust.static_ip || 'DHCP Pool'}</span>
+                              {cust.uptime && (
+                                <span className="text-[10px] text-emerald-600 font-sans font-medium bg-emerald-50 px-1 rounded">
+                                  ⏱️ {cust.uptime}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* STATUS & MASA AKTIF */}
                           <td className="py-3.5 px-4 space-y-1">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                                 cust.status === 'active' 
                                   ? (isUserOnline(cust) ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')
@@ -1843,45 +1973,79 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                               }`}>
                                 {cust.status === 'active' ? (isUserOnline(cust) ? '🟢 Online' : '🔴 Offline') : cust.status}
                               </span>
+
+                              {cust.is_in_database === false && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                  ⚠️ Tidak ada di Database
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                               <Clock size={11} className="text-slate-400" />
-                              <span>Exp: {formatDateSafe(cust.expired_at)}</span>
+                              <span>{cust.is_in_database === false ? `Sesi Aktif MikroTik (Uptime: ${cust.uptime || '-'})` : `Exp: ${formatDateSafe(cust.expired_at)}`}</span>
                             </div>
                           </td>
 
                           {/* AKSI */}
                           <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="inline-flex items-center gap-1.5">
-                              <button
-                                onClick={() => setSelectedCustomerDetail(cust)}
-                                className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
-                                title="Lihat Detail Lengkap Pelanggan"
-                              >
-                                <Eye size={13} />
-                                <span>Detail</span>
-                              </button>
+                              {cust.is_in_database === false ? (
+                                <>
+                                  <button
+                                    onClick={() => handleRegisterFromMikrotik(cust)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                    title="Daftarkan Sesi PPP ini ke Database Pelanggan"
+                                  >
+                                    <UserPlus size={13} />
+                                    <span>+ Daftarkan ke DB</span>
+                                  </button>
 
-                              <button
-                                onClick={() => openEditModal(cust)}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
-                                title="Edit Data Pelanggan"
-                              >
-                                <Edit size={14} />
-                              </button>
+                                  <button
+                                    onClick={() => handleDisconnectCustomer(cust)}
+                                    disabled={actionLoadingId === cust.id}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                    title="Putuskan Sesi PPP di MikroTik"
+                                  >
+                                    {actionLoadingId === cust.id ? (
+                                      <RefreshCw size={14} className="animate-spin text-rose-500" />
+                                    ) : (
+                                      <Power size={14} />
+                                    )}
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => setSelectedCustomerDetail(cust)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Lihat Detail Lengkap Pelanggan"
+                                  >
+                                    <Eye size={13} />
+                                    <span>Detail</span>
+                                  </button>
 
-                              <button
-                                onClick={() => promptDeleteCustomer(cust)}
-                                disabled={actionLoadingId === cust.id}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
-                                title="Hapus Pelanggan Permanen"
-                              >
-                                {actionLoadingId === cust.id ? (
-                                  <RefreshCw size={14} className="animate-spin text-rose-500" />
-                                ) : (
-                                  <Trash2 size={14} />
-                                )}
-                              </button>
+                                  <button
+                                    onClick={() => openEditModal(cust)}
+                                    className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
+                                    title="Edit Data Pelanggan"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+
+                                  <button
+                                    onClick={() => promptDeleteCustomer(cust)}
+                                    disabled={actionLoadingId === cust.id}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer disabled:opacity-50"
+                                    title="Hapus Pelanggan Permanen"
+                                  >
+                                    {actionLoadingId === cust.id ? (
+                                      <RefreshCw size={14} className="animate-spin text-rose-500" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2282,6 +2446,51 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                         );
                       })()}
                     </div>
+                  </div>
+
+                  {/* Tarif Bulanan Khusus / Terkunci (Grandfathering Clause) */}
+                  <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>Tarif Bulanan Khusus / Terkunci (Rp)</span>
+                        {customPrice ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-black border border-emerald-300">
+                            🔒 Terkunci Rp {Number(customPrice).toLocaleString('id-ID')}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            (Opsional)
+                          </span>
+                        )}
+                      </label>
+                      {customPrice && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomPrice('')}
+                          className="text-[10.5px] text-rose-600 hover:text-rose-700 font-bold underline cursor-pointer"
+                        >
+                          Reset ke Harga Paket
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      placeholder={
+                        packageId && packages.find(p => p.id === packageId)
+                          ? `Kosongkan untuk mengikuti harga paket (Rp ${Number(packages.find(p => p.id === packageId)?.price || 0).toLocaleString('id-ID')})`
+                          : 'Kosongkan jika mengikuti harga default paket master'
+                      }
+                      value={customPrice}
+                      onChange={(e) => setCustomPrice(e.target.value)}
+                      className={`w-full px-3.5 py-2 border rounded-xl text-xs font-mono font-bold transition ${
+                        customPrice 
+                          ? 'bg-emerald-50/60 border-emerald-400 text-emerald-950 focus:ring-2 focus:ring-emerald-500' 
+                          : 'bg-white border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
+                      }`}
+                    />
+                    <p className="text-[10.5px] text-slate-500 leading-relaxed">
+                      💡 <b>Kunci Harga (Grandfathering):</b> Kosongkan jika ingin mengikuti harga master paket. Jika diisi, tagihan bulanan pelanggan ini akan <b>terkunci flat</b> pada nominal tersebut (tidak akan berubah jika kelak harga paket master dinaikkan untuk pelanggan baru).
+                    </p>
                   </div>
 
                   {/* Verification of Router Profile Connection & Auto-Calculation Hint */}

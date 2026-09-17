@@ -88,7 +88,7 @@ export async function editCustomer(req: Request, res: Response) {
     pppoe_username, pppoe_password, static_ip, installation_date,
     expired_at, grace_until, odp_port, sn_onu, power_laser, teknisi,
     latitude, longitude, maps_url,
-    package_id, router_id, router_profile_id, status 
+    package_id, custom_price, router_id, router_profile_id, status 
   } = req.body;
 
   if (!name || !package_id) {
@@ -99,6 +99,9 @@ export async function editCustomer(req: Request, res: Response) {
     const lat = latitude ? parseFloat(latitude) : null;
     const lng = longitude ? parseFloat(longitude) : null;
     const mapUrl = maps_url || (lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : null);
+    const customPriceVal = (custom_price !== undefined && custom_price !== null && String(custom_price).trim() !== '')
+      ? parseFloat(custom_price)
+      : null;
 
     // Validate foreign keys to avoid FK constraint failures
     let validPkgId = null;
@@ -144,12 +147,13 @@ export async function editCustomer(req: Request, res: Response) {
           longitude = $23,
           maps_url = $24,
           package_id = $25,
-          router_id = $26,
-          router_profile_id = $27,
-          status = $28,
+          custom_price = $26,
+          router_id = $27,
+          router_profile_id = $28,
+          status = $29,
           is_synced = true
-      WHERE id = $29
-      RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status
+      WHERE id = $30
+      RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price
     `, [
       user_id || null, customer_code || null, name.trim(), phone_number?.trim() || null, address?.trim() || null,
       dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
@@ -157,7 +161,7 @@ export async function editCustomer(req: Request, res: Response) {
       static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
       odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
       lat, lng, mapUrl,
-      validPkgId, validRtrId, validProfId, status || 'active', id
+      validPkgId, customPriceVal, validRtrId, validProfId, status || 'active', id
     ]);
 
     let finalCustomer = result.rows[0];
@@ -169,20 +173,21 @@ export async function editCustomer(req: Request, res: Response) {
           id, customer_code, name, phone_number, address, dusun, desa, kecamatan, kabupaten, provinsi,
           connection_type, pppoe_username, pppoe_password, static_ip, installation_date, expired_at, grace_until,
           odp_port, sn_onu, power_laser, teknisi, latitude, longitude, maps_url,
-          package_id, router_id, router_profile_id, status, is_synced
+          package_id, custom_price, router_id, router_profile_id, status, is_synced
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17,
           $18, $19, $20, $21, $22, $23, $24,
-          $25, $26, $27, $28, true
+          $25, $26, $27, $28, $29, true
         )
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           phone_number = EXCLUDED.phone_number,
           address = EXCLUDED.address,
           status = EXCLUDED.status,
+          custom_price = EXCLUDED.custom_price,
           pppoe_username = EXCLUDED.pppoe_username
-        RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status
+        RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price
       `, [
         id, customer_code || id, name.trim(), phone_number?.trim() || null, address?.trim() || null,
         dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
@@ -190,7 +195,7 @@ export async function editCustomer(req: Request, res: Response) {
         static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
         odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
         lat, lng, mapUrl,
-        validPkgId, validRtrId, validProfId, status || 'active'
+        validPkgId, customPriceVal, validRtrId, validProfId, status || 'active'
       ]);
       finalCustomer = insertResult.rows[0];
     }
@@ -397,7 +402,8 @@ export async function checkPhone(req: Request, res: Response) {
 
   try {
     const alreadyLinked = await pool.query(`
-      SELECT c.id, c.name, c.connection_type, c.status, p.name as package_name, p.price as package_price
+      SELECT c.id, c.name, c.connection_type, c.status, c.custom_price,
+             p.name as package_name, COALESCE(c.custom_price, p.price) as package_price
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE ($1::text IS NOT NULL AND c.user_id = $1) OR c.phone_number = $2
@@ -413,7 +419,8 @@ export async function checkPhone(req: Request, res: Response) {
     }
 
     const unlinkedMatch = await pool.query(`
-      SELECT c.id, c.name, c.phone_number, c.connection_type, c.status, p.name as package_name, p.price as package_price
+      SELECT c.id, c.name, c.phone_number, c.connection_type, c.status, c.custom_price,
+             p.name as package_name, COALESCE(c.custom_price, p.price) as package_price
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE c.phone_number = $1 AND (c.user_id IS NULL OR c.user_id = '')
@@ -464,8 +471,8 @@ export async function checkMyStatus(req: Request, res: Response) {
     }
 
     const result = await pool.query(`
-      SELECT c.id, c.name, c.phone_number, c.pppoe_username, c.connection_type, c.status,
-             p.name as package_name, p.price as package_price, p.speed_limit, c.created_at
+      SELECT c.id, c.name, c.phone_number, c.pppoe_username, c.connection_type, c.status, c.custom_price,
+             p.name as package_name, COALESCE(c.custom_price, p.price) as package_price, p.speed_limit, c.created_at
       FROM customers c
       LEFT JOIN packages p ON c.package_id = p.id
       WHERE c.id = ANY($1::text[]) 
@@ -782,11 +789,22 @@ export async function disconnectCustomerPpp(req: Request, res: Response) {
       WHERE c.id = $1
     `, [id]);
 
-    if (cRes.rows.length === 0) {
+    let cust: any = null;
+    if (cRes.rows.length > 0) {
+      cust = cRes.rows[0];
+    } else if (id.startsWith('mikrotik-ppp-') || id.startsWith('mikrotik-hotspot-')) {
+      const isHs = id.startsWith('mikrotik-hotspot-');
+      const raw = isHs ? id.replace('mikrotik-hotspot-', '') : id.replace('mikrotik-ppp-', '');
+      const uName = raw.includes('-') ? raw.split('-')[0] : raw;
+      cust = {
+        name: uName,
+        pppoe_username: uName,
+        connection_type: isHs ? 'hotspot' : 'pppoe',
+        router_id: null
+      };
+    } else {
       return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
     }
-
-    const cust = cRes.rows[0];
     if (!cust.pppoe_username) {
       return res.status(400).json({ success: false, message: 'Username pelanggan kosong.' });
     }

@@ -115,6 +115,7 @@ export async function initDatabaseSchema() {
         longitude NUMERIC(11, 8),
         maps_url TEXT,
         package_id VARCHAR(64) REFERENCES packages(id) ON DELETE SET NULL,
+        custom_price NUMERIC(12, 2),
         router_id VARCHAR(64) REFERENCES routers(id) ON DELETE SET NULL,
         router_profile_id VARCHAR(64) REFERENCES router_profiles(id) ON DELETE SET NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'active',
@@ -340,6 +341,7 @@ export async function initDatabaseSchema() {
       ALTER TABLE customers
       ADD COLUMN IF NOT EXISTS mikrotik_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS is_synced BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS custom_price NUMERIC(12, 2),
       ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 8),
       ADD COLUMN IF NOT EXISTS longitude NUMERIC(11, 8),
       ADD COLUMN IF NOT EXISTS maps_url TEXT,

@@ -99,7 +99,7 @@ export async function runAutoBillingJob(daysBeforeDue: number = 5) {
     console.log(`[AUTO-BILLING JOB] Scan harian pelanggan langganan (PPPoE & Hotspot Member) mendekati tanggal expired (H-${daysBeforeDue})...`);
     
     const scanRes = await pool.query(`
-      SELECT c.*, p.name as package_name, p.price as package_price
+      SELECT c.*, p.name as package_name, COALESCE(c.custom_price, p.price, 0) as package_price
       FROM customers c
       JOIN packages p ON c.package_id = p.id
       WHERE c.expired_at IS NOT NULL 

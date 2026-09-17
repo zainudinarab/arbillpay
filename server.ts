@@ -45,9 +45,20 @@ app.get('/tesui.html', (req, res) => {
 });
 
 if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
+  app.use((req, res, next) => {
+    if (req.path === '/' || req.path === '/index.html') {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+    next();
+  });
+  app.use(express.static(distPath, { etag: false, maxAge: 0 }));
   app.get('*', (req, res) => {
     if (!req.path.startsWith('/api')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     }
   });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CustomerMapModal } from './CustomerMapModal';
 import { CustomerMapViewModal } from './CustomerMapViewModal';
 import { 
@@ -29,7 +29,8 @@ import {
   Key,
   Shuffle,
   Dice5,
-  Lock
+  Lock,
+  Power
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -57,6 +58,7 @@ export default function HotspotCustomerManagement({
   const [routers, setRouters] = useState<any[]>([]);
   const [routerProfiles, setRouterProfiles] = useState<any[]>([]);
   const [onlineUsernames, setOnlineUsernames] = useState<string[]>([]);
+  const [activeConnections, setActiveConnections] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -152,6 +154,7 @@ export default function HotspotCustomerManagement({
   const [pppoeUsername, setPppoeUsername] = useState('');
   const [pppoePassword, setPppoePassword] = useState('');
   const [packageId, setPackageId] = useState('');
+  const [customPrice, setCustomPrice] = useState('');
   const [selectedRouterId, setSelectedRouterId] = useState('');
   const [status, setStatus] = useState<'active' | 'isolated' | 'non-active' | 'terminated'>('active');
   const [installationDate, setInstallationDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -227,8 +230,13 @@ export default function HotspotCustomerManagement({
           }
           if (actRes && actRes.ok) {
             const actData = await parseJsonResponse(actRes).catch(() => null);
-            if (actData && actData.success && Array.isArray(actData.onlineUsernames)) {
-              setOnlineUsernames(actData.onlineUsernames);
+            if (actData && actData.success) {
+              if (Array.isArray(actData.onlineUsernames)) {
+                setOnlineUsernames(actData.onlineUsernames);
+              }
+              if (Array.isArray(actData.activeConnections)) {
+                setActiveConnections(actData.activeConnections);
+              }
             }
           }
         } catch (err: any) { }
@@ -269,6 +277,7 @@ export default function HotspotCustomerManagement({
   }, []);
 
   const isUserOnline = (c: Customer) => {
+    if (Boolean(c.is_online)) return true;
     if (!c.pppoe_username) return false;
     return onlineUsernames.some(u => u.trim().toLowerCase() === c.pppoe_username.trim().toLowerCase());
   };
@@ -333,6 +342,7 @@ export default function HotspotCustomerManagement({
     );
     const defaultPkg = linkedPkgs.length > 0 ? linkedPkgs[0].id : '';
     setPackageId(defaultPkg);
+    setCustomPrice('');
     setPostalCode('');
     setStatus('active');
     
@@ -363,6 +373,7 @@ export default function HotspotCustomerManagement({
     setPppoeUsername(c.pppoe_username || '');
     setPppoePassword(c.pppoe_password || '');
     setPackageId(c.package_id || '');
+    setCustomPrice(c.custom_price !== undefined && c.custom_price !== null ? String(c.custom_price) : '');
     setSelectedRouterId(c.router_id || '');
     setStatus(c.status || 'active');
     setInstallationDate(c.installation_date ? c.installation_date.split('T')[0] : new Date().toISOString().split('T')[0]);
@@ -406,6 +417,7 @@ export default function HotspotCustomerManagement({
           expired_at: expiredAt || null,
           grace_until: graceUntil || null,
           package_id: packageId,
+          custom_price: customPrice ? parseFloat(customPrice) : null,
           router_id: selectedRouterId || null,
           router_profile_id: matchedProfile ? matchedProfile.id : null,
           status
@@ -462,6 +474,7 @@ export default function HotspotCustomerManagement({
           expired_at: expiredAt || null,
           grace_until: graceUntil || null,
           package_id: packageId,
+          custom_price: customPrice ? parseFloat(customPrice) : null,
           router_id: selectedRouterId || null,
           router_profile_id: matchedProfile ? matchedProfile.id : null,
           status
@@ -723,7 +736,77 @@ export default function HotspotCustomerManagement({
     }
   };
 
-  const filteredCustomers = customers.filter(c => {
+  const handleRegisterFromMikrotik = (c: Customer) => {
+    resetForm();
+    setName(c.name || c.pppoe_username || '');
+    setPppoeUsername(c.pppoe_username || '');
+    setPppoePassword('123456');
+    if (c.router_id) {
+      setSelectedRouterId(c.router_id);
+    }
+    setShowAddModal(true);
+  };
+
+  // Gabungkan pelanggan database dengan sesi Hotspot MikroTik yang sedang aktif
+  const combinedCustomers = useMemo(() => {
+    // 1. Pelanggan database (tandai is_in_database: true)
+    const list: Customer[] = customers.map(c => {
+      const liveConn = activeConnections.find(conn => 
+        (conn.service === 'hotspot' || !conn.service) &&
+        String(conn.username || '').toLowerCase().trim() === String(c.pppoe_username || '').toLowerCase().trim()
+      );
+      return {
+        ...c,
+        is_in_database: true,
+        uptime: liveConn ? liveConn.uptime : undefined,
+        static_ip: c.static_ip || (liveConn ? liveConn.address : undefined)
+      };
+    });
+
+    const existingUsernames = new Set(
+      customers.map(c => String(c.pppoe_username || '').toLowerCase().trim()).filter(Boolean)
+    );
+
+    // 2. Tambahkan sesi aktif MikroTik (Hotspot) yang belum terdaftar di database
+    const seenHotspot = new Set<string>();
+    activeConnections.forEach(conn => {
+      const uName = String(conn.username || '').trim();
+      const uLower = uName.toLowerCase();
+      // Pastikan service hotspot (dari /ip/hotspot/active)
+      if (uName && conn.service === 'hotspot') {
+        if (!existingUsernames.has(uLower)) {
+          const key = `${uLower}-${conn.address || ''}`;
+          if (!seenHotspot.has(key)) {
+            seenHotspot.add(key);
+            list.push({
+              id: `mikrotik-hotspot-${uName}-${conn.address || '0'}`,
+              customer_code: 'MIKROTIK-HOTSPOT',
+              name: uName,
+              phone_number: '',
+              address: `Router: ${conn.router_name || 'MikroTik'}`,
+              connection_type: 'hotspot',
+              pppoe_username: uName,
+              pppoe_password: '-',
+              static_ip: conn.address || '-',
+              package_id: 'unregistered',
+              package_name: 'Hotspot Active Session',
+              speed_limit: 'Hotspot Active',
+              status: 'active',
+              is_online: true,
+              uptime: conn.uptime,
+              router_name: conn.router_name,
+              router_id: conn.router_id,
+              is_in_database: false // ⚠️ Tanda status tidak ada di database
+            });
+          }
+        }
+      }
+    });
+
+    return list;
+  }, [customers, activeConnections]);
+
+  const filteredCustomers = combinedCustomers.filter(c => {
     const term = searchTerm.toLowerCase();
     const matchesSearch = (c.name || '').toLowerCase().includes(term) ||
                           (c.customer_code || '').toLowerCase().includes(term) ||
@@ -735,8 +818,10 @@ export default function HotspotCustomerManagement({
                           (c.kecamatan || '').toLowerCase().includes(term) ||
                           (c.kabupaten || '').toLowerCase().includes(term) ||
                           (c.provinsi || '').toLowerCase().includes(term);
-    const matchesPackage = selectedPackageFilter === 'all' || c.package_id === selectedPackageFilter;
+    const matchesPackage = selectedPackageFilter === 'all' || 
+                           (selectedPackageFilter === 'unregistered' ? c.is_in_database === false : c.package_id === selectedPackageFilter);
     const matchesStatus = statusFilter === 'all' || 
+                          ((statusFilter as any) === 'unregistered' && c.is_in_database === false) ||
                           (statusFilter === 'online' && c.status === 'active' && isUserOnline(c)) ||
                           (statusFilter === 'offline' && c.status === 'active' && !isUserOnline(c)) ||
                           (statusFilter === 'non-active' && (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off' || c.status === 'pending')) ||
@@ -755,9 +840,10 @@ export default function HotspotCustomerManagement({
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
 
-  const onlineCount = customers.filter(c => isUserOnline(c)).length;
-  const offlineCount = customers.filter(c => c.status === 'active' && !isUserOnline(c)).length;
-  const pendingCount = customers.filter(c => c.status !== 'active').length;
+  const onlineCount = combinedCustomers.filter(c => isUserOnline(c)).length;
+  const offlineCount = combinedCustomers.filter(c => c.status === 'active' && !isUserOnline(c) && c.is_in_database !== false).length;
+  const pendingCount = combinedCustomers.filter(c => (c.status !== 'active' || c.status === 'isolated') && c.is_in_database !== false).length;
+  const unregisteredCount = combinedCustomers.filter(c => c.is_in_database === false).length;
 
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8 min-h-screen">
@@ -794,7 +880,7 @@ export default function HotspotCustomerManagement({
           >
             <span>Semua Hotspot</span>
             <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${statusFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
-              {customers.length}
+              {combinedCustomers.length}
             </span>
           </button>
 
@@ -842,6 +928,23 @@ export default function HotspotCustomerManagement({
               {pendingCount}
             </span>
           </button>
+
+          {unregisteredCount > 0 && (
+            <button
+              onClick={() => setStatusFilter('unregistered' as any)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                (statusFilter as any) === 'unregistered'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
+              }`}
+            >
+              <AlertTriangle size={13} className="text-amber-500" />
+              <span>Belum di Database</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${(statusFilter as any) === 'unregistered' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-900'}`}>
+                {unregisteredCount}
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Toolbar & Filters */}
@@ -864,6 +967,9 @@ export default function HotspotCustomerManagement({
               className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans font-bold text-slate-700 focus:outline-none"
             >
               <option value="all">Semua Paket Hotspot</option>
+              {unregisteredCount > 0 && (
+                <option value="unregistered">⚠️ Belum Ada di DB ({unregisteredCount})</option>
+              )}
               {packages.map(p => (
                 <option key={p.id} value={p.id}>{p.name} ({p.speed_limit || 'Default'})</option>
               ))}
@@ -951,8 +1057,18 @@ export default function HotspotCustomerManagement({
                     return (
                       <tr 
                         key={c.id} 
-                        onClick={() => openBillingModal(c)}
-                        className="hover:bg-sky-50/40 transition-colors cursor-pointer group"
+                        onClick={() => {
+                          if (c.is_in_database === false) {
+                            handleRegisterFromMikrotik(c);
+                          } else {
+                            openBillingModal(c);
+                          }
+                        }}
+                        className={`transition-colors cursor-pointer group ${
+                          c.is_in_database === false 
+                            ? 'bg-amber-50/30 hover:bg-amber-100/50' 
+                            : 'hover:bg-sky-50/40'
+                        }`}
                       >
                         {/* 1. Pelanggan */}
                         <td className="py-4 px-5">
@@ -968,8 +1084,13 @@ export default function HotspotCustomerManagement({
                               title={online ? 'Online Hotspot' : 'Offline'}
                             />
                             <div>
-                              <div className="font-extrabold text-slate-900 group-hover:text-sky-600 transition-colors">
-                                {c.name}
+                              <div className="font-extrabold text-slate-900 group-hover:text-sky-600 transition-colors flex items-center gap-2">
+                                <span>{c.name}</span>
+                                {c.is_in_database === false && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                    Hanya di MikroTik
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
                                 <span className="font-bold text-slate-500">{c.customer_code || 'CUST-HOTSPOT'}</span>
@@ -987,11 +1108,28 @@ export default function HotspotCustomerManagement({
                         {/* 2. Paket & Kecepatan */}
                         <td className="py-4 px-5">
                           <div className="space-y-1">
-                            <span className="inline-block px-2.5 py-0.5 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-extrabold text-xs">
-                              {c.package_name || 'Hotspot Member'}
-                            </span>
-                            <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
-                              <span>Rp {c.package_price ? Number(c.package_price).toLocaleString('id-ID') : '0'}</span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-md border font-extrabold text-xs ${
+                                c.is_in_database === false
+                                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                                  : 'bg-sky-50 border-sky-200 text-sky-800'
+                              }`}>
+                                {c.package_name || 'Hotspot Member'}
+                              </span>
+                              {c.custom_price && (
+                                <span className="px-1.5 py-0.2 rounded text-[9.5px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300" title="Tarif bulanan pelanggan ini dikunci flat">
+                                  🔒 Rp {Number(c.custom_price).toLocaleString('id-ID')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5 flex-wrap">
+                              {c.is_in_database === false ? (
+                                <span className="text-emerald-600 font-sans">Aktif di MikroTik</span>
+                              ) : c.custom_price ? (
+                                <span className="text-emerald-700 font-sans font-black">Rp {Number(c.custom_price).toLocaleString('id-ID')}</span>
+                              ) : (
+                                <span>Rp {c.package_price ? Number(c.package_price).toLocaleString('id-ID') : '0'}</span>
+                              )}
                               <span>•</span>
                               <span className="text-amber-600">⚡ {c.speed_limit || 'Unlimited'}</span>
                             </div>
@@ -1003,11 +1141,16 @@ export default function HotspotCustomerManagement({
                           <div className="space-y-0.5 font-mono">
                             <div className="font-black text-xs text-indigo-700 flex items-center gap-1">
                               <span>{c.pppoe_username}</span>
-                              <span className="text-[10px] text-slate-400 font-normal">({c.pppoe_password})</span>
+                              {c.pppoe_password && c.pppoe_password !== '-' && (
+                                <span className="text-[10px] text-slate-400 font-normal">({c.pppoe_password})</span>
+                              )}
                             </div>
                             <div className="text-[11px] text-slate-500 font-sans font-medium flex items-center gap-1">
                               <Server size={11} className="text-slate-400" />
                               <span>{c.router_name || 'Default Router'}</span>
+                              {c.static_ip && c.static_ip !== '-' && (
+                                <span className="text-slate-400 font-mono">({c.static_ip})</span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -1015,18 +1158,26 @@ export default function HotspotCustomerManagement({
                         {/* 4. Status & Masa Aktif */}
                         <td className="py-4 px-5">
                           <div className="space-y-1">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                              c.status === 'active' 
-                                ? 'bg-emerald-100 text-emerald-800' 
-                                : c.status === 'isolated'
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-amber-100 text-amber-800'
-                            }`}>
-                              {c.status || 'active'}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                c.status === 'active' 
+                                  ? 'bg-emerald-100 text-emerald-800' 
+                                  : c.status === 'isolated'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {c.status === 'active' ? (online ? '🟢 Online' : '🔴 Offline') : c.status}
+                              </span>
+
+                              {c.is_in_database === false && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                  ⚠️ Tidak ada di Database
+                                </span>
+                              )}
+                            </div>
                             <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
                               <Calendar size={11} className="text-slate-400" />
-                              <span>{c.expired_at ? `Exp: ${new Date(c.expired_at).toLocaleDateString('id-ID')}` : 'Tanpa Expired'}</span>
+                              <span>{c.is_in_database === false ? `Uptime: ${c.uptime || '-'}` : (c.expired_at ? `Exp: ${new Date(c.expired_at).toLocaleDateString('id-ID')}` : 'Tanpa Expired')}</span>
                             </div>
                           </div>
                         </td>
@@ -1034,62 +1185,88 @@ export default function HotspotCustomerManagement({
                         {/* 5. Aksi */}
                         <td className="py-4 px-5 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
-                            {online && (
-                              <button
-                                onClick={() => handleDisconnect(c)}
-                                disabled={isLoadingAction}
-                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] rounded-lg transition cursor-pointer"
-                                title="Putus koneksi user ini di MikroTik"
-                              >
-                                {isLoadingAction ? <RefreshCw size={11} className="animate-spin" /> : 'Diskonek'}
-                              </button>
+                            {c.is_in_database === false ? (
+                              <>
+                                <button
+                                  onClick={() => handleRegisterFromMikrotik(c)}
+                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] inline-flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                  title="Daftarkan Sesi Hotspot ini ke Database Pelanggan"
+                                >
+                                  <UserCheck size={13} />
+                                  <span>+ Daftarkan ke DB</span>
+                                </button>
+
+                                {online && (
+                                  <button
+                                    onClick={() => handleDisconnect(c)}
+                                    disabled={isLoadingAction}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
+                                    title="Putus koneksi user ini di MikroTik"
+                                  >
+                                    {isLoadingAction ? <RefreshCw size={13} className="animate-spin text-rose-500" /> : <Power size={13} />}
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {online && (
+                                  <button
+                                    onClick={() => handleDisconnect(c)}
+                                    disabled={isLoadingAction}
+                                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] rounded-lg transition cursor-pointer"
+                                    title="Putus koneksi user ini di MikroTik"
+                                  >
+                                    {isLoadingAction ? <RefreshCw size={11} className="animate-spin" /> : 'Diskonek'}
+                                  </button>
+                                )}
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSyncMikrotik(c);
+                                  }}
+                                  disabled={isLoadingAction}
+                                  className={`px-2.5 py-1 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer ${
+                                    c.is_synced
+                                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                                      : 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold animate-pulse shadow-xs'
+                                  }`}
+                                  title={c.is_synced ? 'Singkron Ulang ke MikroTik' : 'Belum Sinkron - Klik untuk Singkron ke MikroTik'}
+                                >
+                                  {isLoadingAction ? (
+                                    <RefreshCw size={13} className="animate-spin text-amber-600" />
+                                  ) : (
+                                    <Zap size={13} className={c.is_synced ? 'text-amber-600' : 'text-white'} />
+                                  )}
+                                  <span className="text-[11px] font-bold">Sync</span>
+                                </button>
+
+                                <button
+                                  onClick={() => openBillingModal(c)}
+                                  className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                  title="Detail Pelanggan & Tagihan"
+                                >
+                                  <Eye size={14} />
+                                  <span className="hidden sm:inline">Detail</span>
+                                </button>
+
+                                <button
+                                  onClick={() => openEditModal(c)}
+                                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition cursor-pointer"
+                                  title="Edit Data Pelanggan"
+                                >
+                                  <Edit size={14} />
+                                </button>
+
+                                <button
+                                  onClick={() => promptDeleteCustomer(c)}
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition cursor-pointer"
+                                  title="Hapus Pelanggan"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </>
                             )}
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSyncMikrotik(c);
-                              }}
-                              disabled={isLoadingAction}
-                              className={`px-2.5 py-1 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer ${
-                                c.is_synced
-                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
-                                  : 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold animate-pulse shadow-xs'
-                              }`}
-                              title={c.is_synced ? 'Singkron Ulang ke MikroTik' : 'Belum Sinkron - Klik untuk Singkron ke MikroTik'}
-                            >
-                              {isLoadingAction ? (
-                                <RefreshCw size={13} className="animate-spin text-amber-600" />
-                              ) : (
-                                <Zap size={13} className={c.is_synced ? 'text-amber-600' : 'text-white'} />
-                              )}
-                              <span className="text-[11px] font-bold">Sync</span>
-                            </button>
-
-                            <button
-                              onClick={() => openBillingModal(c)}
-                              className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold text-xs rounded-xl flex items-center gap-1 transition shadow-2xs cursor-pointer"
-                              title="Detail Pelanggan & Tagihan"
-                            >
-                              <Eye size={14} />
-                              <span className="hidden sm:inline">Detail</span>
-                            </button>
-
-                            <button
-                              onClick={() => openEditModal(c)}
-                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition cursor-pointer"
-                              title="Edit Data Pelanggan"
-                            >
-                              <Edit size={14} />
-                            </button>
-
-                            <button
-                              onClick={() => promptDeleteCustomer(c)}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition cursor-pointer"
-                              title="Hapus Pelanggan"
-                            >
-                              <Trash2 size={14} />
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1272,6 +1449,51 @@ export default function HotspotCustomerManagement({
                     }
                     return null;
                   })()}
+
+                  {/* Tarif Bulanan Khusus / Terkunci (Grandfathering Clause) */}
+                  <div className="p-3 bg-white border border-slate-200 rounded-2xl space-y-1.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>Tarif Bulanan Khusus / Terkunci (Rp)</span>
+                        {customPrice ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-black border border-emerald-300">
+                            🔒 Terkunci Rp {Number(customPrice).toLocaleString('id-ID')}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            (Opsional)
+                          </span>
+                        )}
+                      </label>
+                      {customPrice && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomPrice('')}
+                          className="text-[10.5px] text-rose-600 hover:text-rose-700 font-bold underline cursor-pointer"
+                        >
+                          Reset ke Harga Paket
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      placeholder={
+                        packageId && packages.find(p => p.id === packageId)
+                          ? `Kosongkan untuk mengikuti harga paket (Rp ${Number(packages.find(p => p.id === packageId)?.price || 0).toLocaleString('id-ID')})`
+                          : 'Kosongkan jika mengikuti harga default paket master'
+                      }
+                      value={customPrice}
+                      onChange={(e) => setCustomPrice(e.target.value)}
+                      className={`w-full px-3.5 py-2 border rounded-xl text-xs font-mono font-bold transition ${
+                        customPrice 
+                          ? 'bg-emerald-50/60 border-emerald-400 text-emerald-950 focus:ring-2 focus:ring-emerald-500' 
+                          : 'bg-white border-slate-200 text-slate-800 focus:ring-2 focus:ring-sky-500'
+                      }`}
+                    />
+                    <p className="text-[10.5px] text-slate-500 leading-relaxed">
+                      💡 <b>Kunci Harga (Grandfathering):</b> Kosongkan jika ingin mengikuti harga master paket. Jika diisi, tagihan bulanan pelanggan ini akan <b>terkunci flat</b> pada nominal tersebut (tidak akan berubah jika kelak harga paket master dinaikkan untuk pelanggan baru).
+                    </p>
+                  </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Nama Pelanggan *</label>
