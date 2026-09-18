@@ -15,7 +15,9 @@ import {
   Volume2,
   VolumeX,
   Smartphone,
-  Settings2
+  Settings2,
+  Image as ImageIcon,
+  Loader2
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { BusinessProfile } from '../types';
@@ -51,7 +53,35 @@ export default function QrVoucherScanner({ profile, onBack }: QrVoucherScannerPr
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [analyzingFile, setAnalyzingFile] = useState<boolean>(false);
   const containerId = 'arbill-qr-reader';
+
+  const handleFileScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setAnalyzingFile(true);
+      setErrorMessage(null);
+      await stopScanner();
+
+      const fileScanner = new Html5Qrcode(containerId, {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false
+      });
+
+      const decodedText = await fileScanner.scanFile(file, true);
+      setAnalyzingFile(false);
+      handleScanSuccess(decodedText);
+    } catch (err: any) {
+      setAnalyzingFile(false);
+      setErrorMessage("Tidak ditemukan QR Code yang valid pada foto tersebut. Pastikan gambar voucher terlihat terang dan jelas.");
+      startScanner();
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Sound beep synthesizer via Web Audio API (offline, no external asset needed)
   const playBeep = () => {
@@ -424,8 +454,36 @@ export default function QrVoucherScanner({ profile, onBack }: QrVoucherScannerPr
               </div>
             </div>
 
+            {/* Core Action: Scan from Gallery */}
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              accept="image/*" 
+              className="hidden" 
+              onChange={handleFileScan} 
+            />
+            
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={analyzingFile}
+              className="w-full max-w-[340px] mt-4 py-3 px-4 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-slate-900 to-emerald-950/40 hover:from-cyan-900/50 hover:to-emerald-900/50 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-950/30 transition active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+            >
+              {analyzingFile ? (
+                <>
+                  <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                  <span>Menganalisis Foto Voucher...</span>
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="w-4 h-4 text-cyan-400" />
+                  <span>📁 Scan dari Galeri / Screenshot Foto</span>
+                </>
+              )}
+            </button>
+
             {/* Helper Text */}
-            <div className="mt-5 text-center px-4">
+            <div className="mt-4 text-center px-4">
               <p className="text-sm font-semibold text-slate-200 flex items-center justify-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-cyan-400" />
                 Arahkan kamera ke QR Code Voucher

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#030712">
-  <title>ARBILL QR SCANNER — WIFI ARABPAY</title>
+  <title>ARBILL CYBER SCANNER — WIFI ARABPAY</title>
   <style>
     * {
       box-sizing: border-box;
@@ -12,8 +12,15 @@
       padding: 0;
       -webkit-tap-highlight-color: transparent;
     }
+    :root {
+      --neon-cyan: #06b6d4;
+      --neon-emerald: #10b981;
+      --neon-amber: #f59e0b;
+      --dark-bg: #030712;
+      --panel-bg: rgba(15, 23, 42, 0.75);
+    }
     body {
-      background-color: #030712;
+      background-color: var(--dark-bg);
       color: #f3f4f6;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
@@ -23,61 +30,110 @@
       justify-content: space-between;
       padding: 16px;
       overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 50% 10%, rgba(6, 182, 212, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 80% 90%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
     }
+
+    /* Ambient Animated Grid Background */
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-size: 36px 36px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Header HUD */
     .header {
       width: 100%;
       max-width: 440px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-bottom: 12px;
+      padding: 6px 12px 12px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       z-index: 10;
+      position: relative;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
     }
     .brand-logo {
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #06b6d4, #10b981);
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--neon-cyan), var(--neon-emerald));
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 15px rgba(6, 182, 212, 0.35);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.45);
+      position: relative;
+    }
+    .brand-logo::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 14px;
+      border: 1px solid rgba(6, 182, 212, 0.6);
+      animation: pulseGlow 2.5s infinite;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.05); }
     }
     .brand-logo svg {
-      width: 20px;
-      height: 20px;
+      width: 22px;
+      height: 22px;
       fill: #030712;
     }
     .brand-text h1 {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 800;
       letter-spacing: 0.5px;
       color: #ffffff;
       line-height: 1.2;
+      text-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
     }
-    .brand-text p {
-      font-size: 10px;
-      color: #06b6d4;
+    .brand-text .hud-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 9px;
+      color: var(--neon-cyan);
       font-family: monospace;
       letter-spacing: 1px;
       text-transform: uppercase;
+      margin-top: 2px;
     }
+    .hud-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--neon-emerald);
+      box-shadow: 0 0 8px var(--neon-emerald);
+      animation: blink 1.2s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
     .nav-actions {
       display: flex;
       gap: 8px;
     }
     .icon-btn {
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px;
       color: #9ca3af;
-      padding: 8px;
+      padding: 9px;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -87,12 +143,16 @@
     .icon-btn:hover, .icon-btn:active {
       color: #ffffff;
       background: rgba(255, 255, 255, 0.12);
+      border-color: var(--neon-cyan);
     }
     .icon-btn.active {
-      background: rgba(6, 182, 212, 0.15);
-      border-color: #06b6d4;
-      color: #06b6d4;
+      background: rgba(6, 182, 212, 0.18);
+      border-color: var(--neon-cyan);
+      color: var(--neon-cyan);
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
     }
+
+    /* Main Container */
     .main-container {
       width: 100%;
       max-width: 440px;
@@ -100,18 +160,46 @@
       flex-direction: column;
       align-items: center;
       margin: auto 0;
-      padding: 12px 0;
+      padding: 10px 0;
+      z-index: 10;
+      position: relative;
     }
+
+    /* Telemetry Info Line */
+    .telemetry-bar {
+      width: 100%;
+      max-width: 330px;
+      display: flex;
+      justify-content: space-between;
+      font-family: monospace;
+      font-size: 10px;
+      color: #64748b;
+      margin-bottom: 10px;
+      padding: 0 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .telemetry-bar span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .telemetry-bar .active-val {
+      color: var(--neon-cyan);
+      font-weight: 700;
+    }
+
+    /* Cyber Viewfinder Frame */
     .scanner-card {
       position: relative;
       width: 100%;
-      max-width: 320px;
+      max-width: 330px;
       aspect-ratio: 1 / 1;
-      border-radius: 24px;
+      border-radius: 28px;
       overflow: hidden;
-      border: 2px solid rgba(6, 182, 212, 0.4);
-      background: #0b1120;
-      box-shadow: 0 10px 40px -10px rgba(6, 182, 212, 0.25);
+      border: 2px solid rgba(6, 182, 212, 0.35);
+      background: #020617;
+      box-shadow: 0 0 35px -5px rgba(6, 182, 212, 0.25), inset 0 0 25px rgba(0, 0, 0, 0.8);
     }
     #reader {
       width: 100% !important;
@@ -122,39 +210,75 @@
       width: 100% !important;
       height: 100% !important;
       object-fit: cover !important;
-      border-radius: 22px !important;
+      border-radius: 26px !important;
     }
-    /* Laser Scan Line */
+
+    /* Sci-Fi Holographic Crosshair and HUD Overlays */
+    .hud-center-crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 48px;
+      height: 48px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0.35;
+      z-index: 4;
+    }
+    .hud-center-crosshair::before, .hud-center-crosshair::after {
+      content: '';
+      position: absolute;
+      background: var(--neon-cyan);
+    }
+    .hud-center-crosshair::before {
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      transform: translateY(-50%);
+    }
+    .hud-center-crosshair::after {
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      transform: translateX(-50%);
+    }
+
+    /* Futuristic Laser Beam */
     .laser {
       position: absolute;
       top: 0;
-      left: 5%;
-      right: 5%;
+      left: 4%;
+      right: 4%;
       height: 2px;
-      background: linear-gradient(90deg, transparent, #06b6d4, #10b981, transparent);
+      background: linear-gradient(90deg, transparent, var(--neon-cyan), #ffffff, var(--neon-emerald), transparent);
       box-shadow: 0 0 16px #06b6d4, 0 0 8px #10b981;
-      animation: scanning 2.2s ease-in-out infinite alternate;
+      animation: scanning 2.3s ease-in-out infinite alternate;
       pointer-events: none;
       z-index: 5;
     }
     @keyframes scanning {
-      0% { top: 8%; opacity: 0.3; }
-      50% { opacity: 1; }
-      100% { top: 90%; opacity: 0.3; }
+      0% { top: 8%; opacity: 0.4; }
+      50% { opacity: 1; filter: drop-shadow(0 0 10px #06b6d4); }
+      100% { top: 90%; opacity: 0.4; }
     }
-    /* Reticle Corners */
+
+    /* Hologram Corner Reticles */
     .reticle {
       position: absolute;
-      width: 22px;
-      height: 22px;
+      width: 26px;
+      height: 26px;
       pointer-events: none;
       z-index: 6;
+      transition: all 0.3s;
     }
-    .reticle.tl { top: 12px; left: 12px; border-top: 3px solid #06b6d4; border-left: 3px solid #06b6d4; border-radius: 6px 0 0 0; }
-    .reticle.tr { top: 12px; right: 12px; border-top: 3px solid #06b6d4; border-right: 3px solid #06b6d4; border-radius: 0 6px 0 0; }
-    .reticle.bl { bottom: 12px; left: 12px; border-bottom: 3px solid #06b6d4; border-left: 3px solid #06b6d4; border-radius: 0 0 0 6px; }
-    .reticle.br { bottom: 12px; right: 12px; border-bottom: 3px solid #06b6d4; border-right: 3px solid #06b6d4; border-radius: 0 0 6px 0; }
+    .reticle.tl { top: 14px; left: 14px; border-top: 3px solid var(--neon-cyan); border-left: 3px solid var(--neon-cyan); border-radius: 8px 0 0 0; }
+    .reticle.tr { top: 14px; right: 14px; border-top: 3px solid var(--neon-cyan); border-right: 3px solid var(--neon-cyan); border-radius: 0 8px 0 0; }
+    .reticle.bl { bottom: 14px; left: 14px; border-bottom: 3px solid var(--neon-cyan); border-left: 3px solid var(--neon-cyan); border-radius: 0 0 0 8px; }
+    .reticle.br { bottom: 14px; right: 14px; border-bottom: 3px solid var(--neon-cyan); border-right: 3px solid var(--neon-cyan); border-radius: 0 0 8px 0; }
 
+    /* Floating Camera Tools Overlay */
     .cam-controls {
       position: absolute;
       bottom: 12px;
@@ -162,66 +286,101 @@
       right: 0;
       display: flex;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       z-index: 10;
     }
     .pill-btn {
-      background: rgba(3, 7, 18, 0.85);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(2, 6, 23, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 30px;
-      padding: 6px 14px;
+      padding: 7px 14px;
       font-size: 11px;
-      font-weight: 600;
-      color: #e5e7eb;
+      font-weight: 700;
+      color: #e2e8f0;
       display: flex;
       align-items: center;
       gap: 6px;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
       transition: all 0.2s;
     }
     .pill-btn:active {
-      transform: scale(0.96);
+      transform: scale(0.95);
     }
     .pill-btn.torch-active {
-      background: rgba(245, 158, 11, 0.2);
-      border-color: #f59e0b;
-      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.25);
+      border-color: var(--neon-amber);
+      color: #fde68a;
+      box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
     }
+
+    /* Core Actions: Camera + Gallery */
+    .core-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      width: 100%;
+      max-width: 330px;
+    }
+    .btn-gallery {
+      flex: 1;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(16, 185, 129, 0.08));
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      color: #38bdf8;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 20px -5px rgba(6, 182, 212, 0.25);
+      transition: all 0.2s;
+    }
+    .btn-gallery:hover, .btn-gallery:active {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(16, 185, 129, 0.18));
+      border-color: var(--neon-cyan);
+      transform: translateY(-1px);
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+    }
+
     .helper-text {
       text-align: center;
-      margin-top: 18px;
+      margin-top: 14px;
       padding: 0 10px;
     }
     .helper-text h2 {
       font-size: 14px;
       font-weight: 700;
-      color: #f9fafb;
+      color: #f8fafc;
+      letter-spacing: 0.2px;
     }
     .helper-text p {
-      font-size: 12px;
-      color: #9ca3af;
+      font-size: 11.5px;
+      color: #94a3b8;
       margin-top: 4px;
       line-height: 1.4;
     }
+
     .quick-actions {
       display: flex;
       gap: 8px;
-      margin-top: 14px;
+      margin-top: 12px;
       width: 100%;
-      max-width: 320px;
-      justify-content: center;
+      max-width: 330px;
     }
     .action-link {
       flex: 1;
       text-align: center;
       text-decoration: none;
-      padding: 8px 12px;
+      padding: 9px 12px;
       font-size: 11px;
       font-weight: 600;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
       color: #38bdf8;
       display: flex;
@@ -232,68 +391,85 @@
     }
     .action-link:hover, .action-link:active {
       background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.4);
     }
-    /* Scanned Success Card */
+
+    /* Result HUD Card with Shockwave Ripple */
     #resultCard {
       display: none;
       width: 100%;
       max-width: 340px;
-      background: #0f172a;
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      border-radius: 24px;
+      background: linear-gradient(180deg, #0b1528 0%, #030712 100%);
+      border: 2px solid rgba(16, 185, 129, 0.5);
+      border-radius: 28px;
       padding: 24px;
       text-align: center;
-      box-shadow: 0 10px 40px -10px rgba(16, 185, 129, 0.3);
-      animation: zoomIn 0.25s ease-out;
+      box-shadow: 0 0 50px -5px rgba(16, 185, 129, 0.35);
+      animation: zoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    #resultCard::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 60%);
+      pointer-events: none;
     }
     @keyframes zoomIn {
-      from { transform: scale(0.92); opacity: 0; }
+      from { transform: scale(0.85); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
     .success-icon {
-      width: 60px;
-      height: 60px;
-      margin: 0 auto 14px;
-      background: rgba(16, 185, 129, 0.12);
-      border: 2px solid #10b981;
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 12px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 2px solid var(--neon-emerald);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.4);
     }
     .success-icon svg {
-      width: 32px;
-      height: 32px;
-      stroke: #10b981;
+      width: 34px;
+      height: 34px;
+      stroke: var(--neon-emerald);
     }
     .code-box {
       background: #020617;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 14px;
-      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 12px 14px;
       margin: 14px 0;
       text-align: left;
+      position: relative;
     }
     .code-box label {
       font-size: 10px;
       text-transform: uppercase;
-      font-weight: 700;
-      color: #6b7280;
+      font-weight: 800;
+      color: #64748b;
+      letter-spacing: 0.5px;
       display: block;
     }
     .code-box .code-val {
       font-family: monospace;
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 13.5px;
+      font-weight: 800;
       color: #38bdf8;
       margin-top: 4px;
       word-break: break-all;
     }
     .btn-login {
       width: 100%;
-      padding: 12px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #06b6d4, #10b981);
+      padding: 13px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--neon-cyan), var(--neon-emerald));
       color: #030712;
       font-weight: 800;
       font-size: 13px;
@@ -303,8 +479,8 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
-      transition: transform 0.15s;
+      box-shadow: 0 6px 20px rgba(6, 182, 212, 0.35);
+      transition: all 0.2s;
     }
     .btn-login:active {
       transform: scale(0.98);
@@ -313,9 +489,9 @@
       width: 100%;
       padding: 10px;
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #d1d5db;
+      color: #cbd5e1;
       font-weight: 600;
       font-size: 12px;
       margin-top: 8px;
@@ -332,17 +508,59 @@
     .progress-fill {
       height: 100%;
       width: 100%;
-      background: linear-gradient(90deg, #06b6d4, #10b981);
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-emerald));
       transition: width 1s linear;
     }
+
+    /* Image Processing Overlay Spinner */
+    #loadingOverlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.88);
+      backdrop-filter: blur(8px);
+      z-index: 20;
+      border-radius: 28px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    .spinner {
+      width: 38px;
+      height: 38px;
+      border: 3px solid rgba(6, 182, 212, 0.2);
+      border-top-color: var(--neon-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #errorBox {
+      display: none;
+      width: 100%;
+      max-width: 330px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-size: 11.5px;
+      color: #fca5a5;
+      margin-top: 12px;
+      line-height: 1.4;
+      text-align: left;
+    }
+
     .footer {
       width: 100%;
       max-width: 440px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 10px;
-      color: #6b7280;
+      font-size: 10.5px;
+      color: #64748b;
       padding-top: 12px;
       border-top: 1px solid rgba(255, 255, 255, 0.08);
       z-index: 10;
@@ -352,27 +570,15 @@
       align-items: center;
       gap: 5px;
     }
-    #errorBox {
-      display: none;
-      width: 100%;
-      max-width: 320px;
-      background: rgba(239, 68, 68, 0.12);
-      border: 1px solid rgba(239, 68, 68, 0.35);
-      border-radius: 14px;
-      padding: 12px;
-      font-size: 11px;
-      color: #fca5a5;
-      margin-top: 14px;
-      line-height: 1.4;
-      text-align: left;
-    }
   </style>
-  <!-- Load HTML5 QR Code CDN with fallback -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
-  <!-- Header -->
+  <!-- Ambient Grid Background -->
+  <div class="bg-grid"></div>
+
+  <!-- Header HUD -->
   <header class="header">
     <div class="brand">
       <div class="brand-logo">
@@ -381,12 +587,15 @@
         </svg>
       </div>
       <div class="brand-text">
-        <h1>ARBILL QR SCANNER</h1>
-        <p>WIFI ARABPAY HOTSPOT</p>
+        <h1>ARBILL CYBER SCANNER</h1>
+        <div class="hud-badge">
+          <span class="dot"></span>
+          <span>ARABPAY 5G HOTSPOT</span>
+        </div>
       </div>
     </div>
     <div class="nav-actions">
-      <button class="icon-btn" id="soundBtn" onclick="toggleSound()" title="Toggle Suara">
+      <button class="icon-btn active" id="soundBtn" onclick="toggleSound()" title="Efek Suara">
         <svg id="soundIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
@@ -403,24 +612,45 @@
 
   <!-- Main Scanner Area -->
   <main class="main-container">
+
+    <!-- Telemetry Telemetry Bar -->
+    <div class="telemetry-bar">
+      <span>AI TRACKER: <span class="active-val">ONLINE</span></span>
+      <span>MODE: <span class="active-val" id="telemetryMode">CAMERA</span></span>
+    </div>
+
+    <!-- Scanner Viewfinder Card -->
     <div class="scanner-card" id="scannerCard">
       <div id="reader"></div>
+      
+      <!-- Hologram Center Crosshair -->
+      <div class="hud-center-crosshair"></div>
+
+      <!-- Laser Beam Line -->
       <div class="laser" id="laserLine"></div>
+
+      <!-- Reticle Corners -->
       <div class="reticle tl"></div>
       <div class="reticle tr"></div>
       <div class="reticle bl"></div>
       <div class="reticle br"></div>
 
-      <!-- Controls Overlay -->
+      <!-- Loading Overlay when analyzing gallery image -->
+      <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <span style="font-size: 11px; font-weight: 700; color: #38bdf8; letter-spacing: 0.5px;">MENGANALISIS FOTO VOUCHER...</span>
+      </div>
+
+      <!-- Live Camera Controls -->
       <div class="cam-controls">
         <button class="pill-btn" id="switchCamBtn" onclick="switchCamera()" style="display:none;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
           Ganti Kamera
         </button>
         <button class="pill-btn" id="torchBtn" onclick="toggleTorch()" style="display:none;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
           </svg>
           Senter
@@ -435,13 +665,13 @@
           <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
       </div>
-      <h3 style="font-size: 16px; font-weight: 800; color: #fff;">QR Code Berhasil Terbaca!</h3>
-      <p id="countdownText" style="font-size: 12px; color: #9ca3af; margin-top: 4px;">
+      <h3 style="font-size: 16px; font-weight: 800; color: #fff;">QR Code Berhasil Terdeteksi!</h3>
+      <p id="countdownText" style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
         Mengarahkan ke login MikroTik dalam 3 detik...
       </p>
 
       <div class="code-box">
-        <label>Kode / URL Terbaca:</label>
+        <label>Kode / URL Hotspot:</label>
         <div class="code-val" id="scannedCodeDisplay">--</div>
       </div>
 
@@ -463,13 +693,27 @@
       </button>
     </div>
 
-    <!-- Instructions -->
-    <div class="helper-text" id="helperSection">
-      <h2>Arahkan Kamera ke QR Code Voucher</h2>
-      <p>Posisikan QR code voucher Anda di dalam kotak pemindai untuk langsung terhubung otomatis ke internet.</p>
+    <!-- Action: Scan from Gallery Input -->
+    <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="handleFileScan(event)">
+    
+    <div class="core-actions" id="galleryActionSection">
+      <button type="button" class="btn-gallery" onclick="document.getElementById('qrFileInput').click()">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>📁 Scan dari Galeri / Screenshot</span>
+      </button>
     </div>
 
-    <!-- Intent / Fallback buttons (Like Laksa19 Open in Chrome) -->
+    <!-- Instructions -->
+    <div class="helper-text" id="helperSection">
+      <h2>Arahkan Kamera atau Pilih Foto Galeri</h2>
+      <p>Arahkan kamera ke kertas voucher atau pilih gambar screenshot QR dari galeri ponsel Anda.</p>
+    </div>
+
+    <!-- Fallback Links -->
     <div class="quick-actions" id="quickActionsSection">
       <a class="action-link" id="chromeIntentBtn" href="intent://arbill.arabpay.my.id/myqr#Intent;scheme=https;package=com.android.chrome;end">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -479,7 +723,7 @@
           <line x1="3.95" y1="6.06" x2="8.54" y2="14"></line>
           <line x1="10.88" y1="21.94" x2="15.46" y2="14"></line>
         </svg>
-        Buka di Google Chrome
+        Buka di Chrome
       </a>
       <a class="action-link" id="backToHotspotBtn" href="http://192.168.88.1/login">
         Kembali ke Login
@@ -493,12 +737,12 @@
   <!-- Footer -->
   <footer class="footer">
     <span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
       </svg>
-      HTTPS SSL Kamera Aktif
+      Enkripsi Kamera TLS 1.3
     </span>
-    <span>Powered by Arbill SaaS</span>
+    <span>WIFI ARABPAY SAAS</span>
   </footer>
 
   <script>
@@ -510,28 +754,39 @@
     var targetUrl = "";
     var countdownInterval = null;
 
-    // Detect router login URL from URL parameters
     var urlParams = new URLSearchParams(window.location.search);
     var defaultRouterUrl = urlParams.get('loginUrl') || urlParams.get('router') || 'http://192.168.88.1/login';
     document.getElementById('backToHotspotBtn').href = defaultRouterUrl;
 
-    // Sound Beep synthesizer
+    // Sci-Fi Audio Synthesizer Beep
     function playBeep() {
       if (!soundEnabled) return;
       try {
-        var AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (AudioContextClass) {
-          var ctx = new AudioContextClass();
-          var osc = ctx.createOscillator();
+        var AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          var ctx = new AudioCtx();
+          var osc1 = ctx.createOscillator();
+          var osc2 = ctx.createOscillator();
           var gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(880, ctx.currentTime);
-          gain.gain.setValueAtTime(0.2, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-          osc.connect(gain);
+
+          osc1.type = 'sine';
+          osc1.frequency.setValueAtTime(880, ctx.currentTime);
+          osc1.frequency.exponentialRampToTimeAtTime(1760, ctx.currentTime + 0.15); // futuristic pitch sweep
+
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(1320, ctx.currentTime);
+
+          gain.gain.setValueAtTime(0.25, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+          osc1.connect(gain);
+          osc2.connect(gain);
           gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.2);
+
+          osc1.start();
+          osc2.start();
+          osc1.stop(ctx.currentTime + 0.25);
+          osc2.stop(ctx.currentTime + 0.25);
         }
       } catch(e) {}
     }
@@ -541,17 +796,16 @@
       document.getElementById('soundBtn').classList.toggle('active', soundEnabled);
     }
 
-    // Initialize Camera Scanner
+    // Camera Initializer
     function initScanner() {
       if (typeof Html5Qrcode === 'undefined') {
-        showError("Library kamera gagal dimuat. Harap periksa koneksi internet Anda.");
+        showError("Komponen pemindai gagal dimuat. Harap periksa jaringan internet.");
         return;
       }
 
       Html5Qrcode.getCameras().then(function(devices) {
         if (devices && devices.length > 0) {
           availableCameras = devices;
-          // Prefer back camera
           var back = devices.find(function(d) {
             var l = d.label.toLowerCase();
             return l.includes('back') || l.includes('rear') || l.includes('belakang') || l.includes('environment');
@@ -561,13 +815,12 @@
           if (devices.length > 1) {
             document.getElementById('switchCamBtn').style.display = 'flex';
           }
-
           startCamera(currentCameraId);
         } else {
           startCamera({ facingMode: "environment" });
         }
       }).catch(function(err) {
-        console.warn("getCameras error, fallback facingMode:", err);
+        console.warn("Falling back to facingMode:", err);
         startCamera({ facingMode: "environment" });
       });
     }
@@ -585,7 +838,7 @@
     function runStart(camConfig) {
       html5QrCode = new Html5Qrcode("reader");
       var config = {
-        fps: 20,
+        fps: 25,
         qrbox: function(w, h) {
           var s = Math.floor(Math.min(w, h) * 0.78);
           return { width: s, height: s };
@@ -596,16 +849,16 @@
         camConfig,
         config,
         onScanSuccess,
-        function(err) { /* silent frame scan error */ }
+        function(err) { /* frame scan */ }
       ).then(function() {
-        checkTorchCapability();
+        checkTorch();
       }).catch(function(err) {
-        console.error("Camera start failed:", err);
-        showError("Gagal mengakses kamera: " + (err.name === "NotAllowedError" ? "Izin kamera ditolak. Silakan berikan izin kamera pada browser Anda." : err.message || err));
+        console.error("Camera open error:", err);
+        showError("Gagal membuka kamera: " + (err.name === "NotAllowedError" ? "Izin kamera tidak diberikan. Silakan berikan izin di browser atau gunakan tombol 'Scan dari Galeri'." : err.message || err));
       });
     }
 
-    function checkTorchCapability() {
+    function checkTorch() {
       try {
         var capabilities = html5QrCode.getRunningTrackCameraCapabilities();
         if (capabilities && capabilities.torchFeature) {
@@ -634,28 +887,58 @@
       startCamera(currentCameraId);
     }
 
-    // Successful QR Code Detection
+    // 📁 SCAN DARI GALERI / FILE FOTO
+    function handleFileScan(event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      var overlay = document.getElementById('loadingOverlay');
+      overlay.style.display = 'flex';
+      document.getElementById('telemetryMode').innerText = 'FILE SCAN';
+
+      // Pastikan scanner di-pause/stop jika sedang berjalan
+      var scanPromise = html5QrCode && html5QrCode.isScanning 
+        ? html5QrCode.stop().catch(function(){}) 
+        : Promise.resolve();
+
+      scanPromise.then(function() {
+        var fileScanner = new Html5Qrcode("reader");
+        return fileScanner.scanFile(file, true)
+          .then(function(decodedText) {
+            overlay.style.display = 'none';
+            onScanSuccess(decodedText);
+          })
+          .catch(function(err) {
+            overlay.style.display = 'none';
+            showError("Tidak ditemukan QR Code yang valid pada foto tersebut. Pastikan gambar voucher terlihat terang dan jelas.");
+            // Kembalikan ke kamera
+            startCamera(currentCameraId || { facingMode: "environment" });
+          });
+      });
+      event.target.value = '';
+    }
+
+    // SUCCESS HANDLER
     function onScanSuccess(decodedText) {
       var text = decodedText.trim();
       if (!text) return;
 
       playBeep();
       if (navigator.vibrate) {
-        try { navigator.vibrate([100, 50, 150]); } catch(e){}
+        try { navigator.vibrate([120, 60, 180]); } catch(e){}
       }
 
       if (html5QrCode && html5QrCode.isScanning) {
         html5QrCode.stop().catch(function(){});
       }
 
-      // Hide scanner, show success card
       document.getElementById('scannerCard').style.display = 'none';
+      document.getElementById('galleryActionSection').style.display = 'none';
       document.getElementById('helperSection').style.display = 'none';
       document.getElementById('quickActionsSection').style.display = 'none';
       document.getElementById('resultCard').style.display = 'block';
       document.getElementById('scannedCodeDisplay').innerText = text;
 
-      // Determine target redirect URL
       if (text.startsWith('http://') || text.startsWith('https://')) {
         targetUrl = text;
       } else {
@@ -664,7 +947,6 @@
         targetUrl = base + delim + "username=" + encodeURIComponent(text) + "&password=" + encodeURIComponent(text);
       }
 
-      // Auto countdown 3s
       var count = 3;
       var fill = document.getElementById('progressFill');
       var cText = document.getElementById('countdownText');
@@ -692,9 +974,11 @@
       if (countdownInterval) clearInterval(countdownInterval);
       document.getElementById('resultCard').style.display = 'none';
       document.getElementById('scannerCard').style.display = 'block';
+      document.getElementById('galleryActionSection').style.display = 'flex';
       document.getElementById('helperSection').style.display = 'block';
       document.getElementById('quickActionsSection').style.display = 'flex';
       document.getElementById('errorBox').style.display = 'none';
+      document.getElementById('telemetryMode').innerText = 'CAMERA';
       startCamera(currentCameraId || { facingMode: "environment" });
     }
 
@@ -704,7 +988,6 @@
       eb.style.display = 'block';
     }
 
-    // Auto start on page load
     window.addEventListener('DOMContentLoaded', initScanner);
   </script>
 </body>
