@@ -170,8 +170,11 @@ export default function CustomerPortal({
   // Top-Up Modal State
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount, setTopupAmount] = useState(50000);
-  const [topupStep, setTopupStep] = useState<'select' | 'channel' | 'processing' | 'redirect'>('select');
+  const [topupStep, setTopupStep] = useState<'select' | 'channel' | 'processing' | 'redirect' | 'qris' | 'success'>('select');
   const [topupError, setTopupError] = useState('');
+  const [topupData, setTopupData] = useState<any>(null);
+  const [isTopupLoading, setIsTopupLoading] = useState(false);
+  const [topupStatus, setTopupStatus] = useState<'pending' | 'checking' | 'paid' | 'failed'>('pending');
   const [paymentChannels, setPaymentChannels] = useState<any[]>([]);
   const [isLoadingChannels, setIsLoadingChannels] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<any>({
@@ -1704,15 +1707,119 @@ export default function CustomerPortal({
   };
 
   // Top Up Modal Handlers
-  const handleProceedTopup = () => {
+  useEffect(() => {
+    if (showTopupModal) {
+      fetchCheckoutInit();
+    }
+  }, [showTopupModal]);
+
+  const handleProceedTopup = async () => {
     if (!selectedChannel) {
-      setTopupError('Pilih metode pembayaran terlebih dahulu.');
+      setTopupError('Silakan pilih channel pembayaran terlebih dahulu.');
       return;
     }
-    setTopupStep('redirect');
-    setTimeout(() => {
-      window.open('https://arabpay.my.id/dashboard', '_blank');
-    }, 500);
+    if (!topupAmount || topupAmount < 5000) {
+      setTopupError('Nominal top up minimal Rp 5.000.');
+      return;
+    }
+    setIsTopupLoading(true);
+    setTopupError('');
+    try {
+      const phone = currentUser?.phone_number || currentUser?.username || '';
+      const uId = currentUser?.arabpay_user_id || currentUser?.id || '';
+      const channelFee = calculateChannelFee(selectedChannel, topupAmount);
+      const totalAmount = Number(topupAmount) + channelFee;
+
+      const res = await fetch(`${apiUrl}/api/portal/topup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number: phone,
+          user_id: uId,
+          amount: totalAmount,
+          channel: selectedChannel?.code || selectedChannel?.id || 'qris'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTopupData({
+          ...data,
+          base_amount: topupAmount,
+          selected_channel: selectedChannel
+        });
+        setTopupStep('qris');
+        setTopupStatus('pending');
+      } else {
+        setTopupError(data.error || 'Gagal memproses top up. Silakan coba lagi.');
+      }
+    } catch (err: any) {
+      setTopupError('Koneksi ke server gagal. Pastikan jaringan terhubung.');
+    } finally {
+      setIsTopupLoading(false);
+    }
+  };
+
+  // Top Up Status Polling Effect
+  useEffect(() => {
+    if (!showTopupModal || topupStep !== 'qris' || !topupData?.reference_id || topupStatus === 'paid') {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/portal/topup-status?reference_id=${encodeURIComponent(topupData.reference_id)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.is_paid || data.status === 'success' || data.status === 'PAID') {
+            setTopupStatus('paid');
+            setTopupStep('success');
+            const addedAmt = topupData.base_amount || topupData.amount || topupAmount;
+            fetchLiveArabPayBalance();
+            if (currentUser) {
+              const newBal = typeof data.balance === 'number' && data.balance > 0 ? data.balance : (currentUser.balance || 0) + addedAmt;
+              onLoginSuccess({ ...currentUser, balance: newBal });
+            }
+            setToastMsg({
+              type: 'success',
+              text: `Top Up Berhasil! Saldo bertambah Rp ${addedAmt.toLocaleString('id-ID')}`
+            });
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {}
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [showTopupModal, topupStep, topupData, topupStatus]);
+
+  // Manual Check Payment Status for Topup
+  const handleCheckTopupStatusManual = async () => {
+    if (!topupData?.reference_id) return;
+    setTopupStatus('checking');
+    try {
+      const res = await fetch(`${apiUrl}/api/portal/topup-status?reference_id=${encodeURIComponent(topupData.reference_id)}`);
+      const data = await res.json();
+      if (data.is_paid || data.status === 'success' || data.status === 'PAID') {
+        setTopupStatus('paid');
+        setTopupStep('success');
+        const addedAmt = topupData.base_amount || topupData.amount || topupAmount;
+        fetchLiveArabPayBalance();
+        if (currentUser) {
+          const newBal = typeof data.balance === 'number' && data.balance > 0 ? data.balance : (currentUser.balance || 0) + addedAmt;
+          onLoginSuccess({ ...currentUser, balance: newBal });
+        }
+        setToastMsg({
+          type: 'success',
+          text: `Top Up Berhasil! Saldo bertambah Rp ${addedAmt.toLocaleString('id-ID')}`
+        });
+      } else {
+        setTopupStatus('pending');
+        setToastMsg({ type: 'info', text: 'Pembayaran belum terdeteksi. Silakan scan QRIS dan selesaikan pembayaran.' });
+      }
+    } catch (err) {
+      setTopupStatus('pending');
+      setToastMsg({ type: 'error', text: 'Gagal mengecek status pembayaran.' });
+    }
   };
 
   // Quick Bill Check (For Guests)
@@ -4488,55 +4595,420 @@ export default function CustomerPortal({
         </div>
       )}
 
-      {/* ==================== TOP UP MODAL (Persis arbiljs) ==================== */}
+      {/* ==================== TOP UP MODAL (Direct QRIS & Auto Balance) ==================== */}
       {showTopupModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => setShowTopupModal(false)}></div>
-          <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden text-slate-100 animate-fade-in p-6 space-y-6">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => {
+            setShowTopupModal(false);
+            setTopupStep('select');
+          }}></div>
+          <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden text-slate-100 animate-fade-in p-6 space-y-5">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-emerald-400" /> Top Up Saldo ArabPay
-              </h3>
-              <button onClick={() => setShowTopupModal(false)} className="p-1 hover:bg-slate-800 rounded-lg transition cursor-pointer">
-                <X className="w-4 h-4 text-slate-400" />
+              <div className="flex items-center gap-2">
+                {topupStep === 'qris' && (
+                  <button
+                    onClick={() => setTopupStep('select')}
+                    className="p-1 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition mr-1"
+                    title="Kembali ke pilihan nominal"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                )}
+                <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-emerald-400" />
+                  {topupStep === 'qris' ? 'Scan QRIS Top-Up' : topupStep === 'success' ? 'Top-Up Berhasil' : 'Top Up Saldo ArabPay'}
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTopupModal(false);
+                  setTopupStep('select');
+                }}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Presets */}
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Pilih Nominal Top Up</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[10000, 20000, 50000, 100000, 200000, 500000].map((amt) => (
+            {/* STEP 1: SELECT AMOUNT & PAYMENT CHANNEL */}
+            {topupStep === 'select' && (
+              <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+                {topupError && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-400 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{topupError}</span>
+                  </div>
+                )}
+
+                {/* Input Manual Nominal & Nominal Cepat */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Nominal Top Up
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">Min. Rp 5.000</span>
+                  </div>
+
+                  {/* Input Manual */}
+                  <div className="relative flex items-center">
+                    <div className="absolute left-3.5 flex items-center pointer-events-none text-slate-400 font-extrabold text-sm font-mono">
+                      Rp
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={topupAmount > 0 ? topupAmount.toLocaleString('id-ID') : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        const val = raw ? parseInt(raw, 10) : 0;
+                        setTopupAmount(val);
+                        setTopupError('');
+                      }}
+                      placeholder="Ketik nominal bebas..."
+                      className="w-full pl-11 pr-12 py-3 bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl text-base font-black font-mono text-emerald-400 placeholder:text-slate-600 outline-none transition"
+                    />
+                    {topupAmount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTopupAmount(0);
+                          setTopupError('');
+                        }}
+                        className="absolute right-3 p-1 text-slate-500 hover:text-slate-300 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                        title="Hapus nominal"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Nominal Cepat (Quick Presets) */}
+                  <div className="space-y-1.5 pt-0.5">
+                    <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-400" /> Nominal Cepat:
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[10000, 20000, 50000, 100000, 200000, 500000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => {
+                            setTopupAmount(amt);
+                            setTopupError('');
+                          }}
+                          className={`py-2 px-1 rounded-xl border text-xs font-bold transition cursor-pointer flex flex-col items-center justify-center ${
+                            topupAmount === amt
+                              ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 shadow-sm shadow-emerald-900/30'
+                              : 'border-slate-800 bg-slate-950/70 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                          }`}
+                        >
+                          <span>{formatRupiah(amt)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Payment Channels Selector (Persis pas beli voucher) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      Pilih Channel Pembayaran
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <Zap className="w-3 h-3" /> Instan & Otomatis
+                    </span>
+                  </div>
+
+                  {isLoadingChannels ? (
+                    <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-slate-800">
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                      <span>Memuat channel pembayaran aktif...</span>
+                    </div>
+                  ) : paymentChannels.length === 0 ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'qris', code: 'qris', name: 'QRIS Instant', category: 'ewallet', fee_percent: 0.7 },
+                        { id: 'bca_va', code: 'bca_va', name: 'BCA Virtual Account', category: 'va', fee_flat: 4000 },
+                        { id: 'bri_va', code: 'bri_va', name: 'BRI Virtual Account', category: 'va', fee_flat: 4000 },
+                        { id: 'mandiri_va', code: 'mandiri_va', name: 'Mandiri Virtual Account', category: 'va', fee_flat: 4000 },
+                        { id: 'shopeepay', code: 'shopeepay', name: 'ShopeePay', category: 'ewallet', fee_percent: 1.5 },
+                        { id: 'alfamart', code: 'alfamart', name: 'Alfamart', category: 'retail', fee_flat: 3500 }
+                      ].map((ch) => (
+                        <div
+                          key={ch.id}
+                          onClick={() => {
+                            setSelectedChannel(ch);
+                            setTopupError('');
+                          }}
+                          className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${
+                            selectedChannel?.id === ch.id || selectedChannel?.code === ch.code
+                              ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-sm shadow-emerald-900/20'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            selectedChannel?.id === ch.id || selectedChannel?.code === ch.code ? 'border-emerald-500' : 'border-slate-700'
+                          }`}>
+                            {(selectedChannel?.id === ch.id || selectedChannel?.code === ch.code) && (
+                              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                            )}
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <p className="text-[11px] font-bold truncate text-slate-200">{ch.name}</p>
+                            <div className="flex items-center justify-between gap-1 mt-0.5">
+                              <span className="text-[9px] text-slate-500 uppercase tracking-tighter">{ch.category}</span>
+                              <span className="text-[9px] font-mono font-bold text-amber-400">
+                                {getChannelFeeLabel(ch, Number(topupAmount || 0))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {paymentChannels.map((ch: any) => (
+                        <div
+                          key={ch.id}
+                          onClick={() => {
+                            setSelectedChannel(ch);
+                            setTopupError('');
+                          }}
+                          className={`p-2.5 rounded-xl border transition text-left cursor-pointer flex items-center gap-2 ${
+                            selectedChannel?.id === ch.id || selectedChannel?.code === ch.code
+                              ? 'bg-emerald-950/30 border-emerald-500 text-white shadow-sm shadow-emerald-900/20'
+                              : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            selectedChannel?.id === ch.id || selectedChannel?.code === ch.code ? 'border-emerald-500' : 'border-slate-700'
+                          }`}>
+                            {(selectedChannel?.id === ch.id || selectedChannel?.code === ch.code) && (
+                              <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                            )}
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <p className="text-[11px] font-bold truncate text-slate-200">{ch.name}</p>
+                            <div className="flex items-center justify-between gap-1 mt-0.5">
+                              <span className="text-[9px] text-slate-500 uppercase tracking-tighter">{ch.category || ch.code}</span>
+                              <span className="text-[9px] font-mono font-bold text-amber-400">
+                                {getChannelFeeLabel(ch, Number(topupAmount || 0))}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Total & Fee Breakdown */}
+                <div className="p-3.5 bg-slate-950/80 border border-slate-800/80 rounded-2xl space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Nominal Deposit:</span>
+                    <span className="font-mono text-slate-200 font-bold">{formatRupiah(topupAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span>Biaya Channel ({selectedChannel?.name || 'Metode'}):</span>
+                    <span className="font-mono text-amber-400 font-semibold">
+                      {calculateChannelFee(selectedChannel, topupAmount) > 0
+                        ? formatRupiah(calculateChannelFee(selectedChannel, topupAmount))
+                        : 'Bebas Biaya'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-slate-200 font-bold">
+                    <span>Total yang Harus Dibayar:</span>
+                    <span className="font-mono text-base font-black text-emerald-400">
+                      {formatRupiah(topupAmount + calculateChannelFee(selectedChannel, topupAmount))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Primary Action Button */}
+                <button
+                  onClick={handleProceedTopup}
+                  disabled={isTopupLoading || topupAmount < 5000 || !selectedChannel}
+                  className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.98]"
+                >
+                  {isTopupLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Memproses Tagihan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-4 h-4" />
+                      <span>Lanjutkan Pembayaran ({selectedChannel?.name || 'Pilih Metode'})</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Alternative Link */}
+                <div className="text-center pt-0.5">
                   <button
-                    key={amt}
-                    type="button"
-                    onClick={() => setTopupAmount(amt)}
-                    className={`py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${topupAmount === amt
-                        ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300'
-                        : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
-                      }`}
+                    onClick={() => {
+                      setShowTopupModal(false);
+                      window.open('https://arabpay.my.id/dashboard', '_blank');
+                    }}
+                    className="text-[11px] text-slate-500 hover:text-slate-300 transition inline-flex items-center gap-1"
                   >
-                    {formatRupiah(amt)}
+                    <span>Atau buka panel web ArabPay</span>
+                    <ExternalLink className="w-3 h-3" />
                   </button>
-                ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="p-4 bg-emerald-950/20 border border-emerald-900/30 rounded-2xl flex items-center justify-between text-xs font-bold text-emerald-300">
-              <span>Total Deposit:</span>
-              <span className="font-mono text-base font-black text-emerald-400">{formatRupiah(topupAmount)}</span>
-            </div>
+            {/* STEP 2: PAYMENT ACTIVE DISPLAY (QRIS / Virtual Account) */}
+            {topupStep === 'qris' && topupData && (
+              <div className="space-y-4 text-center">
+                {/* Channel Header */}
+                <div className="flex items-center justify-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-950/30 py-1.5 px-3 rounded-full mx-auto w-fit border border-emerald-900/40">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>{topupData.selected_channel?.name || topupData.bank_name || 'Pembayaran Instant'}</span>
+                </div>
 
-            <button
-              onClick={() => {
-                setShowTopupModal(false);
-                window.open('https://arabpay.my.id/dashboard', '_blank');
-              }}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <span>Buka Portal ArabPay Top Up</span>
-              <ExternalLink size={16} />
-            </button>
+                {/* Virtual Account display IF VA Number exists */}
+                {topupData.va_number ? (
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3 text-center">
+                    <span className="text-xs text-slate-400 font-medium">Nomor Virtual Account:</span>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="font-mono text-xl sm:text-2xl font-black text-emerald-400 tracking-wider">
+                        {topupData.va_number}
+                      </span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(topupData.va_number || '');
+                          setToastMsg({ type: 'info', text: 'Nomor VA berhasil disalin' });
+                        }}
+                        className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg transition"
+                        title="Salin Nomor VA"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {topupData.bank_name && (
+                      <span className="text-[11px] bg-slate-900 text-slate-300 px-2 py-0.5 rounded-full border border-slate-800">
+                        Bank: {topupData.bank_name}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  /* QRIS display for QRIS / E-Wallet */
+                  <div className="bg-white p-3.5 rounded-2xl shadow-xl inline-block mx-auto border-2 border-emerald-500/30">
+                    {topupData.qr_image ? (
+                      <img
+                        src={topupData.qr_image}
+                        alt="QRIS Top-Up"
+                        className="w-56 h-56 object-contain rounded-lg mx-auto"
+                      />
+                    ) : topupData.qr_string ? (
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(topupData.qr_string)}`}
+                        alt="QRIS Top-Up"
+                        className="w-56 h-56 object-contain rounded-lg mx-auto"
+                      />
+                    ) : (
+                      <div className="w-56 h-56 flex flex-col items-center justify-center text-slate-600">
+                        <QrCode className="w-16 h-16 opacity-40 mb-2" />
+                        <span className="text-xs">QRIS sedang diproses</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Amount to transfer */}
+                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1">
+                  <span className="text-[11px] text-slate-400 font-medium">Total yang Harus Dibayar:</span>
+                  <div className="font-mono text-2xl font-black text-emerald-400">
+                    {formatRupiah(topupData.amount)}
+                  </div>
+                  {topupData.unique_code > 0 && (
+                    <p className="text-[11px] text-amber-400 font-semibold">
+                      ⚠️ Transfer tepat hingga 3 digit terakhir agar sistem otomatis mengenali saldo Anda!
+                    </p>
+                  )}
+                </div>
+
+                {/* Reference ID and live pulse */}
+                <div className="flex items-center justify-between text-xs px-3 py-2 bg-slate-950/60 rounded-xl border border-slate-800/80 text-slate-400">
+                  <span>Ref: <strong className="text-slate-300">{topupData.reference_id}</strong></span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(topupData.reference_id || '');
+                      setToastMsg({ type: 'info', text: 'Nomor referensi berhasil disalin' });
+                    }}
+                    className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Salin
+                  </button>
+                </div>
+
+                {/* Live Status indicator */}
+                <div className="flex items-center justify-center gap-2 text-xs text-emerald-400 py-1 font-semibold">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span>Menunggu konfirmasi pembayaran... (Auto Check)</span>
+                </div>
+
+                {/* Instructions */}
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  {topupData.va_number
+                    ? 'Salin nomor Virtual Account di atas lalu bayar melalui ATM, Mobile Banking, atau Internet Banking.'
+                    : 'Buka aplikasi m-Banking (BCA, Mandiri, BRI, BNI) atau E-Wallet (GoPay, OVO, Dana, ShopeePay) lalu Scan QR di atas.'}
+                </p>
+
+                {/* Action Buttons */}
+                <div className="space-y-2 pt-1">
+                  <button
+                    onClick={handleCheckTopupStatusManual}
+                    disabled={topupStatus === 'checking'}
+                    className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.98]"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${topupStatus === 'checking' ? 'animate-spin text-emerald-400' : ''}`} />
+                    <span>{topupStatus === 'checking' ? 'Memeriksa Pembayaran...' : 'Cek Status Pembayaran Manual'}</span>
+                  </button>
+                  <button
+                    onClick={() => setTopupStep('select')}
+                    className="w-full py-2 text-slate-500 hover:text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Batalkan / Pilih Nominal & Channel Lain
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: SUCCESS CELEBRATION */}
+            {topupStep === 'success' && (
+              <div className="space-y-5 text-center py-3">
+                <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto animate-bounce">
+                  <CheckCircle2 className="w-10 h-10" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-lg text-slate-100">Top-Up Berhasil!</h4>
+                  <p className="text-xs text-slate-400 max-w-xs mx-auto">
+                    Saldo ArabPay sebesar <strong className="text-emerald-400">{formatRupiah(topupData?.base_amount || topupData?.amount || topupAmount)}</strong> telah berhasil masuk ke akun Anda.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-2xl flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Saldo Terkini:</span>
+                  <span className="font-mono text-base font-black text-emerald-400">{formatRupiah(currentUser?.balance || 0)}</span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setShowTopupModal(false);
+                    setTopupStep('select');
+                    setTopupData(null);
+                  }}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg cursor-pointer transition active:scale-[0.98]"
+                >
+                  Selesai & Mulai Beli Voucher
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

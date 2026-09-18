@@ -392,4 +392,132 @@ export async function checkCheckoutStatus(checkoutIdOrRef: string) {
   return { success: true, status: 'PAID', paid: true };
 }
 
+/**
+ * Request S2S Direct Top-Up QRIS for Customer Wallet without visiting ArabPay panel
+ */
+export async function requestArabPayTopup(params: {
+  phoneNumber?: string;
+  userId?: string;
+  amount: number;
+  channel?: string; // default: 'qris'
+}) {
+  let arabpayBaseUrl = process.env.ARABPAY_SERVICE_URL || process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id';
+  try {
+    const { pool } = await import('../config/db.js');
+    if (pool) {
+      const dbCreds = await pool.query(
+        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_service_url', 'arabpay_panel_url')"
+      );
+      for (const row of dbCreds.rows) {
+        if (row.key === 'arabpay_service_url' || (row.key === 'arabpay_panel_url' && !arabpayBaseUrl)) {
+          arabpayBaseUrl = row.value;
+        }
+      }
+    }
+  } catch (e) {}
 
+  const bodyObj = {
+    phone_number: params.phoneNumber || '',
+    user_id: params.userId || '',
+    amount: params.amount,
+    payment_channel: params.channel || 'qris'
+  };
+  const bodyStr = JSON.stringify(bodyObj);
+  const headers = generateArabPayHeaders(bodyStr);
+
+  try {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/topup`, {
+      method: 'POST',
+      headers,
+      body: bodyStr
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        reference_id: data.reference_id,
+        amount: data.amount,
+        base_amount: data.base_amount || params.amount,
+        unique_code: data.unique_code || 0,
+        qr_string: data.qr_string,
+        qr_image: data.qr_image,
+        payment_url: data.payment_url,
+        va_number: data.va_number || null,
+        bank_name: data.bank_name || null,
+        channel: params.channel || 'qris',
+        expires_at: data.expired_time ? new Date(data.expired_time * 1000).toISOString() : null,
+        user_id: data.user_id,
+        phone_number: data.phone_number
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errData.error || errData.message || `Gagal request top-up (${res.status})`
+      };
+    }
+  } catch (err: any) {
+    console.error('[ArabPay S2S Topup Error]:', err.message);
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}
+
+/**
+ * Check Realtime S2S Status of Topup Order
+ */
+export async function checkArabPayTopupStatus(referenceId: string) {
+  let arabpayBaseUrl = process.env.ARABPAY_SERVICE_URL || process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id';
+  try {
+    const { pool } = await import('../config/db.js');
+    if (pool) {
+      const dbCreds = await pool.query(
+        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_service_url', 'arabpay_panel_url')"
+      );
+      for (const row of dbCreds.rows) {
+        if (row.key === 'arabpay_service_url' || (row.key === 'arabpay_panel_url' && !arabpayBaseUrl)) {
+          arabpayBaseUrl = row.value;
+        }
+      }
+    }
+  } catch (e) {}
+
+  const headers = generateArabPayHeaders('');
+
+  try {
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/topup/status?reference_id=${encodeURIComponent(referenceId)}`, {
+      headers
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const isPaid = data.is_paid || data.status === 'success' || data.status === 'PAID';
+      return {
+        success: true,
+        reference_id: data.reference_id,
+        status: data.status,
+        is_paid: isPaid,
+        amount: data.amount,
+        balance: data.balance
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        status: 'error',
+        is_paid: false,
+        error: errData.error || `HTTP ${res.status}`
+      };
+    }
+  } catch (err: any) {
+    console.warn('[Check Topup Status Warning]:', err.message);
+    return {
+      success: false,
+      status: 'error',
+      is_paid: false,
+      error: err.message
+    };
+  }
+}
