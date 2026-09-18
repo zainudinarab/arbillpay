@@ -44,6 +44,11 @@ app.get('/tesui.html', (req, res) => {
   res.sendFile(path.resolve(process.cwd(), 'tesui.html'));
 });
 
+const publicPath = path.resolve(process.cwd(), 'public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+}
+
 if (fs.existsSync(distPath)) {
   app.use((req, res, next) => {
     if (req.path === '/' || req.path === '/index.html') {

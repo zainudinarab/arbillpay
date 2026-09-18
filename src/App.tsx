@@ -73,6 +73,7 @@ import { formatCurrency, formatDate } from './utils';
 import LoginModal from './components/LoginModal';
 import PublicVoucherStore from './components/PublicVoucherStore';
 import CustomerPortal from './components/CustomerPortal';
+import QrVoucherScanner from './components/QrVoucherScanner';
 import PortalTemplateEditor from './components/PortalTemplateEditor';
 import FlashSaleManagement from './components/FlashSaleManagement';
 import SetupWizard from './components/SetupWizard';
@@ -1507,6 +1508,21 @@ const safeFormatDate = (val: any): string => {
         }}
       />
     );
+  }
+
+  // 0.4. QR VOUCHER SCANNER PUBLIK (Akses Kamera via HTTPS)
+  const isQrScanRoute = 
+    window.location.hash === '#/scan' || 
+    window.location.hash.startsWith('#/scan?') ||
+    window.location.hash === '#/myqr' || 
+    window.location.hash.startsWith('#/myqr?') ||
+    window.location.pathname === '/scan' || 
+    window.location.pathname.startsWith('/scan?') ||
+    window.location.pathname === '/myqr' || 
+    window.location.pathname.startsWith('/myqr?');
+
+  if (isQrScanRoute) {
+    return <QrVoucherScanner profile={profile} onBack={() => { window.location.hash = '#/portal'; }} />;
   }
 
   // 0.5. LANDING PAGE ISOLIR PUBLIK (Untuk Pelanggan yang Terisolir / Redirected)
