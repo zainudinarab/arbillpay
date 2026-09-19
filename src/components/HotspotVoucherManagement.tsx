@@ -159,7 +159,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [printBatchId, setPrintBatchId] = useState<string>('all');
-  const [printDnsOrIp, setPrintDnsOrIp] = useState<string>('192.168.88.1');
+  const [printDnsOrIp, setPrintDnsOrIp] = useState<string>('ar.net');
   const [showQrOnPrint, setShowQrOnPrint] = useState<boolean>(true);
 
   // Pagination State
@@ -1327,7 +1327,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                     type="text"
                     value={printDnsOrIp}
                     onChange={(e) => setPrintDnsOrIp(e.target.value)}
-                    placeholder="192.168.88.1"
+                    placeholder="ar.net"
                     className="w-32 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
                     title="Domain atau IP router MikroTik untuk link QR login"
                   />
@@ -1358,7 +1358,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
             <div className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-2 print:overflow-visible">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-3 print:gap-2">
                 {printVouchersList.map((v) => {
-                  const cleanHost = (printDnsOrIp.trim() || '192.168.88.1')
+                  const cleanHost = (printDnsOrIp.trim() || 'ar.net')
                     .replace(/^https?:\/\//i, '')
                     .replace(/\/login.*$/i, '');
                   const pass = v.password || v.code;

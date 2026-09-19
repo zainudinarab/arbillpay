@@ -248,9 +248,9 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         COALESCE(rp.rate_limit, p.speed_limit, '10 Mbps') as rate_limit,
         r.id as router_id,
         r.name as router_name,
-        COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.dns_name, 'ar.net') as dns_name,
         COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
-        COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
+        COALESCE(r.dns_name, r.name, 'ar.net') as isp_name,
         COALESCE(p.name, rp.name) as package_name,
         COALESCE(p.price, 0)::int as price,
         COALESCE(p.validity_iso, 'P1D') as validity_iso,
@@ -286,9 +286,9 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         COALESCE(p.uptime_limit, '') as uptime_limit,
         COALESCE(r.id, 'rtr-pusat-01') as router_id,
         COALESCE(r.name, 'Router Utama') as router_name,
-        COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.dns_name, 'ar.net') as dns_name,
         COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
-        COALESCE(r.dns_name, r.name, 'arab.net') as isp_name,
+        COALESCE(r.dns_name, r.name, 'ar.net') as isp_name,
         999 as stock,
         'ondemand' as mode
       FROM router_profiles rp
@@ -779,10 +779,10 @@ export async function buyVoucher(req: Request, res: Response) {
 
     // Cari hotspot_ip dan dns_name router terkait
     let targetHotspotIp = '10.0.0.1';
-    let targetDnsName = 'arab.net';
+    let targetDnsName = 'ar.net';
     try {
       const rInfo = await pool.query(`
-        SELECT COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip, COALESCE(r.dns_name, 'arab.net') as dns_name
+        SELECT COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip, COALESCE(r.dns_name, 'ar.net') as dns_name
         FROM router_profiles rp
         JOIN routers r ON rp.router_id = r.id
         WHERE rp.id = $1 OR rp.package_id = $1
@@ -790,7 +790,7 @@ export async function buyVoucher(req: Request, res: Response) {
       `, [profile_id]);
       if (rInfo.rows.length > 0) {
         targetHotspotIp = rInfo.rows[0].hotspot_ip || '10.0.0.1';
-        targetDnsName = rInfo.rows[0].dns_name || 'arab.net';
+        targetDnsName = rInfo.rows[0].dns_name || 'ar.net';
       }
     } catch (_) {}
 
@@ -847,7 +847,7 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         p.validity_iso,
         p.speed_limit as rate_limit,
         COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
-        COALESCE(r.dns_name, 'arab.net') as dns_name,
+        COALESCE(r.dns_name, 'ar.net') as dns_name,
         COALESCE(i.amount, p.price, 0)::int as price,
         COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel,
         i.notes as invoice_notes,
@@ -879,7 +879,7 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         username: row.username,
         password: row.password,
         hotspot_ip: row.hotspot_ip || '10.0.0.1',
-        dns_name: row.dns_name || 'arab.net',
+        dns_name: row.dns_name || 'ar.net',
         status: isUsed ? 'used' : (row.status === 'sold' || row.status === 'active' ? 'active' : row.status),
         raw_status: row.status,
         is_used: isUsed,
@@ -1446,7 +1446,7 @@ export async function getFlashSaleBuyers(req: Request, res: Response) {
         expired_at: row.expired_at ? new Date(row.expired_at).toLocaleString('id-ID') : null,
         router_name: row.router_name || 'Router MikroTik',
         hotspot_ip: row.hotspot_ip || '10.0.0.1',
-        dns_name: row.dns_name || 'arab.net'
+        dns_name: row.dns_name || 'ar.net'
       };
     });
 

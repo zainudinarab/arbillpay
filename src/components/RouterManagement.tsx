@@ -80,7 +80,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
   // Form State
   const [name, setName] = useState('');
-  const [dnsName, setDnsName] = useState('arab.net');
+  const [dnsName, setDnsName] = useState('ar.net');
   const [hotspotIp, setHotspotIp] = useState('10.0.0.1');
   const [ipAddress, setIpAddress] = useState('30.30.0.1');
   const [apiPort, setApiPort] = useState('8728');
@@ -175,7 +175,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
   const resetForm = () => {
     setName('');
-    setDnsName('arab.net');
+    setDnsName('ar.net');
     setHotspotIp('10.0.0.1');
     setIpAddress('30.30.0.1');
     setApiPort('8728');
@@ -243,7 +243,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       let saved = false;
       const routerPayload = {
         name: name.trim(),
-        dns_name: (dnsName || 'arab.net').trim(),
+        dns_name: (dnsName || 'ar.net').trim(),
         hotspot_ip: (hotspotIp || '10.0.0.1').trim(),
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
@@ -290,7 +290,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const openEditModal = (rtr: RouterItem) => {
     setEditingRouter(rtr);
     setName(rtr.name);
-    setDnsName(rtr.dns_name || 'arab.net');
+    setDnsName(rtr.dns_name || 'ar.net');
     setHotspotIp(rtr.hotspot_ip || '10.0.0.1');
     setIpAddress(rtr.ip_address);
     setApiPort(rtr.api_port.toString());
@@ -316,7 +316,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       const updatePayload = {
         id: editingRouter.id,
         name: name.trim(),
-        dns_name: (dnsName || 'arab.net').trim(),
+        dns_name: (dnsName || 'ar.net').trim(),
         hotspot_ip: (hotspotIp || '10.0.0.1').trim(),
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
@@ -557,7 +557,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                       Domain Hotspot
                     </span>
                     <span className="font-mono font-extrabold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 text-xs">
-                      {rtr.dns_name || 'arab.net'}
+                      {rtr.dns_name || 'ar.net'}
                     </span>
                   </div>
 

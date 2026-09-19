@@ -65,6 +65,13 @@ function getChannelFeeLabel(ch: any, amount: number): string {
   return `+Rp ${totalFee.toLocaleString('id-ID')}`;
 }
 
+function getHotspotDomain(dns?: string | null, _ip?: string | null): string {
+  if (dns && typeof dns === 'string' && dns.trim() && !/^\d+\.\d+\.\d+\.\d+$/.test(dns.trim())) {
+    return dns.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  }
+  return 'ar.net';
+}
+
 interface CustomerPortalProps {
   currentUser: UserAccount | null;
   onLoginSuccess: (user: UserAccount) => void;
@@ -1428,7 +1435,7 @@ export default function CustomerPortal({
           password: buyData.voucher.password,
           invoice: buyData.invoice_number,
           hotspot_ip: buyData.voucher.hotspot_ip || selectedPackage?.hotspot_ip || '10.0.0.1',
-          dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'arab.net'
+          dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'ar.net'
         });
         setPaymentStep('success');
         fetchPortalConfig();
@@ -1667,7 +1674,7 @@ export default function CustomerPortal({
         password: finalVoucherPass,
         invoice: invoiceNum,
         hotspot_ip: selectedPackage?.hotspot_ip || '10.0.0.1',
-        dns_name: selectedPackage?.dns_name || 'arab.net'
+        dns_name: selectedPackage?.dns_name || 'ar.net'
       });
       setPaymentStep('success');
       fetchPortalConfig();
@@ -3237,7 +3244,7 @@ export default function CustomerPortal({
                               <Smartphone className="w-3.5 h-3.5 text-sky-400" /> {pkg.shared_users || 1} Device
                             </span>
                             <span className="hidden sm:inline text-slate-500">
-                              DNS: {pkg.dns_name || pkg.isp_name || 'arab.net'}
+                              DNS: {pkg.dns_name || pkg.isp_name || 'ar.net'}
                             </span>
                           </div>
                         </div>
@@ -3399,7 +3406,7 @@ export default function CustomerPortal({
                               </h3>
                               <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 flex items-center gap-1 font-medium truncate">
                                 <Globe className="w-3 h-3 text-sky-400 shrink-0" />
-                                <span className="truncate">ISP: <strong className="text-slate-200">{pkg.dns_name || pkg.isp_name || 'arab.net'}</strong></span>
+                                <span className="truncate">ISP: <strong className="text-slate-200">{pkg.dns_name || pkg.isp_name || 'ar.net'}</strong></span>
                               </p>
                             </div>
                           </div>
@@ -3590,7 +3597,7 @@ export default function CustomerPortal({
                         </div>
                       )}
                       <a
-                        href={`http://${item.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                        href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2"
@@ -4566,7 +4573,7 @@ export default function CustomerPortal({
                     <div className="pt-2 border-t border-indigo-950/60 flex flex-col items-center">
                       <div className="bg-white p-2.5 rounded-2xl shadow-xl shadow-cyan-950/40 inline-block border-2 border-cyan-400/40">
                         <VoucherQrCode
-                          text={`http://${voucherResult.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password || voucherResult.code)}`}
+                          text={`http://${getHotspotDomain(voucherResult.dns_name, voucherResult.hotspot_ip)}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password || voucherResult.code)}`}
                           size={130}
                         />
                       </div>
@@ -4579,7 +4586,7 @@ export default function CustomerPortal({
 
                   <div className="space-y-2">
                     <a
-                      href={`http://${voucherResult.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password)}`}
+                      href={`http://${getHotspotDomain(voucherResult.dns_name, voucherResult.hotspot_ip)}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password || voucherResult.code)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer"
@@ -5360,7 +5367,7 @@ export default function CustomerPortal({
 
                           {/* Footer Card */}
                           <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                            <span className="truncate">DNS: <strong className="text-slate-300">{v.dns_name || 'arab.net'}</strong></span>
+                            <span className="truncate">DNS: <strong className="text-slate-300">{v.dns_name || 'ar.net'}</strong></span>
                             {!used ? (
                               <div className="flex items-center gap-2.5">
                                 <button
@@ -5375,7 +5382,7 @@ export default function CustomerPortal({
 
                                 <button
                                   type="button"
-                                  onClick={() => window.open(v.hotspot_ip ? `http://${v.hotspot_ip}` : 'http://arab.net', '_blank')}
+                                  onClick={() => window.open(`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login`, '_blank')}
                                   className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
                                 >
                                   <span>Login WiFi</span>
@@ -5392,7 +5399,7 @@ export default function CustomerPortal({
                             <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-cyan-500/30 flex flex-col items-center animate-in zoom-in-95 duration-150">
                               <div className="bg-white p-2 rounded-xl shadow-lg border border-slate-200 inline-block">
                                 <VoucherQrCode
-                                  text={`http://${v.hotspot_ip || v.dns_name || '10.0.0.1'}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
+                                  text={`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
                                   size={130}
                                 />
                               </div>
@@ -6003,7 +6010,7 @@ export default function CustomerPortal({
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Domain ISP Server Resmi: <strong className="text-sky-300 font-mono">{selectedDetailPackage.dns_name || selectedDetailPackage.isp_name || 'arab.net'}</strong></span>
+                    <span>Domain ISP Server Resmi: <strong className="text-sky-300 font-mono">{selectedDetailPackage.dns_name || selectedDetailPackage.isp_name || 'ar.net'}</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />

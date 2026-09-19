@@ -48,7 +48,7 @@ export default function QrVoucherScanner({ profile, onBack }: QrVoucherScannerPr
     const hashParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
     return params.get('loginUrl') || hashParams.get('loginUrl') || 
            params.get('router') || hashParams.get('router') || 
-           localStorage.getItem('arbill_hotspot_login_url') || 'http://192.168.88.1/login';
+           localStorage.getItem('arbill_hotspot_login_url') || 'http://ar.net/login';
   });
   const [showSettings, setShowSettings] = useState<boolean>(false);
 
@@ -396,11 +396,11 @@ export default function QrVoucherScanner({ profile, onBack }: QrVoucherScannerPr
               setCustomRouterUrl(e.target.value);
               localStorage.setItem('arbill_hotspot_login_url', e.target.value);
             }}
-            placeholder="Contoh: http://192.168.88.1/login"
+            placeholder="Contoh: http://ar.net/login"
             className="w-full px-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
           />
           <p className="text-[10px] text-slate-400 mt-2">
-            Default: <code className="text-cyan-400">http://192.168.88.1/login</code> atau nama DNS hotspot MikroTik Anda.
+            Default: <code className="text-cyan-400">http://ar.net/login</code> (Domain Hotspot MikroTik Anda).
           </p>
         </div>
       )}
