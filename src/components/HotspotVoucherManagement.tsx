@@ -21,12 +21,14 @@ import {
   ShieldCheck,
   Globe,
   CreditCard,
-  Clock
+  Clock,
+  QrCode
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { getApiUrl } from '../config/api';
 import { getVouchersFromFirestore } from '../services/firebaseService';
+import VoucherQrCode from './VoucherQrCode';
 
 interface RouterItem {
   id: string;
@@ -157,6 +159,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [printBatchId, setPrintBatchId] = useState<string>('all');
+  const [printDnsOrIp, setPrintDnsOrIp] = useState<string>('192.168.88.1');
+  const [showQrOnPrint, setShowQrOnPrint] = useState<boolean>(true);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -1301,49 +1305,131 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
         </div>
       )}
 
-      {/* Modal Cetak Voucher (Mikhmon Style Template) */}
+      {/* Modal Cetak Voucher (Mikhmon Style Template with QR Code) */}
       {showPrintModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in print:p-0 print:bg-white print:static">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+            {/* Header Toolbar (Hidden when printing) */}
+            <div className="p-4 bg-slate-900 text-white flex flex-wrap justify-between items-center gap-3 shrink-0 print:hidden">
               <div className="flex items-center gap-2">
                 <Printer size={18} className="text-amber-400" />
-                <span className="font-bold text-sm">Cetak Template Voucher Hotspot (Mikhmon Style)</span>
+                <div>
+                  <span className="font-bold text-sm block">Cetak Voucher Hotspot (Mikhmon QR Style)</span>
+                  <span className="text-[11px] text-slate-400">Total {printVouchersList.length} voucher siap cetak</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Print Configuration Controls */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <span className="text-[11px] text-slate-300 font-semibold">DNS/IP:</span>
+                  <input 
+                    type="text"
+                    value={printDnsOrIp}
+                    onChange={(e) => setPrintDnsOrIp(e.target.value)}
+                    placeholder="192.168.88.1"
+                    className="w-32 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
+                    title="Domain atau IP router MikroTik untuk link QR login"
+                  />
+                </div>
+
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 cursor-pointer bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <input 
+                    type="checkbox" 
+                    checked={showQrOnPrint}
+                    onChange={(e) => setShowQrOnPrint(e.target.checked)}
+                    className="rounded accent-amber-500 cursor-pointer"
+                  />
+                  <span>Tampilkan QR</span>
+                </label>
+
                 <button
                   onClick={() => window.print()}
-                  className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
                 >
-                  <Printer size={14} />
-                  <span>Print Halaman Ini</span>
+                  <Printer size={15} />
+                  <span>Print / Cetak Sekarang</span>
                 </button>
-                <button onClick={() => setShowPrintModal(false)} className="text-slate-400 hover:text-white font-bold text-xl cursor-pointer ml-2">&times;</button>
+                <button onClick={() => setShowPrintModal(false)} className="text-slate-400 hover:text-white font-bold text-2xl cursor-pointer ml-1 leading-none">&times;</button>
               </div>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-200">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {printVouchersList.map((v) => (
-                  <div key={v.id} className="bg-white border-2 border-slate-900 rounded-xl p-3 shadow-md flex flex-col justify-between text-slate-900 font-sans">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-1.5 mb-1.5">
-                      <span className="font-black text-[11px] text-amber-600 truncate">{profile.companyName || 'WIFI HOTSPOT'}</span>
-                      <span className="font-bold text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{v.profile_name || 'Voucher'}</span>
-                    </div>
+            {/* Voucher Cards Grid */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-2 print:overflow-visible">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-3 print:gap-2">
+                {printVouchersList.map((v) => {
+                  const cleanHost = (printDnsOrIp.trim() || '192.168.88.1')
+                    .replace(/^https?:\/\//i, '')
+                    .replace(/\/login.*$/i, '');
+                  const pass = v.password || v.code;
+                  const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
 
-                    <div className="text-center py-2 bg-slate-50 rounded-lg border border-slate-100 my-1">
-                      <span className="text-[9px] uppercase font-bold text-slate-400 block tracking-wider">KODE VOUCHER / PASSWORD</span>
-                      <span className="font-mono font-black text-base text-slate-900 tracking-wider select-all">{v.code}</span>
-                    </div>
+                  return (
+                    <div 
+                      key={v.id} 
+                      className="bg-white border-2 border-slate-900 rounded-xl p-2.5 shadow-sm flex flex-col justify-between text-slate-900 font-sans print:shadow-none print:break-inside-avoid print:border-black"
+                    >
+                      {/* Card Header */}
+                      <div className="flex justify-between items-center border-b border-slate-200 pb-1 mb-1">
+                        <span className="font-black text-[11px] text-amber-600 truncate uppercase tracking-tight">
+                          {profile.companyName || 'WIFI HOTSPOT'}
+                        </span>
+                        <span className="font-extrabold text-[8.5px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[85px]">
+                          {v.profile_name || 'Voucher'}
+                        </span>
+                      </div>
 
-                    <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 text-[10px]">
-                      <span className="font-bold text-emerald-700">
-                        {v.package_price ? `Rp ${Number(v.package_price).toLocaleString('id-ID')}` : '-'}
-                      </span>
-                      <span className="text-slate-400 text-[9px] font-mono">{v.rate_limit || 'Fast'}</span>
+                      {/* Card Body: QR Code + Credentials */}
+                      <div className="flex items-center gap-2 my-1 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                        {showQrOnPrint && (
+                          <div className="shrink-0 bg-white p-1 rounded border border-slate-200 flex flex-col items-center">
+                            <VoucherQrCode 
+                              text={qrLoginUrl} 
+                              size={64} 
+                            />
+                            <span className="text-[7px] font-bold text-slate-400 mt-0.5 uppercase tracking-tighter">
+                              Scan to Login
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex-1 min-w-0 text-left">
+                          <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">
+                            KODE VOUCHER
+                          </span>
+                          <span className="font-mono font-black text-[13px] text-slate-950 tracking-wider block truncate select-all">
+                            {v.code}
+                          </span>
+
+                          {v.password && v.password !== v.code && (
+                            <div className="mt-0.5">
+                              <span className="text-[7.5px] uppercase font-bold text-slate-400 block tracking-wider">
+                                PASSWORD
+                              </span>
+                              <span className="font-mono font-bold text-[11px] text-slate-700 block truncate">
+                                {v.password}
+                              </span>
+                            </div>
+                          )}
+
+                          <span className="text-[7.5px] text-slate-400 block mt-1 truncate">
+                            Login: <code className="text-slate-600 font-mono font-bold">{cleanHost}</code>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Footer: Price & Validity */}
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-200 text-[9.5px]">
+                        <span className="font-black text-emerald-700">
+                          {v.package_price ? `Rp ${Number(v.package_price).toLocaleString('id-ID')}` : 'GRATIS'}
+                        </span>
+                        <span className="text-slate-500 text-[8.5px] font-mono font-bold truncate max-w-[90px]">
+                          {v.rate_limit || v.package_name || 'Fast 5G'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

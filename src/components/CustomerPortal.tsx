@@ -9,6 +9,7 @@ import {
   MessageCircle, Megaphone, Flame, Home
 } from 'lucide-react';
 import LoginModal from './LoginModal';
+import VoucherQrCode from './VoucherQrCode';
 import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, getCustomersFromFirestore } from '../services/firebaseService';
 import { generateNextCustomerCode } from '../utils';
@@ -161,6 +162,7 @@ export default function CustomerPortal({
   const [voucherResult, setVoucherResult] = useState<{ code: string; password: string; invoice: string; hotspot_ip?: string; dns_name?: string } | null>(null);
   const [guestPhone, setGuestPhone] = useState('');
   const [guestName, setGuestName] = useState('');
+  const [expandedQrVoucherId, setExpandedQrVoucherId] = useState<string | null>(null);
 
   // Status Check State for History
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -4559,6 +4561,20 @@ export default function CustomerPortal({
                       </div>
                     )}
                     <p className="text-[10px] text-slate-500 font-mono">Invoice: {voucherResult.invoice}</p>
+
+                    {/* QR Code Login Langsung */}
+                    <div className="pt-2 border-t border-indigo-950/60 flex flex-col items-center">
+                      <div className="bg-white p-2.5 rounded-2xl shadow-xl shadow-cyan-950/40 inline-block border-2 border-cyan-400/40">
+                        <VoucherQrCode
+                          text={`http://${voucherResult.hotspot_ip || '10.0.0.1'}/login?username=${encodeURIComponent(voucherResult.code)}&password=${encodeURIComponent(voucherResult.password || voucherResult.code)}`}
+                          size={130}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-cyan-300 mt-2 flex items-center gap-1.5">
+                        <QrCode size={12} className="text-cyan-400" />
+                        Scan QR ini dengan kamera HP untuk login otomatis
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -5346,18 +5362,46 @@ export default function CustomerPortal({
                           <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
                             <span className="truncate">DNS: <strong className="text-slate-300">{v.dns_name || 'arab.net'}</strong></span>
                             {!used ? (
-                              <button
-                                type="button"
-                                onClick={() => window.open(v.hotspot_ip ? `http://${v.hotspot_ip}` : 'http://arab.net', '_blank')}
-                                className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
-                              >
-                                <span>Login WiFi</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </button>
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedQrVoucherId(expandedQrVoucherId === v.id ? null : v.id)}
+                                  className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
+                                  title="Tampilkan QR code untuk scan kamera"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>{expandedQrVoucherId === v.id ? 'Tutup QR' : 'Lihat QR'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(v.hotspot_ip ? `http://${v.hotspot_ip}` : 'http://arab.net', '_blank')}
+                                  className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
+                                >
+                                  <span>Login WiFi</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-slate-500 italic">Hangus</span>
                             )}
                           </div>
+
+                          {/* Expanded QR Code Display */}
+                          {!used && expandedQrVoucherId === v.id && (
+                            <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-cyan-500/30 flex flex-col items-center animate-in zoom-in-95 duration-150">
+                              <div className="bg-white p-2 rounded-xl shadow-lg border border-slate-200 inline-block">
+                                <VoucherQrCode
+                                  text={`http://${v.hotspot_ip || v.dns_name || '10.0.0.1'}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
+                                  size={130}
+                                />
+                              </div>
+                              <span className="text-[10px] font-bold text-cyan-300 mt-2 flex items-center gap-1.5">
+                                <QrCode size={11} className="text-cyan-400" />
+                                Arahkan kamera HP ke QR ini untuk langsung login otomatis
+                              </span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
