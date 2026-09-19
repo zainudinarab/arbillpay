@@ -4,6 +4,7 @@ import {
   generateBatchVouchers,
   removeBatchVouchers,
   listAvailableVouchers,
+  getVoucherStatus,
   buyVoucher,
   listMyPurchasedVouchers,
   getFlashSaleBuyers,
@@ -19,6 +20,7 @@ router.get('/first-login', handleVoucherFirstLogin);
 router.post('/first-login', handleVoucherFirstLogin);
 
 router.get('/', listVouchers);
+router.get('/status', getVoucherStatus);
 router.get('/available', listAvailableVouchers);
 router.get('/my-vouchers', listMyPurchasedVouchers);
 router.get('/flash-sale/buyers', getFlashSaleBuyers);

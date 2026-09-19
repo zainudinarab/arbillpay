@@ -173,6 +173,8 @@ export async function removeBatchVouchers(req: Request, res: Response) {
  * 2. Instant On-Demand Profiles (Selalu Ready / Generated On-the-Fly)
  */
 export async function listAvailableVouchers(req: Request, res: Response) {
+  const routerFilter = ((req.query.router_id || req.query.routerId || req.query.router || req.query.rtr || '') as string).trim();
+
   // Helper to fetch from Cloud Firestore
   const fetchFromFirestore = async () => {
     const db = getFirestore();
@@ -186,7 +188,10 @@ export async function listAvailableVouchers(req: Request, res: Response) {
     pkgSnap.forEach((doc: any) => {
       if (doc.id !== '_init') {
         const data = doc.data();
-        if (!data.type || data.type === 'hotspot' || data.type === 'hotspot_voucher') {
+        const matchesRouter = !routerFilter || 
+          data.router_id === routerFilter || 
+          (data.router_name && data.router_name.toLowerCase() === routerFilter.toLowerCase());
+        if ((!data.type || data.type === 'hotspot' || data.type === 'hotspot_voucher') && matchesRouter) {
           packages.push({ id: doc.id, ...data });
         }
       }
@@ -196,7 +201,10 @@ export async function listAvailableVouchers(req: Request, res: Response) {
     vcSnap.forEach((doc: any) => {
       if (doc.id !== '_init') {
         const data = doc.data();
-        if (data.status === 'active' && !data.sold_to) {
+        const matchesRouter = !routerFilter || 
+          data.router_id === routerFilter || 
+          (data.router_name && data.router_name.toLowerCase() === routerFilter.toLowerCase());
+        if (data.status === 'active' && !data.sold_to && matchesRouter) {
           activeVouchers.push({ id: doc.id, ...data });
         }
       }
@@ -266,9 +274,10 @@ export async function listAvailableVouchers(req: Request, res: Response) {
       WHERE rp.package_id IS NOT NULL
         AND COALESCE(rp.is_active, true) = true
         AND COALESCE(p.is_active, true) = true
+        AND ($1::text = '' OR rp.router_id = $1 OR r.id = $1 OR LOWER(r.name) = LOWER($1) OR LOWER(r.dns_name) = LOWER($1))
       GROUP BY rp.id, rp.name, p.id, rp.rate_limit, p.speed_limit, r.id, r.name, r.dns_name, r.hotspot_ip, p.name, p.price, p.validity_iso, p.quota_mb, p.shared_users, p.uptime_limit
       ORDER BY COALESCE(p.price, 0) ASC
-    `);
+    `, [routerFilter]);
 
     // 2. Ambil router_profiles bertipe 'hotspot' yang SUDAH DIHUBUNGKAN KE PAKET (rp.package_id IS NOT NULL)
     // Serta wajib: Profil Aktif (is_active = true) dan Paket Aktif (is_active = true)
@@ -301,8 +310,9 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         AND (p.type IS NULL OR p.type = 'hotspot_voucher' OR p.type = 'hotspot')
         AND p.type != 'hotspot_monthly'
         AND p.type != 'pppoe'
+        AND ($1::text = '' OR rp.router_id = $1 OR r.id = $1 OR LOWER(r.name) = LOWER($1) OR LOWER(r.dns_name) = LOWER($1))
       ORDER BY p.price ASC
-    `);
+    `, [routerFilter]);
 
     // 3. Ambil seluruh kampanye Flash Sale yang sedang aktif & belum habis kuotanya
     const fsResult = await pool.query(`
@@ -317,8 +327,9 @@ export async function listAvailableVouchers(req: Request, res: Response) {
         AND fs.end_time > NOW()
         AND (fs.start_time IS NULL OR fs.start_time <= NOW())
         AND fs.quota_sold < fs.quota_limit
+        AND ($1::text = '' OR fs.router_id IS NULL OR fs.router_id = $1 OR r.id = $1 OR LOWER(r.name) = LOWER($1) OR LOWER(r.dns_name) = LOWER($1))
       ORDER BY fs.created_at DESC
-    `).catch(() => ({ rows: [] }));
+    `, [routerFilter]).catch(() => ({ rows: [] }));
     const activeFlashSales = fsResult.rows || [];
 
     // Helper untuk mencocokkan Flash Sale ke paket
@@ -1041,6 +1052,102 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
       success: false,
       message: `Terjadi kesalahan di server: ${err.message}`
     });
+  }
+}
+
+/**
+ * GET /api/vouchers/status?code=<username>
+ * Mengambil status live voucher (masa aktif, first login, expired_at) untuk status.html MikroTik
+ */
+export async function getVoucherStatus(req: Request, res: Response) {
+  const code = (req.query.code || req.query.username || '').toString().trim();
+  const routerFilter = ((req.query.router_id || req.query.routerId || req.query.router || '') as string).trim();
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Parameter "code" wajib disertakan.' });
+  }
+
+  try {
+    const vcRes = await pool.query(`
+      SELECT v.*, 
+             rp.name as profile_name, 
+             p.name as package_name, 
+             p.price as package_price, 
+             p.validity_iso, 
+             p.uptime_limit, 
+             p.speed_limit,
+             r.name as router_name
+      FROM hotspot_vouchers v
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      LEFT JOIN routers r ON v.router_id = r.id
+      WHERE v.code = $1
+        AND ($2::text = '' OR v.router_id = $2 OR r.id = $2 OR LOWER(r.name) = LOWER($2) OR LOWER(r.dns_name) = LOWER($2))
+      LIMIT 1
+    `, [code, routerFilter]);
+
+    if (vcRes.rows.length === 0) {
+      // Fallback cek Cloud Firestore jika aktif
+      const db = getFirestore();
+      if (db) {
+        const snap = await db.collection('hotspot_vouchers').where('code', '==', code).limit(1).get();
+        if (!snap.empty) {
+          const vData = snap.docs[0].data();
+          let fLogin = vData.first_login_at || vData.first_login || null;
+          let expAt = vData.expired_at || null;
+          if (fLogin && !expAt) {
+            expAt = addIsoDurationToDate(new Date(fLogin), vData.validity_iso || 'P1D').toISOString();
+          }
+          return res.json({
+            success: true,
+            voucher: {
+              id: snap.docs[0].id,
+              code: vData.code || code,
+              status: vData.status,
+              package_name: vData.package_name || vData.profile_name || 'Voucher Hotspot',
+              profile_name: vData.profile_name,
+              first_login: fLogin,
+              first_login_at: fLogin,
+              expired_at: expAt,
+              is_expired: expAt ? new Date(expAt).getTime() <= Date.now() : false
+            }
+          });
+        }
+      }
+
+      return res.status(404).json({ success: false, message: `Voucher "${code}" tidak ditemukan.` });
+    }
+
+    const v = vcRes.rows[0];
+
+    let firstLogin = v.first_login_at;
+    let expiredAt = v.expired_at;
+    if (firstLogin && !expiredAt) {
+      const validityIso = v.validity_iso || 'P1D';
+      expiredAt = addIsoDurationToDate(new Date(firstLogin), validityIso);
+    }
+
+    const isExpired = expiredAt ? new Date(expiredAt).getTime() <= Date.now() : false;
+
+    return res.json({
+      success: true,
+      voucher: {
+        id: v.id,
+        code: v.code,
+        status: v.status,
+        package_name: v.package_name || v.profile_name || 'Voucher Hotspot',
+        profile_name: v.profile_name,
+        router_name: v.router_name,
+        first_login: firstLogin ? new Date(firstLogin).toISOString() : null,
+        first_login_at: firstLogin ? new Date(firstLogin).toISOString() : null,
+        expired_at: expiredAt ? new Date(expiredAt).toISOString() : null,
+        is_expired: isExpired,
+        validity_iso: v.validity_iso,
+        uptime_limit: v.uptime_limit,
+        speed_limit: v.speed_limit || '10 Mbps'
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 }
 
