@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Ticket, 
   Zap, 
@@ -183,6 +183,22 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
            VOUCHER_TEMPLATE_PRESETS[0].css;
   });
   const [generatedQrMap, setGeneratedQrMap] = useState<{ [key: string]: string }>({});
+  const qrCacheRef = useRef<Map<string, string>>(new Map());
+  const [isGeneratingQr, setIsGeneratingQr] = useState<boolean>(false);
+  const [qrProgress, setQrProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const [printLimit, setPrintLimit] = useState<number>(60);
+
+  // Sync print-mode-voucher class on body for clean paper printing
+  useEffect(() => {
+    if (showPrintModal) {
+      document.body.classList.add('print-mode-voucher');
+    } else {
+      document.body.classList.remove('print-mode-voucher');
+    }
+    return () => {
+      document.body.classList.remove('print-mode-voucher');
+    };
+  }, [showPrintModal]);
 
   // Switch template preset
   const handleSelectPrintPreset = (presetId: string) => {
@@ -688,38 +704,122 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   const paginatedVouchers = filteredVouchers.slice(startIndex, endIndex);
 
-  const printVouchersList = printBatchId === 'all' 
-    ? filteredVouchers 
-    : vouchers.filter(v => v.batch_id === printBatchId);
+  const rawPrintVouchers = useMemo(() => {
+    if (printBatchId === 'all') {
+      return filteredVouchers;
+    }
+    return vouchers.filter(v => v.batch_id === printBatchId);
+  }, [printBatchId, filteredVouchers, vouchers]);
 
-  // Pre-generate QR data URLs when print modal opens
+  const printVouchersList = useMemo(() => {
+    if (printLimit > 0 && printLimit < rawPrintVouchers.length) {
+      return rawPrintVouchers.slice(0, printLimit);
+    }
+    return rawPrintVouchers;
+  }, [rawPrintVouchers, printLimit]);
+
+  // Pre-generate QR data URLs when print modal opens (chunked & cached to prevent freezing)
   useEffect(() => {
-    if (!showPrintModal || printVouchersList.length === 0) return;
+    if (!showPrintModal || printVouchersList.length === 0) {
+      setIsGeneratingQr(false);
+      return;
+    }
+
     let isMounted = true;
     const cleanHost = (printDnsOrIp.trim() || 'ar.net')
       .replace(/^https?:\/\//i, '')
       .replace(/\/login.*$/i, '');
 
-    printVouchersList.forEach((v) => {
+    // Identify which vouchers still need QR code generation
+    const missingVouchers = printVouchersList.filter((v) => {
       const pass = v.password || v.code;
-      const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
-
-      QRCode.toDataURL(qrLoginUrl, {
-        width: 160,
-        margin: 1,
-        errorCorrectionLevel: 'M',
-        color: { dark: '#000000', light: '#ffffff' }
-      }).then((url) => {
-        if (isMounted) {
-          setGeneratedQrMap((prev) => ({ ...prev, [v.code]: url }));
-        }
-      }).catch(() => {});
+      const cacheKey = `${cleanHost}:${v.code}:${pass}`;
+      return !qrCacheRef.current.has(cacheKey);
     });
+
+    // If all are already in cache, load them into state in one go
+    if (missingVouchers.length === 0) {
+      setIsGeneratingQr(false);
+      setGeneratedQrMap((prev) => {
+        let changed = false;
+        const updated = { ...prev };
+        printVouchersList.forEach((v) => {
+          const pass = v.password || v.code;
+          const cacheKey = `${cleanHost}:${v.code}:${pass}`;
+          const cachedUrl = qrCacheRef.current.get(cacheKey);
+          if (cachedUrl && updated[v.code] !== cachedUrl) {
+            updated[v.code] = cachedUrl;
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+      return;
+    }
+
+    setIsGeneratingQr(true);
+    setQrProgress({ current: 0, total: missingVouchers.length });
+
+    // Process missing QR codes in small chunks of 25 with event-loop yield so UI never freezes
+    const CHUNK_SIZE = 25;
+    (async () => {
+      for (let i = 0; i < missingVouchers.length; i += CHUNK_SIZE) {
+        if (!isMounted) break;
+        const chunk = missingVouchers.slice(i, i + CHUNK_SIZE);
+        const results = await Promise.all(
+          chunk.map(async (v) => {
+            const pass = v.password || v.code;
+            const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
+            const cacheKey = `${cleanHost}:${v.code}:${pass}`;
+            try {
+              const url = await QRCode.toDataURL(qrLoginUrl, {
+                width: 160,
+                margin: 1,
+                errorCorrectionLevel: 'M',
+                color: { dark: '#000000', light: '#ffffff' }
+              });
+              qrCacheRef.current.set(cacheKey, url);
+              return { code: v.code, url };
+            } catch (err) {
+              return null;
+            }
+          })
+        );
+
+        if (!isMounted) break;
+
+        // Batch update state per chunk
+        setGeneratedQrMap((prev) => {
+          const updated = { ...prev };
+          results.forEach((r) => {
+            if (r) updated[r.code] = r.url;
+          });
+          return updated;
+        });
+
+        setQrProgress({
+          current: Math.min(i + CHUNK_SIZE, missingVouchers.length),
+          total: missingVouchers.length
+        });
+
+        // Yield to browser to keep scrolling and clicks 100% smooth
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      if (isMounted) {
+        setIsGeneratingQr(false);
+      }
+    })();
 
     return () => {
       isMounted = false;
     };
   }, [showPrintModal, printVouchersList, printDnsOrIp]);
+
+  // Fast offline SVG placeholder to prevent lagging network requests
+  const QR_PLACEHOLDER_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="#f8fafc" rx="8"/><rect x="25" y="25" width="110" height="110" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="4"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="bold" fill="#94a3b8">QR Loading...</text></svg>'
+  )}`;
 
   // Compile individual voucher HTML from active template
   const compilePrintVoucherHtml = (v: any, index: number): string => {
@@ -728,7 +828,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
       .replace(/\/login.*$/i, '');
     const pass = v.password || v.code;
     const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
-    const qrDataUrl = generatedQrMap[v.code] || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrLoginUrl)}`;
+    const cacheKey = `${cleanHost}:${v.code}:${pass}`;
+    const qrDataUrl = generatedQrMap[v.code] || qrCacheRef.current.get(cacheKey) || QR_PLACEHOLDER_SVG;
     const priceDisplay = v.package_price ? `Rp ${Number(v.package_price).toLocaleString('id-ID')}` : 'GRATIS';
 
     let rendered = activeTemplateHtml;
@@ -1415,8 +1516,8 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
 
       {/* Modal Cetak Voucher (Mikhmon Style Template with Custom HTML/CSS Engine) */}
       {showPrintModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in print:p-0 print:bg-white print:static print:overflow-visible">
-          <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+        <div id="voucher-print-modal" className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in print:p-0 print:bg-white print:static print:overflow-visible">
+          <div id="voucher-print-card-wrapper" className="bg-white rounded-3xl border border-slate-200 w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
             {/* Header Toolbar (Hidden when printing) */}
             <div className="p-4 bg-slate-900 text-white flex flex-wrap justify-between items-center gap-3 shrink-0 print:hidden border-b border-slate-800">
               <div className="flex items-center gap-2.5">
@@ -1430,12 +1531,48 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                       {VOUCHER_TEMPLATE_PRESETS.find(p => p.id === activeTemplateId)?.name || 'Custom'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-400">Total {printVouchersList.length} voucher siap dicetak</span>
+                  <span className="text-[11px] text-slate-400">
+                    Menampilkan {printVouchersList.length} dari {rawPrintVouchers.length} voucher siap cetak
+                  </span>
                 </div>
               </div>
 
               {/* Print Configuration Controls */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Pilih Batch Dropdown */}
+                <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <Layers size={14} className="text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-slate-300 font-semibold hidden lg:inline">Batch:</span>
+                  <select
+                    value={printBatchId}
+                    onChange={(e) => setPrintBatchId(e.target.value)}
+                    className="bg-slate-950 text-amber-300 font-bold text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer max-w-[130px] sm:max-w-[160px] truncate"
+                  >
+                    <option value="all">Semua ({filteredVouchers.length} vc)</option>
+                    {batchSummaries.map((b) => (
+                      <option key={b.batch_id} value={b.batch_id}>
+                        {b.profile_name} ({b.count} vc)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Pilih Limit Cetak */}
+                <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <span className="text-[11px] text-slate-300 font-semibold hidden md:inline">Jumlah:</span>
+                  <select
+                    value={printLimit}
+                    onChange={(e) => setPrintLimit(Number(e.target.value))}
+                    className="bg-slate-950 text-amber-300 font-bold text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    <option value={30}>30 Voucher (10 lembar A4)</option>
+                    <option value={60}>60 Voucher (20 lembar A4)</option>
+                    <option value={100}>100 Voucher</option>
+                    <option value={200}>200 Voucher</option>
+                    <option value={0}>Cetak Semua ({rawPrintVouchers.length})</option>
+                  </select>
+                </div>
+
                 {/* Pilih Desain Template Dropdown */}
                 <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700">
                   <Palette size={14} className="text-amber-400 shrink-0" />
@@ -1443,7 +1580,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                   <select
                     value={activeTemplateId}
                     onChange={(e) => handleSelectPrintPreset(e.target.value)}
-                    className="bg-slate-950 text-amber-300 font-bold text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer"
+                    className="bg-slate-950 text-amber-300 font-bold text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer max-w-[120px] sm:max-w-none truncate"
                   >
                     {VOUCHER_TEMPLATE_PRESETS.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
@@ -1456,11 +1593,11 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                 <button
                   type="button"
                   onClick={() => setShowTemplateEditorModal(true)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                   title="Desain dan ubah susunan kode HTML/CSS template ini"
                 >
                   <Sliders size={13} />
-                  <span>Desain / Edit Template</span>
+                  <span className="hidden sm:inline">Desain / Edit Template</span>
                 </button>
 
                 {/* Input DNS / Hostname */}
@@ -1471,7 +1608,7 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                     value={printDnsOrIp}
                     onChange={(e) => setPrintDnsOrIp(e.target.value)}
                     placeholder="ar.net"
-                    className="w-24 sm:w-28 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
+                    className="w-20 sm:w-24 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
                     title="Domain login hotspot (misal: ar.net)"
                   />
                 </div>
@@ -1479,17 +1616,27 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
                 {/* Tombol Cetak Langsung */}
                 <button
                   onClick={() => window.print()}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+                  disabled={isGeneratingQr}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:cursor-wait active:scale-95"
                 >
-                  <Printer size={15} />
-                  <span>Print / Cetak Sekarang</span>
+                  {isGeneratingQr ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin text-slate-950" />
+                      <span>Menyiapkan QR ({qrProgress.current}/{qrProgress.total})...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Printer size={15} />
+                      <span>Print / Cetak Sekarang</span>
+                    </>
+                  )}
                 </button>
                 <button onClick={() => setShowPrintModal(false)} className="text-slate-400 hover:text-white font-bold text-2xl cursor-pointer ml-1 leading-none">&times;</button>
               </div>
             </div>
 
             {/* Voucher Cards Grid with Scoped Template Styles */}
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
+            <div id="voucher-print-grid-container" className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
               <style dangerouslySetInnerHTML={{ __html: activeTemplateCss }} />
               <div className="voucher-grid">
                 {printVouchersList.map((v, i) => (

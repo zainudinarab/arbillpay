@@ -155,4 +155,52 @@
     color: #000000 !important;
     font-family: "Courier New", Courier, monospace !important;
   }
+
+  /* --- VOUCHER PRINTING (MIKHMON STYLE GRID) --- */
+  body.print-mode-voucher {
+    margin: 0 !important;
+    padding: 6mm 8mm !important;
+    background: #ffffff !important;
+  }
+
+  body.print-mode-voucher main,
+  body.print-mode-voucher header,
+  body.print-mode-voucher aside,
+  body.print-mode-voucher nav {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.print-mode-voucher #voucher-print-modal {
+    display: block !important;
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+  }
+
+  body.print-mode-voucher #voucher-print-card-wrapper {
+    display: block !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  body.print-mode-voucher #voucher-print-grid-container {
+    display: block !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
 }
+

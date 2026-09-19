@@ -633,27 +633,39 @@ export default function VoucherTemplateEditorModal({
     }
   ];
 
-  // Pre-generate QR codes for preview vouchers
+  // Pre-generate QR codes for preview vouchers (batched to prevent unnecessary re-renders)
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
     const cleanDns = (dnsName || 'ar.net').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
 
-    previewVouchers.forEach((v) => {
-      const pass = v.password || v.code;
-      const loginUrl = `http://${cleanDns}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
-
-      QRCode.toDataURL(loginUrl, {
-        width: 160,
-        margin: 1,
-        errorCorrectionLevel: 'M',
-        color: { dark: '#000000', light: '#ffffff' }
-      }).then((url) => {
-        if (isMounted) {
-          setPreviewQrMap((prev) => ({ ...prev, [v.code]: url }));
+    Promise.all(
+      previewVouchers.map(async (v) => {
+        const pass = v.password || v.code;
+        const loginUrl = `http://${cleanDns}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
+        try {
+          const url = await QRCode.toDataURL(loginUrl, {
+            width: 160,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000', light: '#ffffff' }
+          });
+          return { code: v.code, url };
+        } catch {
+          return null;
         }
-      }).catch(() => {});
+      })
+    ).then((results) => {
+      if (isMounted) {
+        setPreviewQrMap((prev) => {
+          const next = { ...prev };
+          results.forEach((r) => {
+            if (r) next[r.code] = r.url;
+          });
+          return next;
+        });
+      }
     });
 
     return () => {
@@ -722,7 +734,10 @@ export default function VoucherTemplateEditorModal({
     const cleanDns = (voucher.dns_name || dnsName || 'ar.net').trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
     const pass = voucher.password || voucher.code;
     const loginUrl = `http://${cleanDns}/login?username=${encodeURIComponent(voucher.code)}&password=${encodeURIComponent(pass)}`;
-    const qrDataUrl = previewQrMap[voucher.code] || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(loginUrl)}`;
+    const QR_FALLBACK_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="#f8fafc" rx="8"/><rect x="25" y="25" width="110" height="110" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="4"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="10" font-weight="bold" fill="#94a3b8">QR Voucher</text></svg>'
+    )}`;
+    const qrDataUrl = previewQrMap[voucher.code] || QR_FALLBACK_SVG;
     const priceDisplay = voucher.package_price ? `Rp ${Number(voucher.package_price).toLocaleString('id-ID')}` : 'GRATIS';
 
     let rendered = templateHtml;
