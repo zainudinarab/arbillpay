@@ -22,13 +22,18 @@ import {
   Globe,
   CreditCard,
   Clock,
-  QrCode
+  QrCode,
+  Palette,
+  Sliders,
+  Sparkles
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { getApiUrl } from '../config/api';
 import { getVouchersFromFirestore } from '../services/firebaseService';
 import VoucherQrCode from './VoucherQrCode';
+import QRCode from 'qrcode';
+import VoucherTemplateEditorModal, { VOUCHER_TEMPLATE_PRESETS } from './VoucherTemplateEditorModal';
 
 interface RouterItem {
   id: string;
@@ -161,6 +166,43 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
   const [printBatchId, setPrintBatchId] = useState<string>('all');
   const [printDnsOrIp, setPrintDnsOrIp] = useState<string>('ar.net');
   const [showQrOnPrint, setShowQrOnPrint] = useState<boolean>(true);
+
+  // Template Customization Engine State
+  const [showTemplateEditorModal, setShowTemplateEditorModal] = useState<boolean>(false);
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(() => {
+    return localStorage.getItem('arbill_voucher_active_template_id') || 'mikhmon-default';
+  });
+  const [activeTemplateHtml, setActiveTemplateHtml] = useState<string>(() => {
+    return localStorage.getItem('arbill_voucher_custom_html') || 
+           VOUCHER_TEMPLATE_PRESETS.find(p => p.id === 'mikhmon-default')?.html || 
+           VOUCHER_TEMPLATE_PRESETS[0].html;
+  });
+  const [activeTemplateCss, setActiveTemplateCss] = useState<string>(() => {
+    return localStorage.getItem('arbill_voucher_custom_css') || 
+           VOUCHER_TEMPLATE_PRESETS.find(p => p.id === 'mikhmon-default')?.css || 
+           VOUCHER_TEMPLATE_PRESETS[0].css;
+  });
+  const [generatedQrMap, setGeneratedQrMap] = useState<{ [key: string]: string }>({});
+
+  // Switch template preset
+  const handleSelectPrintPreset = (presetId: string) => {
+    setActiveTemplateId(presetId);
+    localStorage.setItem('arbill_voucher_active_template_id', presetId);
+    if (presetId === 'custom') return;
+    const preset = VOUCHER_TEMPLATE_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      setActiveTemplateHtml(preset.html);
+      setActiveTemplateCss(preset.css);
+      localStorage.setItem('arbill_voucher_custom_html', preset.html);
+      localStorage.setItem('arbill_voucher_custom_css', preset.css);
+    }
+  };
+
+  const handleApplyTemplate = (tpl: { id: string; html: string; css: string }) => {
+    setActiveTemplateId(tpl.id);
+    setActiveTemplateHtml(tpl.html);
+    setActiveTemplateCss(tpl.css);
+  };
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -650,6 +692,63 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
     ? filteredVouchers 
     : vouchers.filter(v => v.batch_id === printBatchId);
 
+  // Pre-generate QR data URLs when print modal opens
+  useEffect(() => {
+    if (!showPrintModal || printVouchersList.length === 0) return;
+    let isMounted = true;
+    const cleanHost = (printDnsOrIp.trim() || 'ar.net')
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/login.*$/i, '');
+
+    printVouchersList.forEach((v) => {
+      const pass = v.password || v.code;
+      const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
+
+      QRCode.toDataURL(qrLoginUrl, {
+        width: 160,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#ffffff' }
+      }).then((url) => {
+        if (isMounted) {
+          setGeneratedQrMap((prev) => ({ ...prev, [v.code]: url }));
+        }
+      }).catch(() => {});
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showPrintModal, printVouchersList, printDnsOrIp]);
+
+  // Compile individual voucher HTML from active template
+  const compilePrintVoucherHtml = (v: any, index: number): string => {
+    const cleanHost = (printDnsOrIp.trim() || 'ar.net')
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/login.*$/i, '');
+    const pass = v.password || v.code;
+    const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
+    const qrDataUrl = generatedQrMap[v.code] || `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrLoginUrl)}`;
+    const priceDisplay = v.package_price ? `Rp ${Number(v.package_price).toLocaleString('id-ID')}` : 'GRATIS';
+
+    let rendered = activeTemplateHtml;
+    rendered = rendered.replace(/\{\{username\}\}/gi, v.code);
+    rendered = rendered.replace(/\{\{code\}\}/gi, v.code);
+    rendered = rendered.replace(/\{\{password\}\}/gi, pass);
+    rendered = rendered.replace(/\{\{price\}\}/gi, priceDisplay);
+    rendered = rendered.replace(/\{\{profile_name\}\}/gi, v.profile_name || v.package_name || 'Voucher Hotspot');
+    rendered = rendered.replace(/\{\{rate_limit\}\}/gi, v.rate_limit || 'Fast 5G');
+    rendered = rendered.replace(/\{\{validity\}\}/gi, v.uptime_limit || v.validity || 'Aktif');
+    rendered = rendered.replace(/\{\{hotspot_name\}\}/gi, profile.companyName || 'WIFI HOTSPOT');
+    rendered = rendered.replace(/\{\{dns_name\}\}/gi, cleanHost);
+    rendered = rendered.replace(/\{\{login_url\}\}/gi, qrLoginUrl);
+    rendered = rendered.replace(/\{\{num\}\}/gi, String(index + 1));
+    rendered = rendered.replace(/\{\{qr_src\}\}/gi, qrDataUrl);
+    rendered = rendered.replace(/\{\{qr_code\}\}/gi, `<img src="${qrDataUrl}" class="voucher-qr" alt="QR Login" />`);
+
+    return rendered;
+  };
+
   return (
     <div className="flex-1 bg-[#F8FAFC] pb-24 lg:pb-8 min-h-screen">
       <HeaderBar
@@ -739,6 +838,15 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
             >
               <ShieldCheck size={15} />
               <span>🛡️ Bypass Portal (Walled Garden)</span>
+            </button>
+
+            <button
+              onClick={() => setShowTemplateEditorModal(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-2xl flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
+              title="Atur dan desain susunan HTML/CSS template cetak voucher ala Mikhmon"
+            >
+              <Palette size={15} />
+              <span>🎨 Desain Template Cetak</span>
             </button>
 
             <button
@@ -1305,44 +1413,70 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
         </div>
       )}
 
-      {/* Modal Cetak Voucher (Mikhmon Style Template with QR Code) */}
+      {/* Modal Cetak Voucher (Mikhmon Style Template with Custom HTML/CSS Engine) */}
       {showPrintModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in print:p-0 print:bg-white print:static">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 z-50 animate-fade-in print:p-0 print:bg-white print:static print:overflow-visible">
+          <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-6xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
             {/* Header Toolbar (Hidden when printing) */}
-            <div className="p-4 bg-slate-900 text-white flex flex-wrap justify-between items-center gap-3 shrink-0 print:hidden">
-              <div className="flex items-center gap-2">
-                <Printer size={18} className="text-amber-400" />
+            <div className="p-4 bg-slate-900 text-white flex flex-wrap justify-between items-center gap-3 shrink-0 print:hidden border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Printer size={18} />
+                </div>
                 <div>
-                  <span className="font-bold text-sm block">Cetak Voucher Hotspot (Mikhmon QR Style)</span>
-                  <span className="text-[11px] text-slate-400">Total {printVouchersList.length} voucher siap cetak</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-sm text-white">Cetak Voucher Hotspot</span>
+                    <span className="text-[10px] font-bold bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full">
+                      {VOUCHER_TEMPLATE_PRESETS.find(p => p.id === activeTemplateId)?.name || 'Custom'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400">Total {printVouchersList.length} voucher siap dicetak</span>
                 </div>
               </div>
 
               {/* Print Configuration Controls */}
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700">
-                  <span className="text-[11px] text-slate-300 font-semibold">DNS/IP:</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Pilih Desain Template Dropdown */}
+                <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <Palette size={14} className="text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-slate-300 font-semibold hidden md:inline">Template:</span>
+                  <select
+                    value={activeTemplateId}
+                    onChange={(e) => handleSelectPrintPreset(e.target.value)}
+                    className="bg-slate-950 text-amber-300 font-bold text-xs rounded border border-slate-700 px-2 py-1 focus:outline-none focus:border-amber-400 cursor-pointer"
+                  >
+                    {VOUCHER_TEMPLATE_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                    <option value="custom">✏️ Template Kustom Saya</option>
+                  </select>
+                </div>
+
+                {/* Tombol Buka Editor HTML/CSS */}
+                <button
+                  type="button"
+                  onClick={() => setShowTemplateEditorModal(true)}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Desain dan ubah susunan kode HTML/CSS template ini"
+                >
+                  <Sliders size={13} />
+                  <span>Desain / Edit Template</span>
+                </button>
+
+                {/* Input DNS / Hostname */}
+                <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <span className="text-[11px] text-slate-300 font-semibold">DNS:</span>
                   <input 
                     type="text"
                     value={printDnsOrIp}
                     onChange={(e) => setPrintDnsOrIp(e.target.value)}
                     placeholder="ar.net"
-                    className="w-32 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
-                    title="Domain atau IP router MikroTik untuk link QR login"
+                    className="w-24 sm:w-28 px-2 py-0.5 bg-slate-950 text-amber-300 font-mono text-xs rounded border border-slate-700 focus:outline-none focus:border-amber-400"
+                    title="Domain login hotspot (misal: ar.net)"
                   />
                 </div>
 
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 cursor-pointer bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700">
-                  <input 
-                    type="checkbox" 
-                    checked={showQrOnPrint}
-                    onChange={(e) => setShowQrOnPrint(e.target.checked)}
-                    className="rounded accent-amber-500 cursor-pointer"
-                  />
-                  <span>Tampilkan QR</span>
-                </label>
-
+                {/* Tombol Cetak Langsung */}
                 <button
                   onClick={() => window.print()}
                   className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
@@ -1354,82 +1488,16 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
               </div>
             </div>
 
-            {/* Voucher Cards Grid */}
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-2 print:overflow-visible">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 print:grid-cols-3 print:gap-2">
-                {printVouchersList.map((v) => {
-                  const cleanHost = (printDnsOrIp.trim() || 'ar.net')
-                    .replace(/^https?:\/\//i, '')
-                    .replace(/\/login.*$/i, '');
-                  const pass = v.password || v.code;
-                  const qrLoginUrl = `http://${cleanHost}/login?username=${encodeURIComponent(v.code)}&password=${encodeURIComponent(pass)}`;
-
-                  return (
-                    <div 
-                      key={v.id} 
-                      className="bg-white border-2 border-slate-900 rounded-xl p-2.5 shadow-sm flex flex-col justify-between text-slate-900 font-sans print:shadow-none print:break-inside-avoid print:border-black"
-                    >
-                      {/* Card Header */}
-                      <div className="flex justify-between items-center border-b border-slate-200 pb-1 mb-1">
-                        <span className="font-black text-[11px] text-amber-600 truncate uppercase tracking-tight">
-                          {profile.companyName || 'WIFI HOTSPOT'}
-                        </span>
-                        <span className="font-extrabold text-[8.5px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[85px]">
-                          {v.profile_name || 'Voucher'}
-                        </span>
-                      </div>
-
-                      {/* Card Body: QR Code + Credentials */}
-                      <div className="flex items-center gap-2 my-1 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
-                        {showQrOnPrint && (
-                          <div className="shrink-0 bg-white p-1 rounded border border-slate-200 flex flex-col items-center">
-                            <VoucherQrCode 
-                              text={qrLoginUrl} 
-                              size={64} 
-                            />
-                            <span className="text-[7px] font-bold text-slate-400 mt-0.5 uppercase tracking-tighter">
-                              Scan to Login
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="flex-1 min-w-0 text-left">
-                          <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">
-                            KODE VOUCHER
-                          </span>
-                          <span className="font-mono font-black text-[13px] text-slate-950 tracking-wider block truncate select-all">
-                            {v.code}
-                          </span>
-
-                          {v.password && v.password !== v.code && (
-                            <div className="mt-0.5">
-                              <span className="text-[7.5px] uppercase font-bold text-slate-400 block tracking-wider">
-                                PASSWORD
-                              </span>
-                              <span className="font-mono font-bold text-[11px] text-slate-700 block truncate">
-                                {v.password}
-                              </span>
-                            </div>
-                          )}
-
-                          <span className="text-[7.5px] text-slate-400 block mt-1 truncate">
-                            Login: <code className="text-slate-600 font-mono font-bold">{cleanHost}</code>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Card Footer: Price & Validity */}
-                      <div className="flex justify-between items-center pt-1 border-t border-slate-200 text-[9.5px]">
-                        <span className="font-black text-emerald-700">
-                          {v.package_price ? `Rp ${Number(v.package_price).toLocaleString('id-ID')}` : 'GRATIS'}
-                        </span>
-                        <span className="text-slate-500 text-[8.5px] font-mono font-bold truncate max-w-[90px]">
-                          {v.rate_limit || v.package_name || 'Fast 5G'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+            {/* Voucher Cards Grid with Scoped Template Styles */}
+            <div className="p-6 overflow-y-auto flex-1 bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
+              <style dangerouslySetInnerHTML={{ __html: activeTemplateCss }} />
+              <div className="voucher-grid">
+                {printVouchersList.map((v, i) => (
+                  <div 
+                    key={v.id} 
+                    dangerouslySetInnerHTML={{ __html: compilePrintVoucherHtml(v, i) }} 
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -2006,6 +2074,16 @@ export default function HotspotVoucherManagement({ profile, t, onLogout }: Hotsp
           </div>
         </div>
       )}
+
+      {/* MODAL POPUP: VOUCHER TEMPLATE EDITOR (GAYA MIKHMON) */}
+      <VoucherTemplateEditorModal
+        isOpen={showTemplateEditorModal}
+        onClose={() => setShowTemplateEditorModal(false)}
+        hotspotName={profile.companyName || 'AR-NET HOTSPOT'}
+        dnsName={printDnsOrIp || 'ar.net'}
+        sampleVouchers={printVouchersList.slice(0, 6)}
+        onApplyTemplate={handleApplyTemplate}
+      />
     </div>
   );
 }
