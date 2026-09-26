@@ -128,6 +128,120 @@ interface NodeRecord {
   customerId?: string | null; // Linked Customer ID
   totalCableCores?: number; // Total cores in incoming cable (2, 4, 6, 8, 12, 24)
   coreSplicingMap?: Record<number, { action: 'INPUT_SPLITTER' | 'BYPASS_PASS' | 'SPARE'; targetNodeName?: string; note?: string }>;
+  internalSplitters?: InternalSplitterModule[];
+}
+
+export interface InternalSplitterModule {
+  id: string;
+  name?: string;
+  type: string; // '1:2' | '1:4' | '1:8' | '1:16' | '80:20' | '70:30' | '85:15' | '90:10' | '60:40' | '50:50';
+  inputFrom: string; // 'MAIN_IN' or '{moduleId}_p{portNum}' (e.g. 'mod_1_p1')
+}
+
+export interface ResolvedInternalPort {
+  portNum: number;
+  sourceModuleId: string;
+  sourceModuleName: string;
+  sourceModulePort: number;
+  pathDescription: string;
+  lossDb: number;
+}
+
+export const getModPortsCount = (type: string): number => {
+  if (type.startsWith('1:')) return parseInt(type.split('1:')[1]) || 2;
+  if (type.includes(':')) return 2; // e.g. 80:20
+  return 2;
+};
+
+export function resolveInternalSplitterPorts(modules: InternalSplitterModule[] = []): ResolvedInternalPort[] {
+  if (!modules || modules.length === 0) return [];
+
+  const getModPortLoss = (type: string, pNum: number): number => {
+    if (type === '1:2') return 3.5;
+    if (type === '1:4') return 7.2;
+    if (type === '1:8') return 10.5;
+    if (type === '1:16') return 13.8;
+    if (type === '1:32') return 17.0;
+    if (type === '95:5') return pNum === 1 ? 0.4 : 13.5;
+    if (type === '90:10') return pNum === 1 ? 0.8 : 10.8;
+    if (type === '85:15') return pNum === 1 ? 1.1 : 9.0;
+    if (type === '80:20') return pNum === 1 ? 1.4 : 7.6;
+    if (type === '75:25') return pNum === 1 ? 1.7 : 6.6;
+    if (type === '70:30') return pNum === 1 ? 2.0 : 5.8;
+    if (type === '60:40') return pNum === 1 ? 2.8 : 4.5;
+    if (type === '50:50') return 3.5;
+    return 3.5;
+  };
+
+  const consumedOutputs = new Set<string>();
+  modules.forEach(m => {
+    if (m.inputFrom && m.inputFrom !== 'MAIN_IN') {
+      consumedOutputs.add(m.inputFrom);
+    }
+  });
+
+  const computedModuleInputs = new Map<string, { loss: number; path: string }>();
+
+  // Pass over modules to compute input loss and route path for each module
+  for (let pass = 0; pass < modules.length + 2; pass++) {
+    modules.forEach(m => {
+      if (computedModuleInputs.has(m.id)) return;
+      const inp = m.inputFrom || 'MAIN_IN';
+      if (inp === 'MAIN_IN') {
+        computedModuleInputs.set(m.id, { loss: 0, path: m.name || m.type });
+      } else {
+        const parts = inp.split('_p');
+        const srcModId = parts[0];
+        const srcPort = parseInt(parts[1]) || 1;
+        const parentMod = modules.find(x => x.id === srcModId);
+        if (parentMod && computedModuleInputs.has(parentMod.id)) {
+          const parentInp = computedModuleInputs.get(parentMod.id)!;
+          const stepLoss = getModPortLoss(parentMod.type, srcPort);
+          const currentLoss = parentInp.loss + stepLoss;
+          const currentPath = `${parentInp.path} [P#${srcPort}] ➔ ${m.name || m.type}`;
+          computedModuleInputs.set(m.id, { loss: currentLoss, path: currentPath });
+        }
+      }
+    });
+  }
+
+  const allOutputs: Array<{
+    moduleId: string;
+    moduleName: string;
+    portNum: number;
+    path: string;
+    totalLoss: number;
+  }> = [];
+
+  modules.forEach(m => {
+    const inpInfo = computedModuleInputs.get(m.id) || { loss: 0, path: m.name || m.type };
+    const pCount = getModPortsCount(m.type);
+    for (let p = 1; p <= pCount; p++) {
+      const outKey = `${m.id}_p${p}`;
+      if (!consumedOutputs.has(outKey)) {
+        const portLoss = inpInfo.loss + getModPortLoss(m.type, p);
+        const finalPath = inpInfo.path.endsWith(m.name || m.type)
+          ? `${inpInfo.path} [Port #${p}]`
+          : `${inpInfo.path} ➔ ${m.name || m.type} [Port #${p}]`;
+        allOutputs.push({
+          moduleId: m.id,
+          moduleName: m.name || m.type,
+          portNum: p,
+          path: finalPath,
+          totalLoss: Number(portLoss.toFixed(2))
+        });
+      }
+    }
+  });
+
+  return allOutputs.map((out, index) => ({
+    portNum: index + 1,
+    sourceModuleId: out.moduleId,
+    sourceModuleName: out.moduleName,
+    sourceModulePort: out.portNum,
+    pathDescription: out.path,
+    lossDb: out.totalLoss
+  }));
 }
 
 interface LineRecord {
@@ -438,6 +552,8 @@ const DEFAULT_SPLITTER_CATALOG = [
   const [editSplitterRatio, setEditSplitterRatio] = useState<string>('1:8');
   const [editOutputPower, setEditOutputPower] = useState<number>(9.0);
   const [editCustomerId, setEditCustomerId] = useState<string>('');
+  const [editSplitterMode, setEditSplitterMode] = useState<'preset' | 'custom'>('preset');
+  const [editInternalSplitters, setEditInternalSplitters] = useState<InternalSplitterModule[]>([]);
 
   // Master Device Management Table States
   const [isDeviceTableModalOpen, setIsDeviceTableModalOpen] = useState<boolean>(false);
@@ -1060,8 +1176,22 @@ const DEFAULT_SPLITTER_CATALOG = [
     return `${Math.round(meters)} m`;
   };
 
-  // Helper: Calculate Splitter Loss in dB (supporting database dynamic catalog, PLC symmetric, ratio asymmetric, and hybrid tap splitters)
-  const getSplitterLossDb = (ratio: string | undefined, cap: number, portNum: number = 1): number => {
+  // Helper: Calculate Splitter Loss in dB (supporting database dynamic catalog, custom internal cascades, PLC symmetric, ratio asymmetric, and hybrid tap splitters)
+  const getSplitterLossDb = (
+    ratio: string | undefined, 
+    cap: number, 
+    portNum: number = 1,
+    internalSplitters?: InternalSplitterModule[]
+  ): number => {
+    // If custom internal cascading splitters are configured, resolve exact cumulative loss
+    if (internalSplitters && internalSplitters.length > 0) {
+      const resolved = resolveInternalSplitterPorts(internalSplitters);
+      const portObj = resolved.find(p => p.portNum === portNum);
+      if (portObj) {
+        return portObj.lossDb;
+      }
+    }
+
     if (!ratio) return 10.5;
 
     // Check dynamic master catalog from DB
@@ -1182,9 +1312,9 @@ const DEFAULT_SPLITTER_CATALOG = [
       } else {
         parentTxPower = parentNode.outputPower !== undefined ? parentNode.outputPower : 9.0;
       }
-    } else if (!isBypassCable && parentNode.splitterRatio && parentNode.splitterRatio.includes(':') && !parentNode.splitterRatio.startsWith('1:')) {
-      // Asymmetric Splitter Parent (e.g. 90:10, 80:20, 70:30, 60:40, 50:50)
-      const portLoss = getSplitterLossDb(parentNode.splitterRatio, parentNode.splitterCapacity || 2, parentPort);
+    } else if (!isBypassCable && (parentNode.internalSplitters?.length || (parentNode.splitterRatio && !parentNode.splitterRatio.startsWith('1:')))) {
+      // Custom internal cascading splitters OR Asymmetric Splitter Parent (e.g. 90:10, 80:20, 70:30, 60:40, 50:50, hybrid)
+      const portLoss = getSplitterLossDb(parentNode.splitterRatio, parentNode.splitterCapacity || 2, parentPort, parentNode.internalSplitters);
       parentTxPower = parentRes.inputPower - portLoss;
     }
 
@@ -1192,7 +1322,7 @@ const DEFAULT_SPLITTER_CATALOG = [
     const cableLossDb = (cableMeters / 1000) * 0.35 + 0.2; // 0.35 dB/km + 0.2 dB splice
     const inputPowerAtNode = parentTxPower - cableLossDb;
 
-    const splitterLoss = getSplitterLossDb(targetNode.splitterRatio, targetNode.splitterCapacity || 8, 1);
+    const splitterLoss = getSplitterLossDb(targetNode.splitterRatio, targetNode.splitterCapacity || 8, 1, targetNode.internalSplitters);
     const outputPowerAtNode = targetNode.type === 'ONU' || targetNode.type === 'ROUTER_WIFI' || targetNode.type === 'CLIENT_RJ45' 
       ? inputPowerAtNode 
       : (inputPowerAtNode - splitterLoss);
@@ -1702,8 +1832,11 @@ const DEFAULT_SPLITTER_CATALOG = [
 
       const isBlinkingNode = offline || odpDiagnostic.isUpstreamCut;
 
-      // ONU/HTB/SWITCH/ROUTER: show used/total ports; ODP/SPLITTER: show used/1:cap
-      const markerLabel = (n.type === 'ODP' || n.type === 'SPLITTER' || n.type === 'ODC') 
+      // ONU/HTB/SWITCH/ROUTER: show used/total ports; ODP/SPLITTER: show used/1:cap or /capP
+      const isCustomInternal = Boolean(n.internalSplitters && n.internalSplitters.length > 0);
+      const markerLabel = isCustomInternal
+        ? `${usedPortsCount}/${cap}P`
+        : (n.type === 'ODP' || n.type === 'SPLITTER' || n.type === 'ODC') 
         ? `${usedPortsCount}/1:${cap}` 
         : `${usedPortsCount}/${cap}`;
 
@@ -1730,7 +1863,22 @@ const DEFAULT_SPLITTER_CATALOG = [
         const isHybrid = ratio && ratio.includes('+');
         const isAsymmetric = ratio && ratio.includes(':') && !ratio.startsWith('1:') && !isHybrid;
 
-        if (isHybrid) {
+        if (isCustomInternal && n.internalSplitters) {
+          const resolved = resolveInternalSplitterPorts(n.internalSplitters);
+          const portItemsHtml = resolved.slice(0, 6).map(rp => {
+            const pTx = Number((nodeOptPower.inputPower - rp.lossDb).toFixed(2));
+            return `<div style="display:flex; justify-content:space-between; margin-bottom:2px;"><span style="color:#334155;">P#${rp.portNum} (${rp.sourceModuleName}):</span> <span style="font-family:monospace; color:#2563eb; font-weight:800;">${pTx > 0 ? `+${pTx}` : pTx} dBm <span style="font-size:9px; color:#ef4444;">(-${rp.lossDb}dB)</span></span></div>`;
+          }).join('');
+          const moreCount = resolved.length > 6 ? `... +${resolved.length - 6} port lainnya` : '';
+
+          powerHtml = `
+            <div style="background:#eff6ff; padding:6px 8px; border-radius:10px; border:1px solid #bfdbfe; margin:5px 0; font-size:10px; line-height:1.4;">
+              <div style="font-weight:800; color:#1e3a8a; margin-bottom:2px;">⚡ Rx In: <span style="font-family:monospace; color:#0284c7;">${nodeOptPower.inputPower > 0 ? `+${nodeOptPower.inputPower}` : nodeOptPower.inputPower} dBm</span> | 🧩 Multi-Splitter (${resolved.length} Port)</div>
+              ${portItemsHtml}
+              ${moreCount ? `<div style="font-size:9px; color:#64748b; font-style:italic; margin-top:2px;">${moreCount} (Buka Inspector untuk detail lengkap)</div>` : ''}
+            </div>
+          `;
+        } else if (isHybrid) {
           const p1Loss = getSplitterLossDb(ratio, cap, 1);
           const p2Loss = getSplitterLossDb(ratio, cap, 2);
           const p1Tx = Number((nodeOptPower.inputPower - p1Loss).toFixed(2));
@@ -2256,6 +2404,13 @@ const DEFAULT_SPLITTER_CATALOG = [
         setEditPortsSfp(nodeObj.portsSfp !== undefined ? nodeObj.portsSfp : (nodeObj.type === 'ROUTER' ? 1 : 2));
         setEditPortsLan(nodeObj.portsLan !== undefined ? nodeObj.portsLan : (nodeObj.type === 'ROUTER' ? 5 : 8));
         setEditCustomerId(nodeObj.customerId || '');
+        if (nodeObj.internalSplitters && nodeObj.internalSplitters.length > 0) {
+          setEditSplitterMode('custom');
+          setEditInternalSplitters(JSON.parse(JSON.stringify(nodeObj.internalSplitters)));
+        } else {
+          setEditSplitterMode('preset');
+          setEditInternalSplitters([]);
+        }
       }
     };
 
@@ -3033,108 +3188,369 @@ const DEFAULT_SPLITTER_CATALOG = [
                   </div>
                 </div>
               ) : editType !== 'CLIENT_RJ45' ? (
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port Splitter:</label>
-                    <select
-                      value={editCapacity}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value);
-                        setEditCapacity(val);
-                        setEditSplitterRatio(`1:${val}`);
-                      }}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                    >
-                      <option value={2}>Splitter 1:2 (2 Port) - Redaman ~3.5 dB</option>
-                      <option value={4}>Splitter 1:4 (4 Port) - Redaman ~7.2 dB</option>
-                      <option value={5}>Hybrid Bertingkat (5 Port: 1 Feeder Pass + 4 Pelanggan)</option>
-                      <option value={8}>Splitter 1:8 (8 Port) - Redaman ~10.5 dB</option>
-                      <option value={9}>Hybrid Bertingkat (9 Port: 1 Feeder Pass + 8 Pelanggan)</option>
-                      <option value={16}>Splitter 1:16 (16 Port) - Redaman ~13.8 dB</option>
-                      <option value={17}>Hybrid Bertingkat (17 Port: 1 Feeder Pass + 16 Pelanggan)</option>
-                      <option value={32}>Splitter 1:32 (32 Port) - Redaman ~17.0 dB</option>
-                      <option value={64}>Splitter 1:64 (64 Port) - Redaman ~20.5 dB</option>
-                    </select>
-                  </div>
-
+                <div className="space-y-3">
                   {(editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-bold text-slate-700">Model / Rasio Master Splitter:</label>
-                        <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                          {editSplitterRatio || `1:${editCapacity}`}
-                        </span>
-                      </div>
-                      <select
-                        value={editSplitterRatio}
-                        onChange={(e) => {
-                          const r = e.target.value;
-                          setEditSplitterRatio(r);
-                          if (r.startsWith('1:') && !r.includes('+')) {
-                            const capNum = parseInt(r.split('1:')[1]);
-                            if (capNum) setEditCapacity(capNum);
-                          } else if (r.includes('+ 1:4')) {
-                            setEditCapacity(5); // 1 Feeder Pass + 4 Drop Pelanggan
-                          } else if (r.includes('+ 1:8')) {
-                            setEditCapacity(9); // 1 Feeder Pass + 8 Drop Pelanggan
-                          } else if (r.includes('+ 1:16')) {
-                            setEditCapacity(17);
-                          } else if (r.includes(':') && !r.includes('+')) {
-                            setEditCapacity(2);
-                          } else if (r === 'Dual 1:4') {
-                            setEditCapacity(8);
-                          } else if (r === 'Dual 1:8') {
-                            setEditCapacity(16);
+                    <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setEditSplitterMode('preset')}
+                        className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editSplitterMode === 'preset'
+                            ? 'bg-white text-slate-800 shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        ⚡ Preset Model Standar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditSplitterMode('custom');
+                          if (editInternalSplitters.length === 0) {
+                            setEditInternalSplitters([
+                              { id: 'mod_1', name: 'Splitter Utama', type: '1:2', inputFrom: 'MAIN_IN' },
+                              { id: 'mod_2', name: 'Splitter Cabang A', type: '1:2', inputFrom: 'mod_1_p1' },
+                              { id: 'mod_3', name: 'Splitter Cabang B', type: '1:8', inputFrom: 'mod_1_p2' }
+                            ]);
                           }
                         }}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                        className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editSplitterMode === 'custom'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
                       >
-                        <optgroup label="⚡ Hybrid Bertingkat (Rasio Feeder + Drop Pelanggan dalam 1 ODP)">
-                          <option value="80:20 + 1:4">Rasio 80:20 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                          <option value="80:20 + 1:8">Rasio 80:20 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                          <option value="70:30 + 1:4">Rasio 70:30 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                          <option value="70:30 + 1:8">Rasio 70:30 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                          <option value="85:15 + 1:4">Rasio 85:15 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                          <option value="85:15 + 1:8">Rasio 85:15 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                          <option value="90:10 + 1:4">Rasio 90:10 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                          <option value="90:10 + 1:8">Rasio 90:10 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                          <option value="1:2 + 1:4">Cascaded 1:2 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                          <option value="1:2 + 1:8">Cascaded 1:2 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                        </optgroup>
-                        <optgroup label="📦 Multi-Splitter PLC (Dual Modul dalam 1 Box ODP)">
-                          <option value="Dual 1:4">Dual Modul PLC 1:4 (Total 8 Port Pelanggan)</option>
-                          <option value="Dual 1:8">Dual Modul PLC 1:8 (Total 16 Port Pelanggan)</option>
-                        </optgroup>
-                        <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
-                          <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
-                          <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
-                          <option value="1:8">PLC Splitter 1:8 Equal (8 Port, Redaman -10.5 dB)</option>
-                          <option value="1:16">PLC Splitter 1:16 Equal (16 Port, Redaman -13.8 dB)</option>
-                          <option value="1:32">PLC Splitter 1:32 Equal (32 Port, Redaman -17.0 dB)</option>
-                          <option value="1:64">PLC Splitter 1:64 Equal (64 Port, Redaman -20.5 dB)</option>
-                        </optgroup>
-                        <optgroup label="🔀 Rasio FBT Asimetris (2 Port: Pass / Drop)">
-                          <option value="95:5">Rasio 95:5 (Pass 0.4 dB / Drop 13.5 dB)</option>
-                          <option value="90:10">Rasio 90:10 (Pass 0.8 dB / Drop 10.8 dB)</option>
-                          <option value="85:15">Rasio 85:15 (Pass 1.1 dB / Drop 9.0 dB)</option>
-                          <option value="80:20">Rasio 80:20 (Pass 1.4 dB / Drop 7.6 dB)</option>
-                          <option value="75:25">Rasio 75:25 (Pass 1.7 dB / Drop 6.6 dB)</option>
-                          <option value="70:30">Rasio 70:30 (Pass 2.0 dB / Drop 5.8 dB)</option>
-                          <option value="65:35">Rasio 65:35 (Pass 2.4 dB / Drop 5.1 dB)</option>
-                          <option value="60:40">Rasio 60:40 (Pass 2.8 dB / Drop 4.5 dB)</option>
-                          <option value="55:45">Rasio 55:45 (Pass 3.2 dB / Drop 4.0 dB)</option>
-                          <option value="50:50">Rasio 50:50 (Pass 3.5 dB / Drop 3.5 dB)</option>
-                        </optgroup>
-                        {splitterCatalog && splitterCatalog.length > 0 && (
-                          <optgroup label="📂 Dari Master Splitter Katalog">
-                            {splitterCatalog.map((s: any) => (
-                              <option key={s.id} value={s.ratioCode || s.ratio || s.name}>
-                                {s.name} ({s.ratioCode || s.ratio} - Kapasitas: {s.capacity || s.ports || 2} Port)
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                        🧩 Susun Bebas (Custom Tree)
+                      </button>
+                    </div>
+                  )}
+
+                  {editSplitterMode === 'preset' || (editType !== 'ODP' && editType !== 'ODC' && editType !== 'SPLITTER') ? (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port Splitter:</label>
+                        <select
+                          value={editCapacity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setEditCapacity(val);
+                            setEditSplitterRatio(`1:${val}`);
+                          }}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                          <option value={2}>Splitter 1:2 (2 Port) - Redaman ~3.5 dB</option>
+                          <option value={4}>Splitter 1:4 (4 Port) - Redaman ~7.2 dB</option>
+                          <option value={5}>Hybrid Bertingkat (5 Port: 1 Feeder Pass + 4 Pelanggan)</option>
+                          <option value={8}>Splitter 1:8 (8 Port) - Redaman ~10.5 dB</option>
+                          <option value={9}>Hybrid Bertingkat (9 Port: 1 Feeder Pass + 8 Pelanggan)</option>
+                          <option value={16}>Splitter 1:16 (16 Port) - Redaman ~13.8 dB</option>
+                          <option value={17}>Hybrid Bertingkat (17 Port: 1 Feeder Pass + 16 Pelanggan)</option>
+                          <option value={32}>Splitter 1:32 (32 Port) - Redaman ~17.0 dB</option>
+                          <option value={64}>Splitter 1:64 (64 Port) - Redaman ~20.5 dB</option>
+                        </select>
+                      </div>
+
+                      {(editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold text-slate-700">Model / Rasio Master Splitter:</label>
+                            <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                              {editSplitterRatio || `1:${editCapacity}`}
+                            </span>
+                          </div>
+                          <select
+                            value={editSplitterRatio}
+                            onChange={(e) => {
+                              const r = e.target.value;
+                              setEditSplitterRatio(r);
+                              if (r.startsWith('1:') && !r.includes('+')) {
+                                const capNum = parseInt(r.split('1:')[1]);
+                                if (capNum) setEditCapacity(capNum);
+                              } else if (r.includes('+ 1:4')) {
+                                setEditCapacity(5); // 1 Feeder Pass + 4 Drop Pelanggan
+                              } else if (r.includes('+ 1:8')) {
+                                setEditCapacity(9); // 1 Feeder Pass + 8 Drop Pelanggan
+                              } else if (r.includes('+ 1:16')) {
+                                setEditCapacity(17);
+                              } else if (r.includes(':') && !r.includes('+')) {
+                                setEditCapacity(2);
+                              } else if (r === 'Dual 1:4') {
+                                setEditCapacity(8);
+                              } else if (r === 'Dual 1:8') {
+                                setEditCapacity(16);
+                              }
+                            }}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                          >
+                            <optgroup label="⚡ Hybrid Bertingkat (Rasio Feeder + Drop Pelanggan dalam 1 ODP)">
+                              <option value="80:20 + 1:4">Rasio 80:20 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                              <option value="80:20 + 1:8">Rasio 80:20 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                              <option value="70:30 + 1:4">Rasio 70:30 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                              <option value="70:30 + 1:8">Rasio 70:30 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                              <option value="85:15 + 1:4">Rasio 85:15 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                              <option value="85:15 + 1:8">Rasio 85:15 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                              <option value="90:10 + 1:4">Rasio 90:10 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                              <option value="90:10 + 1:8">Rasio 90:10 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                              <option value="1:2 + 1:4">Cascaded 1:2 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                              <option value="1:2 + 1:8">Cascaded 1:2 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                            </optgroup>
+                            <optgroup label="📦 Multi-Splitter PLC (Dual Modul dalam 1 Box ODP)">
+                              <option value="Dual 1:4">Dual Modul PLC 1:4 (Total 8 Port Pelanggan)</option>
+                              <option value="Dual 1:8">Dual Modul PLC 1:8 (Total 16 Port Pelanggan)</option>
+                            </optgroup>
+                            <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
+                              <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
+                              <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
+                              <option value="1:8">PLC Splitter 1:8 Equal (8 Port, Redaman -10.5 dB)</option>
+                              <option value="1:16">PLC Splitter 1:16 Equal (16 Port, Redaman -13.8 dB)</option>
+                              <option value="1:32">PLC Splitter 1:32 Equal (32 Port, Redaman -17.0 dB)</option>
+                              <option value="1:64">PLC Splitter 1:64 Equal (64 Port, Redaman -20.5 dB)</option>
+                            </optgroup>
+                            <optgroup label="🔀 Rasio FBT Asimetris (2 Port: Pass / Drop)">
+                              <option value="95:5">Rasio 95:5 (Pass 0.4 dB / Drop 13.5 dB)</option>
+                              <option value="90:10">Rasio 90:10 (Pass 0.8 dB / Drop 10.8 dB)</option>
+                              <option value="85:15">Rasio 85:15 (Pass 1.1 dB / Drop 9.0 dB)</option>
+                              <option value="80:20">Rasio 80:20 (Pass 1.4 dB / Drop 7.6 dB)</option>
+                              <option value="75:25">Rasio 75:25 (Pass 1.7 dB / Drop 6.6 dB)</option>
+                              <option value="70:30">Rasio 70:30 (Pass 2.0 dB / Drop 5.8 dB)</option>
+                              <option value="65:35">Rasio 65:35 (Pass 2.4 dB / Drop 5.1 dB)</option>
+                              <option value="60:40">Rasio 60:40 (Pass 2.8 dB / Drop 4.5 dB)</option>
+                              <option value="55:45">Rasio 55:45 (Pass 3.2 dB / Drop 4.0 dB)</option>
+                              <option value="50:50">Rasio 50:50 (Pass 3.5 dB / Drop 3.5 dB)</option>
+                            </optgroup>
+                            {splitterCatalog && splitterCatalog.length > 0 && (
+                              <optgroup label="📂 Dari Master Splitter Katalog">
+                                {splitterCatalog.map((s: any) => (
+                                  <option key={s.id} value={s.ratioCode || s.ratio || s.name}>
+                                    {s.name} ({s.ratioCode || s.ratio} - Kapasitas: {s.capacity || s.ports || 2} Port)
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* CUSTOM MULTI-SPLITTER CASCADING TREE BUILDER */
+                    <div className="space-y-3 bg-purple-50/50 p-3.5 rounded-2xl border border-purple-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-black text-purple-950 block">🧩 Susunan Multi-Splitter Internal</span>
+                          <span className="text-[10.5px] text-purple-700 font-medium">Bebas susun & sambungkan splitter di dalam box ini</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newId = `mod_${Date.now()}`;
+                            const nextNum = editInternalSplitters.length + 1;
+                            const prevMod = editInternalSplitters[editInternalSplitters.length - 1];
+                            const defaultInp = prevMod ? `${prevMod.id}_p1` : 'MAIN_IN';
+                            setEditInternalSplitters(prev => [
+                              ...prev,
+                              { id: newId, name: `Splitter ${nextNum}`, type: '1:2', inputFrom: defaultInp }
+                            ]);
+                          }}
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all"
+                        >
+                          <span>+ Tambah Modul</span>
+                        </button>
+                      </div>
+
+                      {/* Quick 1-Click Templates */}
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide block mb-1">⚡ Contoh Susunan Cepat:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditInternalSplitters([
+                                { id: 'mod_1', name: 'Splitter 1', type: '1:2', inputFrom: 'MAIN_IN' },
+                                { id: 'mod_2', name: 'Splitter 2', type: '1:2', inputFrom: 'mod_1_p1' },
+                                { id: 'mod_3', name: 'Splitter 3', type: '1:8', inputFrom: 'mod_1_p2' }
+                              ]);
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 shadow-2xs cursor-pointer transition-all"
+                          >
+                            ✨ 1:2 ➔ 1:2 & 1:8 (10 Port)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditInternalSplitters([
+                                { id: 'mod_1', name: 'Rasio FBT 80:20', type: '80:20', inputFrom: 'MAIN_IN' },
+                                { id: 'mod_2', name: 'PLC Drop 1:4', type: '1:4', inputFrom: 'mod_1_p2' }
+                              ]);
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 shadow-2xs cursor-pointer transition-all"
+                          >
+                            ✨ 80:20 ➔ 1:4 (5 Port)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditInternalSplitters([
+                                { id: 'mod_1', name: 'Rasio FBT 70:30', type: '70:30', inputFrom: 'MAIN_IN' },
+                                { id: 'mod_2', name: 'PLC Drop 1:8', type: '1:8', inputFrom: 'mod_1_p2' }
+                              ]);
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 shadow-2xs cursor-pointer transition-all"
+                          >
+                            ✨ 70:30 ➔ 1:8 (9 Port)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditInternalSplitters([
+                                { id: 'mod_1', name: 'Splitter Modul A', type: '1:4', inputFrom: 'MAIN_IN' },
+                                { id: 'mod_2', name: 'Splitter Modul B', type: '1:4', inputFrom: 'MAIN_IN' }
+                              ]);
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 shadow-2xs cursor-pointer transition-all"
+                          >
+                            ✨ Dual 1:4 (8 Port)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditInternalSplitters([
+                                { id: 'mod_1', name: 'Splitter Modul A', type: '1:8', inputFrom: 'MAIN_IN' },
+                                { id: 'mod_2', name: 'Splitter Modul B', type: '1:8', inputFrom: 'MAIN_IN' }
+                              ]);
+                            }}
+                            className="px-2 py-1 bg-white hover:bg-purple-100 border border-purple-200 rounded-lg text-[10px] font-bold text-purple-900 shadow-2xs cursor-pointer transition-all"
+                          >
+                            ✨ Dual 1:8 (16 Port)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Modules List */}
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {editInternalSplitters.map((m, mIdx) => (
+                          <div key={m.id} className="p-2.5 bg-white rounded-xl border border-purple-200/80 shadow-2xs space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-mono font-black text-[10px] flex items-center justify-center">
+                                  {mIdx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={m.name || `Modul #${mIdx + 1}`}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditInternalSplitters(prev => prev.map(item => item.id === m.id ? { ...item, name: val } : item));
+                                  }}
+                                  placeholder="Nama Modul"
+                                  className="text-xs font-bold text-slate-800 bg-transparent border-b border-dashed border-slate-300 focus:border-purple-600 focus:outline-none px-1 py-0.5"
+                                />
+                              </div>
+                              {editInternalSplitters.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditInternalSplitters(prev => {
+                                      const filtered = prev.filter(x => x.id !== m.id);
+                                      return filtered.map(x => x.inputFrom?.startsWith(m.id) ? { ...x, inputFrom: 'MAIN_IN' } : x);
+                                    });
+                                  }}
+                                  className="text-[10px] text-red-500 hover:text-red-700 font-bold px-1.5 py-0.5 rounded hover:bg-red-50 cursor-pointer"
+                                >
+                                  ✕ Hapus
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Tipe Splitter:</label>
+                                <select
+                                  value={m.type}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditInternalSplitters(prev => prev.map(item => item.id === m.id ? { ...item, type: val } : item));
+                                  }}
+                                  className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                >
+                                  <optgroup label="Simetris (PLC)">
+                                    <option value="1:2">1:2 (Redaman -3.5 dB)</option>
+                                    <option value="1:4">1:4 (Redaman -7.2 dB)</option>
+                                    <option value="1:8">1:8 (Redaman -10.5 dB)</option>
+                                    <option value="1:16">1:16 (Redaman -13.8 dB)</option>
+                                    <option value="1:32">1:32 (Redaman -17.0 dB)</option>
+                                  </optgroup>
+                                  <optgroup label="Asimetris (Rasio FBT)">
+                                    <option value="95:5">95:5 (Pass 0.4dB / Drop 13.5dB)</option>
+                                    <option value="90:10">90:10 (Pass 0.8dB / Drop 10.8dB)</option>
+                                    <option value="85:15">85:15 (Pass 1.1dB / Drop 9.0dB)</option>
+                                    <option value="80:20">80:20 (Pass 1.4dB / Drop 7.6dB)</option>
+                                    <option value="75:25">75:25 (Pass 1.7dB / Drop 6.6dB)</option>
+                                    <option value="70:30">70:30 (Pass 2.0dB / Drop 5.8dB)</option>
+                                    <option value="60:40">60:40 (Pass 2.8dB / Drop 4.5dB)</option>
+                                    <option value="50:50">50:50 (Pass 3.5dB / Drop 3.5dB)</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold text-slate-600 block mb-0.5">Input Dari:</label>
+                                <select
+                                  value={m.inputFrom || 'MAIN_IN'}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setEditInternalSplitters(prev => prev.map(item => item.id === m.id ? { ...item, inputFrom: val } : item));
+                                  }}
+                                  className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                >
+                                  <option value="MAIN_IN">📥 Kabel Masuk Utama (Feeder)</option>
+                                  {editInternalSplitters.slice(0, mIdx).map(prevM => {
+                                    const pCount = getModPortsCount(prevM.type);
+                                    return Array.from({ length: pCount }, (_, i) => i + 1).map(p => (
+                                      <option key={`${prevM.id}_p${p}`} value={`${prevM.id}_p${p}`}>
+                                        🔗 {prevM.name || prevM.type} ➔ Port #{p}
+                                      </option>
+                                    ));
+                                  })}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Real-Time Live Port & Loss Resolver Summary Card */}
+                      {(() => {
+                        const resolved = resolveInternalSplitterPorts(editInternalSplitters);
+                        return (
+                          <div className="p-3 bg-white rounded-xl border border-purple-300 space-y-2 shadow-2xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-purple-950 flex items-center gap-1.5">
+                                <span>📊 Output Fisik ODP Terbentuk:</span>
+                                <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white font-mono text-[11px] font-black">
+                                  {resolved.length} Port Fisik
+                                </span>
+                              </span>
+                              <span className="text-[10.5px] font-bold text-slate-500">
+                                Kapasitas: {resolved.length} Port
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                              {resolved.map(rp => (
+                                <div key={rp.portNum} className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between text-[10.5px]">
+                                  <div className="truncate pr-1.5">
+                                    <span className="font-mono font-black text-purple-950 mr-1">Port #{rp.portNum}:</span>
+                                    <span className="text-slate-600 text-[10px]">{rp.pathDescription}</span>
+                                  </div>
+                                  <span className="font-mono font-black text-red-600 shrink-0 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded text-[9.5px]">
+                                    -{rp.lossDb} dB
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -3186,12 +3602,17 @@ const DEFAULT_SPLITTER_CATALOG = [
               <button onClick={() => setEditingNode(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold cursor-pointer">Batal</button>
               <button
                 onClick={() => {
+                  const isCustomSplitter = (editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && editSplitterMode === 'custom' && editInternalSplitters.length > 0;
+                  const customResolved = isCustomSplitter ? resolveInternalSplitterPorts(editInternalSplitters) : [];
+
                   const targetCap = editType === 'HTB' 
                     ? (editPortsA + editPortsB + editPortsLan) 
                     : (editType === 'SWITCH' || editType === 'ROUTER') 
                     ? (editPortsSfp + editPortsLan) 
                     : editType === 'ONU'
                     ? editPortsLan
+                    : isCustomSplitter
+                    ? customResolved.length
                     : editCapacity;
 
                   const downgradeCheck = validateCapacityDowngrade(editingNode.id, targetCap);
@@ -3204,7 +3625,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                   // Auto-rename SPLITTER/ODP if name contains "1:X" pattern and capacity changed
                   let finalName = editName;
                   if (editType === 'SPLITTER' || editType === 'ODP') {
-                    const newCap = editCapacity;
+                    const newCap = targetCap;
                     // Replace "1:N" pattern in name with new capacity
                     if (/1:\d+/.test(finalName)) {
                       finalName = finalName.replace(/1:\d+/, `1:${newCap}`);
@@ -3218,14 +3639,11 @@ const DEFAULT_SPLITTER_CATALOG = [
                     description: editDescription,
                     type: editType,
                     outputPower: editType === 'OLT' ? editOutputPower : undefined,
-                    splitterCapacity: editType === 'HTB' 
-                      ? (editPortsA + editPortsB + editPortsLan) 
-                      : (editType === 'SWITCH' || editType === 'ROUTER') 
-                      ? (editPortsSfp + editPortsLan) 
-                      : editType === 'ONU'
-                      ? editPortsLan
-                      : editCapacity,
-                    splitterRatio: (editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') ? editSplitterRatio : undefined,
+                    splitterCapacity: targetCap,
+                    splitterRatio: isCustomSplitter
+                      ? `Custom (${targetCap}P: ${editInternalSplitters.map(m => m.type).join(' ➔ ')})`
+                      : (editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') ? editSplitterRatio : undefined,
+                    internalSplitters: isCustomSplitter ? editInternalSplitters : undefined,
                     portsA: editType === 'HTB' ? editPortsA : undefined,
                     portsB: editType === 'HTB' ? editPortsB : undefined,
                     portsSfp: (editType === 'SWITCH' || editType === 'ROUTER') ? editPortsSfp : undefined,
@@ -3297,7 +3715,14 @@ const DEFAULT_SPLITTER_CATALOG = [
                         );
 
                         let portDesc = `Port #${pNum}`;
-                        if (isAsymmetric) {
+                        const hasInternal = Boolean(connectingPair.fromNode.internalSplitters && connectingPair.fromNode.internalSplitters.length > 0);
+                        if (hasInternal && connectingPair.fromNode.internalSplitters) {
+                          const resolved = resolveInternalSplitterPorts(connectingPair.fromNode.internalSplitters);
+                          const rp = resolved.find(r => r.portNum === pNum);
+                          if (rp) {
+                            portDesc = `Port #${pNum}: ${rp.pathDescription} (-${rp.lossDb}dB)`;
+                          }
+                        } else if (isAsymmetric) {
                           if (ratio === '90:10') portDesc = pNum === 1 ? `Port #1 (Pass 90% -0.8dB)` : `Port #2 (Drop 10% -10.8dB)`;
                           else if (ratio === '80:20') portDesc = pNum === 1 ? `Port #1 (Pass 80% -1.4dB)` : `Port #2 (Drop 20% -7.6dB)`;
                           else if (ratio === '70:30') portDesc = pNum === 1 ? `Port #1 (Pass 70% -2.0dB)` : `Port #2 (Drop 30% -5.8dB)`;
@@ -3387,13 +3812,18 @@ const DEFAULT_SPLITTER_CATALOG = [
                 onChange={(e) => setSelectedCableCores(parseInt(e.target.value) || 4)}
                 className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
               >
-                <option value={1}>1 Core (Dropcore Precon Pelanggan)</option>
-                <option value={2}>2 Core (Dropcore Dual-Core)</option>
-                <option value={4}>4 Core (1 Tube Feeder/Distribusi Standar)</option>
-                <option value={6}>6 Core (Feeder Multi-Tube)</option>
-                <option value={8}>8 Core (Distribusi Main Core)</option>
-                <option value={12}>12 Core (Feeder Main Trunk)</option>
-                <option value={24}>24 Core (Feeder Backbone)</option>
+                <option value={1}>1 Core (Dropcore Precon Pelanggan / 1F)</option>
+                <option value={2}>2 Core (Dropcore Dual-Core / 2F)</option>
+                <option value={4}>4 Core (1 Tube Feeder/Distribusi Standar / 4F)</option>
+                <option value={6}>6 Core (Feeder Multi-Tube / 6F)</option>
+                <option value={8}>8 Core (Distribusi Main Core / 8F)</option>
+                <option value={12}>12 Core (Feeder Main Trunk 1 Tube / 12F)</option>
+                <option value={24}>24 Core (Feeder Backbone 2 Tube / 24F)</option>
+                <option value={48}>48 Core (Backbone Utama 4 Tube / 48F)</option>
+                <option value={72}>72 Core (Metro Trunk 6 Tube / 72F)</option>
+                <option value={96}>96 Core (High-Capacity Backbone 8 Tube / 96F)</option>
+                <option value={144}>144 Core (Ultra High-Density Trunk 12 Tube / 144F)</option>
+                <option value={288}>288 Core (Core Carrier Backbone 24 Tube / 288F)</option>
               </select>
             </div>
 
@@ -3762,13 +4192,18 @@ const DEFAULT_SPLITTER_CATALOG = [
                     onChange={(e) => setEditTotalCores(parseInt(e.target.value) || 4)}
                     className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
                   >
-                    <option value={1}>1 Core (Dropcore Pelanggan)</option>
-                    <option value={2}>2 Core (Dropcore Dual-Core)</option>
-                    <option value={4}>4 Core (1 Tube Feeder/Distribusi)</option>
-                    <option value={6}>6 Core (Feeder Multi-Tube)</option>
-                    <option value={8}>8 Core (Distribusi Main Core)</option>
-                    <option value={12}>12 Core (Feeder Main Trunk)</option>
-                    <option value={24}>24 Core (Feeder Backbone)</option>
+                    <option value={1}>1 Core (Dropcore Precon Pelanggan / 1F)</option>
+                    <option value={2}>2 Core (Dropcore Dual-Core / 2F)</option>
+                    <option value={4}>4 Core (1 Tube Feeder/Distribusi Standar / 4F)</option>
+                    <option value={6}>6 Core (Feeder Multi-Tube / 6F)</option>
+                    <option value={8}>8 Core (Distribusi Main Core / 8F)</option>
+                    <option value={12}>12 Core (Feeder Main Trunk 1 Tube / 12F)</option>
+                    <option value={24}>24 Core (Feeder Backbone 2 Tube / 24F)</option>
+                    <option value={48}>48 Core (Backbone Utama 4 Tube / 48F)</option>
+                    <option value={72}>72 Core (Metro Trunk 6 Tube / 72F)</option>
+                    <option value={96}>96 Core (High-Capacity Backbone 8 Tube / 96F)</option>
+                    <option value={144}>144 Core (Ultra High-Density Trunk 12 Tube / 144F)</option>
+                    <option value={288}>288 Core (Core Carrier Backbone 24 Tube / 288F)</option>
                   </select>
                 </div>
 
@@ -3874,6 +4309,8 @@ const DEFAULT_SPLITTER_CATALOG = [
                     return Array.from({ length: editTotalCores }, (_, idx) => {
                       const coreNum = idx + 1;
                       const spec = standard12[(coreNum - 1) % 12];
+                      const tubeIdx = Math.floor((coreNum - 1) / 12);
+                      const tubeSpec = standard12[tubeIdx % 12];
                       const activeConfig = editCoreSplicingMap[coreNum] || (coreNum === 1 ? { action: 'INPUT_SPLITTER' } : { action: 'BYPASS_PASS' });
                       const isBypassAction = activeConfig.action === 'BYPASS_PASS' || activeConfig.action === 'BYPASS' || activeConfig.action === 'BYPASS_PASS_THROUGH';
 
@@ -3881,8 +4318,17 @@ const DEFAULT_SPLITTER_CATALOG = [
                         <div key={coreNum} className="p-2.5 bg-indigo-900/60 rounded-xl border border-indigo-700/80 flex flex-col gap-1.5 text-xs">
                           <div className="flex items-center justify-between gap-1.5">
                             <div className="flex items-center gap-1.5">
+                              {editTotalCores > 12 && (
+                                <span 
+                                  className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs border border-white/40 ring-1 ring-black/30" 
+                                  style={{ backgroundColor: tubeSpec.hex }} 
+                                  title={`Tube #${tubeIdx + 1} (${tubeSpec.name})`} 
+                                />
+                              )}
                               <span className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white/20" style={{ backgroundColor: spec.hex }} />
-                              <span className="font-bold text-white text-[11px]">Core #{coreNum} ({spec.name})</span>
+                              <span className="font-bold text-white text-[11px]">
+                                {editTotalCores > 12 ? `T#${tubeIdx + 1} (${tubeSpec.name}) • C#${coreNum} (${spec.name})` : `Core #${coreNum} (${spec.name})`}
+                              </span>
                             </div>
                             <select
                               value={isBypassAction ? 'BYPASS_PASS' : (activeConfig.action || 'SPARE')}
@@ -4058,7 +4504,16 @@ const DEFAULT_SPLITTER_CATALOG = [
 
         const { usedPortsCount, remainingPortsCount, portMap, incomingInputNode } = getNodePortStats(inspectingNode.id, cap);
 
+        const isCustomInternal = Boolean(inspectingNode.internalSplitters && inspectingNode.internalSplitters.length > 0);
+        const resolvedInternal = isCustomInternal && inspectingNode.internalSplitters ? resolveInternalSplitterPorts(inspectingNode.internalSplitters) : [];
+
         const getPortLabel = (portNum: number) => {
+          if (isCustomInternal) {
+            const rp = resolvedInternal.find(r => r.portNum === portNum);
+            if (rp) {
+              return `Port #${portNum} (${rp.sourceModuleName} P#${rp.sourceModulePort})`;
+            }
+          }
           if (isHTB) {
             if (portNum <= pA) return `⚡ Fiber A #${portNum}`;
             if (portNum <= pA + pB) return `⚡ Fiber B #${portNum - pA}`;
@@ -4105,7 +4560,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                     </span>
                     <span>Inspector Port {inspectingNode.type === 'ONU' ? 'Modem Pelanggan (ONU/ONT)' : inspectingNode.type === 'ODP' ? 'ODP Box FTTH' : inspectingNode.type === 'ODC' ? 'ODC Cabinet FTTH' : inspectingNode.type}</span>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-100 text-purple-800">
-                      {isHTB ? `${pA}A${pB}B ${pLan}LAN` : isNetDevice ? `${pSfp}SFP ${pLan}LAN` : isONU ? `1 PON FO + ${pLan} LAN` : `1:${cap}`}
+                      {isHTB ? `${pA}A${pB}B ${pLan}LAN` : isNetDevice ? `${pSfp}SFP ${pLan}LAN` : isONU ? `1 PON FO + ${pLan} LAN` : isCustomInternal ? `Multi-Splitter (${cap}P)` : `1:${cap}`}
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">{inspectingNode.name} (ID: {inspectingNode.id})</p>
@@ -4122,7 +4577,7 @@ const DEFAULT_SPLITTER_CATALOG = [
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-purple-50 rounded-2xl border border-purple-100 text-center">
                   <div className="text-[10px] font-bold uppercase text-purple-700">{isHTB || isNetDevice || isONU ? 'Kapasitas Port' : 'Kapasitas Splitter'}</div>
-                  <div className="text-lg font-black text-purple-950 font-mono">{isHTB || isNetDevice || isONU ? `${cap} Port` : `1:${cap}`}</div>
+                  <div className="text-lg font-black text-purple-950 font-mono">{isHTB || isNetDevice || isONU ? `${cap} Port` : isCustomInternal ? `${cap} Port Fisik` : `1:${cap}`}</div>
                 </div>
                 <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100 text-center">
                   <div className="text-[10px] font-bold uppercase text-blue-700">Port Dicolokkan</div>
@@ -4133,6 +4588,43 @@ const DEFAULT_SPLITTER_CATALOG = [
                   <div className="text-lg font-black text-emerald-950 font-mono">{remainingPortsCount} Port</div>
                 </div>
               </div>
+
+              {/* Internal Multi-Splitter Architecture Overview Card */}
+              {isCustomInternal && inspectingNode.internalSplitters && (
+                <div className="p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 rounded-2xl border border-purple-200 space-y-2 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-purple-950 flex items-center gap-1.5">
+                      <span>🧩 Arsitektur Multi-Splitter Internal:</span>
+                      <span className="px-2 py-0.5 rounded-full bg-purple-600 text-white font-mono text-[10px] font-black">
+                        {inspectingNode.internalSplitters.length} Modul Tersusun
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-extrabold text-purple-700 bg-white/90 px-2 py-0.5 rounded-md border border-purple-200">
+                      Total {cap} Port Fisik Keluar
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {inspectingNode.internalSplitters.map((m, mIdx) => (
+                      <div key={m.id || mIdx} className="px-2.5 py-1.5 rounded-xl bg-white border border-purple-200 shadow-2xs flex items-center gap-2 text-xs">
+                        <span className="w-5 h-5 rounded-full bg-purple-600 text-white font-mono font-black text-[10px] flex items-center justify-center">
+                          {mIdx + 1}
+                        </span>
+                        <div>
+                          <div className="font-extrabold text-slate-800 text-[11px] flex items-center gap-1">
+                            <span>{m.name || `Modul #${mIdx + 1}`}</span>
+                            <span className="font-mono text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200 text-[10px]">
+                              {m.type}
+                            </span>
+                          </div>
+                          <div className="text-[9.5px] text-slate-500 font-medium">
+                            Input: {m.inputFrom === 'MAIN_IN' ? '📥 Kabel Induk (Feeder)' : m.inputFrom.replace('_p', ' ➔ Port #')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Optical Power Budget & dBm Status Banner */}
               {inspectingNode.type !== 'OLT' && (() => {
@@ -4413,7 +4905,12 @@ const DEFAULT_SPLITTER_CATALOG = [
                     const isHybrid = currentRatio && currentRatio.includes('+');
                     const isAsymmetric = currentRatio && currentRatio.includes(':') && !currentRatio.startsWith('1:') && !isHybrid;
                     let branchLabel = '';
-                    if (isHybrid) {
+                    if (isCustomInternal) {
+                      const rp = resolvedInternal.find(r => r.portNum === portNum);
+                      if (rp) {
+                        branchLabel = `${rp.pathDescription} (-${rp.lossDb}dB)`;
+                      }
+                    } else if (isHybrid) {
                       const ratioPart = currentRatio.split(' +')[0];
                       const subPart = currentRatio.split('+ ')[1] || '1:8';
                       if (portNum === 1) branchLabel = `⏩ Feeder Pass (${ratioPart})`;
@@ -4495,7 +4992,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                         {(() => {
                           const opt = calculateNodeOpticalPower(inspectingNode.id);
                           if (opt.inputPower === 0) return null;
-                          const pLoss = getSplitterLossDb(inspectingNode.splitterRatio, cap, portNum);
+                          const pLoss = getSplitterLossDb(inspectingNode.splitterRatio, cap, portNum, inspectingNode.internalSplitters);
                           const pTx = Number((opt.inputPower - pLoss).toFixed(2));
 
                           return (
