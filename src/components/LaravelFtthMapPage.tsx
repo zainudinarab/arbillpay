@@ -3016,14 +3016,37 @@ const DEFAULT_SPLITTER_CATALOG = [
 
       {/* Edit Node Details Modal */}
       {editingNode && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[2000] animate-fade-in">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-extrabold text-slate-900 text-base">✏️ Edit Node & Perangkat FTTH</h3>
-              <button onClick={() => setEditingNode(null)} className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full cursor-pointer font-bold">✕</button>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-[2000] animate-fade-in">
+          <div className="bg-white w-full max-w-full md:max-w-4xl lg:max-w-5xl max-h-[92vh] flex flex-col rounded-3xl p-4 sm:p-6 shadow-2xl border border-slate-100 font-sans">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0 mb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-blue-50 text-blue-600 text-lg">✏️</span>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base leading-tight">Edit Node & Perangkat FTTH</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Perangkat: <span className="font-bold text-slate-800">{editingNode.name || `${editingNode.type} #${editingNode.id.slice(-4)}`}</span>
+                    {editingNode.code ? <span className="ml-1 text-blue-600 font-mono font-bold">[{editingNode.code}]</span> : null}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingNode(null)} 
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
-            <div className="space-y-3">
+            {/* Scrollable Body: 2 Columns on Desktop (md/lg), 1 Column on Mobile */}
+            <div className="overflow-y-auto pr-1 flex-1 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-start">
+                {/* Kolom Kiri: Identitas, Hirarki & Keterangan */}
+                <div className="space-y-3.5 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+                  <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                    <span>🏷️</span>
+                    <span>Identitas & Hirarki Topologi</span>
+                  </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-slate-700">Kode Hirarki Sistem (FTTH Code):</label>
@@ -3199,7 +3222,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                 <select
                   value={editType}
                   onChange={(e) => setEditType(e.target.value as any)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
                   <option value="OLT">OLT Server PON</option>
                   <option value="ODC">ODC Cabinet FTTH (Outdoor)</option>
@@ -3212,6 +3235,55 @@ const DEFAULT_SPLITTER_CATALOG = [
                   <option value="ROUTER_WIFI">Router Wireless Pelanggan</option>
                   <option value="ACCESS_POINT">Access Point (AP)</option>
                 </select>
+              </div>
+
+              {/* Tautkan Perangkat dengan Data Pelanggan (ONU, Router Wireless, HTB, Switch, Access Point) */}
+              {(editType === 'ONU' || editType === 'ROUTER_WIFI' || editType === 'HTB' || editType === 'SWITCH' || editType === 'ACCESS_POINT') && (
+                <div className="pt-2.5 border-t border-slate-200">
+                  <label className="block text-xs font-extrabold text-slate-800 mb-1 flex items-center justify-between">
+                    <span>👤 Tautkan ke Pelanggan:</span>
+                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">Flexibel Perangkat Pelanggan</span>
+                  </label>
+                  <select
+                    value={editCustomerId}
+                    onChange={(e) => setEditCustomerId(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="">-- Bebas (Perangkat Infrastruktur / Belum Ditautkan) --</option>
+                    {(() => {
+                      // Filter out customer IDs already assigned to ANY OTHER node on the map
+                      const assignedCustomerIds = nodes
+                        .filter(n => n.id !== editingNode.id && n.customerId)
+                        .map(n => String(n.customerId));
+
+                      return customersList
+                        .filter((c: any) => {
+                          const isPppoe = c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth';
+                          const isAssignedElsewhere = assignedCustomerIds.includes(String(c.id));
+                          return isPppoe && !isAssignedElsewhere;
+                        })
+                        .map((c: any) => {
+                          const online = isCustomerOnline(c);
+                          return (
+                            <option key={c.id} value={String(c.id)}>
+                              {c.name} {c.pppoe_username ? `(${c.pppoe_username})` : ''} - Status: {online ? '🟢 ONLINE' : '🔴 OFFLINE'}
+                            </option>
+                          );
+                        });
+                    })()}
+                  </select>
+                  <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                    💡 Menautkan pelanggan PPPoE akan memicu **animasi kedap-kedip merah pada marker & kabel** apabila koneksi PPPoE offline/putus!
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Kolom Kanan: Spesifikasi Port, Splitter & Optik */}
+            <div className="space-y-3.5 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80">
+              <div className="text-[11px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                <span>⚙️</span>
+                <span>Konfigurasi Port & Optik</span>
               </div>
 
               {editType === 'HTB' ? (
@@ -3726,52 +3798,23 @@ const DEFAULT_SPLITTER_CATALOG = [
                     </div>
                   )}
                 </div>
-              ) : null}
-
-              {/* Tautkan Perangkat dengan Data Pelanggan (ONU, Router Wireless, HTB, Switch, Access Point) */}
-              {(editType === 'ONU' || editType === 'ROUTER_WIFI' || editType === 'HTB' || editType === 'SWITCH' || editType === 'ACCESS_POINT') && (
-                <div className="pt-2.5 border-t border-slate-200">
-                  <label className="block text-xs font-extrabold text-slate-800 mb-1 flex items-center justify-between">
-                    <span>👤 Tautkan ke Pelanggan:</span>
-                    <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">Flexibel Perangkat Pelanggan</span>
-                  </label>
-                  <select
-                    value={editCustomerId}
-                    onChange={(e) => setEditCustomerId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="">-- Bebas (Perangkat Infrastruktur / Belum Ditautkan) --</option>
-                    {(() => {
-                      // Filter out customer IDs already assigned to ANY OTHER node on the map
-                      const assignedCustomerIds = nodes
-                        .filter(n => n.id !== editingNode.id && n.customerId)
-                        .map(n => String(n.customerId));
-
-                      return customersList
-                        .filter((c: any) => {
-                          const isPppoe = c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth';
-                          const isAssignedElsewhere = assignedCustomerIds.includes(String(c.id));
-                          return isPppoe && !isAssignedElsewhere;
-                        })
-                        .map((c: any) => {
-                          const online = isCustomerOnline(c);
-                          return (
-                            <option key={c.id} value={String(c.id)}>
-                              {c.name} {c.pppoe_username ? `(${c.pppoe_username})` : ''} - Status: {online ? '🟢 ONLINE' : '🔴 OFFLINE'}
-                            </option>
-                          );
-                        });
-                    })()}
-                  </select>
-                  <p className="text-[10px] text-slate-500 mt-1 font-medium">
-                    💡 Menautkan pelanggan PPPoE akan menampilkan nama & username PPPoE di popup, serta memicu **animasi kedap-kedip merah pada marker & kabel** apabila koneksi PPPoE offline/putus!
-                  </p>
+              ) : editType === 'CLIENT_RJ45' ? (
+                <div className="p-3.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs text-slate-600 font-medium">
+                  💻 Perangkat Klien RJ45 adalah endpoint akhir kabel LAN (PC / Laptop) tanpa konfigurasi optik khusus.
                 </div>
-              )}
+              ) : null}
             </div>
+          </div>
+        </div>
 
-            <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-              <button onClick={() => setEditingNode(null)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold cursor-pointer">Batal</button>
+        {/* Modal Footer */}
+        <div className="pt-3.5 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0 mt-3">
+          <button 
+            onClick={() => setEditingNode(null)} 
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+          >
+            Batal
+          </button>
               <button
                 onClick={() => {
                   const isCustomSplitter = (editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && editSplitterMode === 'custom' && editInternalSplitters.length > 0;
@@ -3827,9 +3870,10 @@ const DEFAULT_SPLITTER_CATALOG = [
                   setEditingNode(null);
                   handleSaveTopologyToDB(updatedNodes);
                 }}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all cursor-pointer"
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-black shadow-md cursor-pointer transition-all hover:scale-102 flex items-center gap-1.5"
               >
-                Simpan Perubahan & Database
+                <span>💾</span>
+                <span>Simpan Perubahan & Database</span>
               </button>
             </div>
           </div>
