@@ -2,6 +2,7 @@ import { pool } from '../config/db.js';
 import { getFirestore } from '../config/firebase.js';
 import crypto from 'crypto';
 import { RouterOSAPI } from 'node-routeros';
+import { removeCustomerFtthNode } from './ftthMapModel.js';
 
 const getDriver = () => process.env.DB_DRIVER || 'postgres';
 
@@ -185,11 +186,14 @@ export async function deleteCustomer(id: string, deleteFromMikrotik: boolean = t
   // 3. Delete invoices associated with customer
   await pool.query('DELETE FROM invoices WHERE customer_id = $1', [id]).catch(() => {});
 
-  // 4. Delete customer record from PostgreSQL
+  // 4. Auto-clean FTTH ONU device node & drop cables from map
+  await removeCustomerFtthNode(id).catch(() => {});
+
+  // 5. Delete customer record from PostgreSQL
   const result = await pool.query('DELETE FROM customers WHERE id = $1 RETURNING id, name', [id]);
   const deletedCust = result.rows[0] || null;
 
-  // 5. Also delete from Firestore if Firebase Admin is connected so it doesn't resurrect
+  // 6. Also delete from Firestore if Firebase Admin is connected so it doesn't resurrect
   try {
     const db = getFirestore();
     if (db) {

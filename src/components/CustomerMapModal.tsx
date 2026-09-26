@@ -16,10 +16,11 @@ L.Icon.Default.mergeOptions({
 interface CustomerMapModalProps {
   customer: any;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved?: () => void;
+  onSelectCoordinates?: (lat: string, lng: string, mapsUrl?: string) => void;
 }
 
-export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, onClose, onSaved }) => {
+export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, onClose, onSaved, onSelectCoordinates }) => {
   const [lat, setLat] = useState<string>(customer.latitude ? String(customer.latitude) : '');
   const [lng, setLng] = useState<string>(customer.longitude ? String(customer.longitude) : '');
   const [mapsUrl, setMapsUrl] = useState<string>(customer.maps_url || '');
@@ -165,6 +166,20 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
     setErrorMsg(null);
 
     try {
+      const isTemp = !customer.id || customer.id === 'temp' || customer.id === 'new';
+
+      if (isTemp) {
+        if (onSelectCoordinates) {
+          onSelectCoordinates(lat, lng, mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`);
+        }
+        setSuccessMsg('✅ Titik lokasi GPS berhasil dipilih!');
+        setTimeout(() => {
+          onSaved?.();
+          onClose();
+        }, 350);
+        return;
+      }
+
       const updatedCust = {
         ...customer,
         latitude: lat,
@@ -172,7 +187,7 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
         maps_url: mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`
       };
 
-      // 1. Optional API Call (silently catch network errors if backend offline)
+      // 1. Primary PostgreSQL Backend Call (immediately syncs ONU node in ftth_nodes)
       try {
         const apiUrl = getApiUrl();
         await fetch(`${apiUrl}/api/customers/${customer.id}/location`, {
@@ -186,15 +201,19 @@ export const CustomerMapModal: React.FC<CustomerMapModalProps> = ({ customer, on
         }).catch(() => null);
       } catch (e) {}
 
-      // 2. Primary Cloud Firestore & FTTH Node Sync Save
+      // 2. Cloud Firestore & Local FTTH Node Sync Save
       await saveCustomerToFirestore(updatedCust).catch(() => null);
       await syncCustomerFtthDeviceNode(updatedCust).catch(() => null);
 
-      setSuccessMsg('✅ Titik lokasi & Marker Node FTTH berhasil disimpan!');
+      if (onSelectCoordinates) {
+        onSelectCoordinates(lat, lng, mapsUrl || `https://www.google.com/maps?q=${lat},${lng}`);
+      }
+
+      setSuccessMsg('✅ Titik lokasi & Node ONU pada Peta FTTH berhasil disimpan!');
       setTimeout(() => {
-        onSaved();
+        onSaved?.();
         onClose();
-      }, 800);
+      }, 600);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Terjadi kesalahan saat menyimpan lokasi.');
     } finally {

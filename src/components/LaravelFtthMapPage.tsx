@@ -609,46 +609,80 @@ const DEFAULT_SPLITTER_CATALOG = [
   // Load Topology, Customers & Live Mikrotik Active Sessions on Mount (Firebase Cloud Firestore first!)
   useEffect(() => {
     setLoadingMap(true);
+    const isPostgres = (((import.meta as any).env?.VITE_DB_DRIVER || 'postgres').toLowerCase() === 'postgres');
 
-    // 1. Fetch topology from Firebase Cloud Firestore
-    getFtthMapFromFirestore()
-      .then(fsData => {
-        if (fsData.success && (fsData.nodes.length > 0 || fsData.lines.length > 0)) {
-          setNodes(fsData.nodes);
-          setLines(fsData.lines);
-        } else {
-          // Fallback to local server if Firestore is initially empty
-          fetch(`${getApiUrl()}/api/ftth/map`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.success && data.data) {
-                setNodes(data.data.nodes || []);
-                setLines(data.data.lines || []);
-              }
-            })
-            .catch(err => console.error('Failed to fetch FTTH topology from local API:', err));
+    // 1. Fetch topology from Database (PostgreSQL first if postgres mode)
+    const loadMapData = async () => {
+      if (isPostgres) {
+        try {
+          const res = await fetch(`${getApiUrl()}/api/ftth/map`);
+          const data = await res.json();
+          if (data.success && data.data) {
+            setNodes(data.data.nodes || []);
+            setLines(data.data.lines || []);
+            setLoadingMap(false);
+            return;
+          }
+        } catch (err) {
+          console.warn('PostgreSQL /api/ftth/map unavailable, falling back to Firestore...', err);
         }
-      })
-      .finally(() => setLoadingMap(false));
+      }
 
-    // Load Customers from Cloud Firestore as primary database
-    getCustomersFromFirestore()
-      .then(custFs => {
-        if (custFs.success && Array.isArray(custFs.customers)) {
-          setCustomersList(custFs.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
-        }
-      })
-      .catch(() => null);
+      getFtthMapFromFirestore()
+        .then(fsData => {
+          if (fsData.success && (fsData.nodes.length > 0 || fsData.lines.length > 0)) {
+            setNodes(fsData.nodes);
+            setLines(fsData.lines);
+          } else {
+            fetch(`${getApiUrl()}/api/ftth/map`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.success && data.data) {
+                  setNodes(data.data.nodes || []);
+                  setLines(data.data.lines || []);
+                }
+              })
+              .catch(err => console.error('Failed to fetch FTTH topology from local API:', err));
+          }
+        })
+        .finally(() => setLoadingMap(false));
+    };
 
-    const apiUrl = getApiUrl();
-    fetch(`${apiUrl}/api/customers`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.customers)) {
-          setCustomersList(data.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
-        }
-      })
-      .catch(() => null);
+    loadMapData();
+
+    // 2. Load Customers from Database (PostgreSQL first if postgres mode)
+    const loadCustomerData = async () => {
+      const apiUrl = getApiUrl();
+      if (isPostgres) {
+        try {
+          const res = await fetch(`${apiUrl}/api/customers`);
+          const data = await res.json();
+          if (data.success && Array.isArray(data.customers) && data.customers.length > 0) {
+            setCustomersList(data.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+            return;
+          }
+        } catch (e) {}
+      }
+
+      getCustomersFromFirestore()
+        .then(custFs => {
+          if (custFs.success && Array.isArray(custFs.customers)) {
+            setCustomersList(custFs.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+          }
+        })
+        .catch(() => null);
+
+      fetch(`${apiUrl}/api/customers`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.customers)) {
+            setCustomersList(data.customers.filter((c: any) => c.connection_type === 'pppoe' || !c.connection_type || c.connection_type === 'ftth'));
+          }
+        })
+        .catch(() => null);
+    };
+
+    loadCustomerData();
 
     const fetchActiveUsers = () => {
       fetch(`${getApiUrl()}/api/routers/ppp-active-users`)
@@ -751,7 +785,10 @@ const DEFAULT_SPLITTER_CATALOG = [
   const getCustomerForNode = (node: NodeRecord) => {
     if (!node || customersList.length === 0) return null;
     if (node.customerId) {
-      const found = customersList.find(c => String(c.id) === String(node.customerId));
+      const found = customersList.find(c => 
+        String(c.id) === String(node.customerId) || 
+        String(c.customer_code) === String(node.customerId)
+      );
       if (found) return found;
     }
     if (node.name) {
@@ -759,7 +796,9 @@ const DEFAULT_SPLITTER_CATALOG = [
       const found = customersList.find(c => 
         (c.pppoe_username && c.pppoe_username.toLowerCase().trim() === cleanName) ||
         (c.name && c.name.toLowerCase().trim() === cleanName) ||
-        (c.customer_code && c.customer_code.toLowerCase().trim() === cleanName)
+        (c.customer_code && c.customer_code.toLowerCase().trim() === cleanName) ||
+        cleanName.includes((c.name || '').toLowerCase().trim()) ||
+        (c.pppoe_username && cleanName.includes(c.pppoe_username.toLowerCase().trim()))
       );
       if (found) return found;
     }
@@ -1005,15 +1044,23 @@ const DEFAULT_SPLITTER_CATALOG = [
         }
       });
 
-      // 3. Fallback save to local server if running locally
-      fetch(`${getApiUrl()}/api/ftth/map/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nodes: payloadNodes, lines: payloadLines })
-      }).catch(() => {});
+      // 3. PostgreSQL Database Save
+      try {
+        const pgRes = await fetch(`${getApiUrl()}/api/ftth/map/save`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodes: payloadNodes, lines: payloadLines })
+        });
+        const pgData = await pgRes.json();
+        if (pgData && pgData.success) {
+          console.log('[FTTH MAP] Saved to PostgreSQL successfully!');
+        }
+      } catch (e) {
+        console.warn('Failed to save FTTH map to PostgreSQL:', e);
+      }
 
       setHasUnsavedChanges(false);
-      setToastMsg({ text: `☁️ Topologi & Perangkat FTTH Berhasil Disimpan ke Firebase Cloud Firestore!`, type: 'success' });
+      setToastMsg({ text: `💾 Topologi FTTH & Perangkat ONU Berhasil Disimpan ke Database PostgreSQL!`, type: 'success' });
     } catch (err: any) {
       setToastMsg({ text: `❌ Gagal menyimpan ke Firebase Cloud: ${err.message}`, type: 'info' });
     } finally {

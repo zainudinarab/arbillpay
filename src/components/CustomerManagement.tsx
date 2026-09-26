@@ -240,7 +240,8 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const getLinkedFtthNode = (cust: CustomerItem) => {
     if (!cust || ftthNodes.length === 0) return null;
     return ftthNodes.find(n => 
-      (n.customerId && String(n.customerId) === String(cust.id || cust.customer_code)) ||
+      (n.customerId && (String(n.customerId) === String(cust.id) || (cust.customer_code && String(n.customerId) === String(cust.customer_code)))) ||
+      (n.id && (n.id === `node-dev-${cust.id}` || n.id === `node-onu-${cust.id}`)) ||
       (n.linkedCustomerIds && Array.isArray(n.linkedCustomerIds) && n.linkedCustomerIds.includes(String(cust.id))) ||
       (cust.pppoe_username && n.name && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
       (cust.sn_onu && n.sn_onu && n.sn_onu.toLowerCase().trim() === cust.sn_onu.toLowerCase().trim())
@@ -285,9 +286,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
   const getFtthInfoForCustomer = (cust: CustomerItem) => {
     if (!cust || ftthNodes.length === 0) return null;
 
-    // Match linked node on FTTH map by customer ID or username/name match
+    // Match linked node on FTTH map by customer ID, code, or username/name match
     const linkedNode = ftthNodes.find(n => 
-      (n.customerId && String(n.customerId) === String(cust.id)) ||
+      (n.customerId && (String(n.customerId) === String(cust.id) || (cust.customer_code && String(n.customerId) === String(cust.customer_code)))) ||
+      (n.id && (n.id === `node-dev-${cust.id}` || n.id === `node-onu-${cust.id}`)) ||
       (n.name && cust.pppoe_username && n.name.toLowerCase().trim() === cust.pppoe_username.toLowerCase().trim()) ||
       (n.name && cust.name && n.name.toLowerCase().trim() === cust.name.toLowerCase().trim())
     );
@@ -940,9 +942,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           }
           if (resMap && resMap.ok) {
             const dataMap = await parseJsonResponse(resMap).catch(() => null);
-            if (dataMap && dataMap.success && dataMap.mapData) {
-              setFtthNodes(dataMap.mapData.nodes || []);
-              setFtthLines(dataMap.mapData.edges || dataMap.mapData.lines || []);
+            if (dataMap && dataMap.success && (dataMap.data || dataMap.mapData)) {
+              const d = dataMap.data || dataMap.mapData;
+              setFtthNodes(d.nodes || []);
+              setFtthLines(d.edges || d.lines || []);
             }
           }
         } catch (err: any) { }
@@ -2296,19 +2299,27 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                         >
                           📱 GPS HP
                         </button>
-                        {editingCustomer && (
-                          <button
-                            type="button"
-                            onClick={() => {
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingCustomer) {
                               setMapCustomer(editingCustomer);
-                              setShowMapPickerModal(true);
-                            }}
-                            className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-2 py-1 rounded-lg cursor-pointer transition shadow-xs"
-                            title="Pilih titik lokasi rumah pelanggan secara visual di Peta Interactive"
-                          >
-                            🗺️ Pilih di Peta
-                          </button>
-                        )}
+                            } else {
+                              setMapCustomer({
+                                id: 'temp',
+                                name: name || 'Calon Pelanggan Baru',
+                                customer_code: 'NEW',
+                                latitude: latitude || '-7.543210',
+                                longitude: longitude || '112.123450'
+                              } as any);
+                            }
+                            setShowMapPickerModal(true);
+                          }}
+                          className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-2 py-1 rounded-lg cursor-pointer transition shadow-xs flex items-center gap-1"
+                          title="Pilih titik lokasi rumah pelanggan secara visual di Peta Interaktif"
+                        >
+                          🗺️ Pilih di Peta
+                        </button>
                       </div>
                     </div>
 
@@ -3595,6 +3606,10 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
         <CustomerMapModal
           customer={mapCustomer}
           onClose={() => { setShowMapPickerModal(false); setMapCustomer(null); }}
+          onSelectCoordinates={(pickedLat, pickedLng) => {
+            setLatitude(pickedLat);
+            setLongitude(pickedLng);
+          }}
           onSaved={() => { 
             fetchData();
             if (selectedQuickDeviceCustomer && mapCustomer && selectedQuickDeviceCustomer.id === mapCustomer.id) {

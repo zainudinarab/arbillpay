@@ -330,3 +330,137 @@ export async function deleteSplitterType(id: string): Promise<boolean> {
   await pool.query('DELETE FROM ftth_splitter_types WHERE id = $1', [id]);
   return true;
 }
+
+export async function syncCustomerToFtthNode(customer: {
+  id: string;
+  name: string;
+  customer_code?: string;
+  pppoe_username?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  status?: string;
+  sn_onu?: string | null;
+  power_laser?: string | null;
+  device_brand?: string | null;
+  device_model?: string | null;
+  odp_port?: string | null;
+  device_type?: string | null;
+}) {
+  await ensureTablesExist();
+  const lat = customer.latitude !== null && customer.latitude !== undefined && customer.latitude !== '' ? parseFloat(String(customer.latitude)) : null;
+  const lng = customer.longitude !== null && customer.longitude !== undefined && customer.longitude !== '' ? parseFloat(String(customer.longitude)) : null;
+
+  const custId = String(customer.id);
+  const custCode = customer.customer_code ? String(customer.customer_code) : custId;
+  const defaultNodeId = `node-dev-${custId}`;
+
+  // If coordinates are valid numbers and not 0
+  if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+    const nodeName = customer.pppoe_username ? customer.pppoe_username : (customer.name || `Pelanggan-${custCode}`);
+    const devType = customer.device_type === 'ROUTER_WIFI' ? 'ROUTER_WIFI' : 'ONU';
+    const laserDb = customer.power_laser ? parseFloat(String(customer.power_laser)) : 0;
+
+    // Check if an existing node is already associated with this customer
+    const existingNode = await pool.query(
+      'SELECT id, lat, lng FROM ftth_nodes WHERE customer_id = $1 OR customer_id = $2 OR id = $3 OR id = $4 LIMIT 1',
+      [custId, custCode, defaultNodeId, `node-onu-${custId}`]
+    );
+
+    const targetId = existingNode.rows.length > 0 ? existingNode.rows[0].id : defaultNodeId;
+
+    await pool.query(`
+      INSERT INTO ftth_nodes (
+        id, name, type, lat, lng, splitter_capacity, splitter_ratio, output_power, sfp_powers, attenuation_db, customer_id, internal_splitters
+      ) VALUES (
+        $1, $2, $3, $4, $5, 1, '1:1', 0.00, '[]'::jsonb, $6, $7, '[]'::jsonb
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        type = EXCLUDED.type,
+        lat = EXCLUDED.lat,
+        lng = EXCLUDED.lng,
+        attenuation_db = EXCLUDED.attenuation_db,
+        customer_id = EXCLUDED.customer_id,
+        updated_at = CURRENT_TIMESTAMP
+    `, [targetId, nodeName, devType, lat, lng, isNaN(laserDb) ? 0 : laserDb, custId]);
+
+    // Handle ODP connection if odp_port is specified
+    if (customer.odp_port && typeof customer.odp_port === 'string' && customer.odp_port.trim() !== '') {
+      const rawOdp = customer.odp_port.trim();
+      const odpMatches = await pool.query(
+        `SELECT id, name, lat, lng, splitter_capacity FROM ftth_nodes 
+         WHERE type = 'ODP' AND ($1 ILIKE '%' || name || '%' OR name ILIKE '%' || $1 || '%')
+         LIMIT 1`,
+        [rawOdp.split('(')[0].trim()]
+      );
+
+      if (odpMatches.rows.length > 0) {
+        const odpNode = odpMatches.rows[0];
+        const portMatch = rawOdp.match(/port\s*#?\s*(\d+)/i) || rawOdp.match(/\((\d+)\)/) || rawOdp.match(/\b(\d+)\b/);
+        const odpPortNum = portMatch ? parseInt(portMatch[1]) : 1;
+
+        // Calculate distance
+        const R = 6371e3;
+        const phi1 = Number(odpNode.lat) * Math.PI / 180;
+        const phi2 = lat * Math.PI / 180;
+        const deltaPhi = (lat - Number(odpNode.lat)) * Math.PI / 180;
+        const deltaLambda = (lng - Number(odpNode.lng)) * Math.PI / 180;
+        const a = Math.sin(deltaPhi/2) * Math.sin(deltaPhi/2) + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda/2) * Math.sin(deltaLambda/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const distM = Math.round(R * c);
+
+        const dropCableId = `line-drop-${targetId}`;
+        await pool.query(`
+          INSERT INTO ftth_cables (
+            id, from_id, from_port, to_id, to_port, waypoints, cable_length_m, attenuation_db, cable_color, core_number, cable_type, total_cores, core_splicing_map
+          ) VALUES (
+            $1, $2, $3, $4, 1, '[]'::jsonb, $5, $6, '#0284c7', 'Core #1 (Drop)', 'drop_core', 1, '{"1":{"action":"DROP_CUSTOMER"}}'::jsonb
+          )
+          ON CONFLICT (id) DO UPDATE SET
+            from_id = EXCLUDED.from_id,
+            from_port = EXCLUDED.from_port,
+            to_id = EXCLUDED.to_id,
+            to_port = EXCLUDED.to_port,
+            cable_length_m = EXCLUDED.cable_length_m,
+            attenuation_db = EXCLUDED.attenuation_db,
+            updated_at = CURRENT_TIMESTAMP
+        `, [dropCableId, odpNode.id, odpPortNum, targetId, distM, Number(((distM / 1000) * 0.35).toFixed(2))]);
+      }
+    }
+
+    return { success: true, nodeId: targetId, action: 'upserted' };
+  } else {
+    // If coordinates are cleared or invalid, delete the node if it was previously created
+    const existingNode = await pool.query(
+      'SELECT id FROM ftth_nodes WHERE customer_id = $1 OR customer_id = $2 OR id = $3 LIMIT 1',
+      [custId, custCode, defaultNodeId]
+    );
+    if (existingNode.rows.length > 0) {
+      const nId = existingNode.rows[0].id;
+      await pool.query('DELETE FROM ftth_cables WHERE from_id = $1 OR to_id = $1', [nId]);
+      await pool.query('DELETE FROM ftth_nodes WHERE id = $1', [nId]);
+    }
+  }
+
+  return { success: false, reason: 'No valid coordinates provided' };
+}
+
+export async function removeCustomerFtthNode(customerId: string) {
+  await ensureTablesExist();
+  const custId = String(customerId);
+  const defaultNodeId = `node-dev-${custId}`;
+
+  const nodeRes = await pool.query(
+    'SELECT id FROM ftth_nodes WHERE customer_id = $1 OR id = $2 OR id = $3',
+    [custId, defaultNodeId, `node-onu-${custId}`]
+  );
+
+  for (const row of nodeRes.rows) {
+    const nId = row.id;
+    await pool.query('DELETE FROM ftth_cables WHERE from_id = $1 OR to_id = $1', [nId]);
+    await pool.query('DELETE FROM ftth_nodes WHERE id = $1', [nId]);
+  }
+
+  return { success: true, removedCount: nodeRes.rows.length };
+}
+

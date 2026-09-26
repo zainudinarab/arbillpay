@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getAllCustomers, createCustomer, deleteCustomer } from '../models/customerModel.js';
+import { syncCustomerToFtthNode, removeCustomerFtthNode } from '../models/ftthMapModel.js';
 import { RouterOSAPI } from 'node-routeros';
 import { getFirestore } from '../config/firebase.js';
 import bcrypt from 'bcryptjs';
@@ -71,9 +72,36 @@ export async function addCustomer(req: Request, res: Response) {
     redisDel('mikrotik:active_users:all').catch(() => {});
     if (router_id) redisDel(`mikrotik:isolated_customers:${router_id}`).catch(() => {});
 
+    // Auto-create / sync FTTH ONU device node in PostgreSQL if coordinates exist
+    let ftthNodeCreated = false;
+    try {
+      const lat = req.body.latitude || customer?.latitude;
+      const lng = req.body.longitude || customer?.longitude;
+      if (lat && lng) {
+        const ftthRes = await syncCustomerToFtthNode({
+          id: customer?.id || code,
+          name: customer?.name || name,
+          customer_code: code,
+          pppoe_username: customer?.pppoe_username || pppoe_username,
+          latitude: lat,
+          longitude: lng,
+          status: customer?.status || 'active',
+          sn_onu: req.body.sn_onu,
+          power_laser: req.body.power_laser,
+          device_brand: req.body.device_brand,
+          device_model: req.body.device_model,
+          odp_port: req.body.odp_port,
+          device_type: req.body.device_type
+        });
+        ftthNodeCreated = Boolean(ftthRes?.success);
+      }
+    } catch (ftthErr) {
+      console.warn('[FTTH AUTO-ONU] Auto ONU sync error on addCustomer:', ftthErr);
+    }
+
     res.json({
       success: true,
-      message: `Pelanggan PPPoE "${name}" (${code}) berhasil didaftarkan!${livePushNote}`,
+      message: `Pelanggan PPPoE "${name}" (${code}) berhasil didaftarkan!${ftthNodeCreated ? ' 📍 Node ONU otomatis dibuat & dihubungkan ke Peta FTTH.' : ''}${livePushNote}`,
       customer
     });
   } catch (err: any) {
@@ -200,9 +228,34 @@ export async function editCustomer(req: Request, res: Response) {
       finalCustomer = insertResult.rows[0];
     }
 
+    // Auto-create / update FTTH ONU device node in PostgreSQL if coordinates exist
+    let ftthNodeUpdated = false;
+    try {
+      if (lat && lng) {
+        const ftthRes = await syncCustomerToFtthNode({
+          id,
+          name: name.trim(),
+          customer_code,
+          pppoe_username,
+          latitude: lat,
+          longitude: lng,
+          status: status || 'active',
+          sn_onu,
+          power_laser,
+          device_brand: req.body.device_brand,
+          device_model: req.body.device_model,
+          odp_port,
+          device_type: req.body.device_type
+        });
+        ftthNodeUpdated = Boolean(ftthRes?.success);
+      }
+    } catch (ftthErr) {
+      console.warn('[FTTH AUTO-ONU] Auto ONU sync error on editCustomer:', ftthErr);
+    }
+
     res.json({
       success: true,
-      message: `Data pelanggan "${name}" berhasil diperbarui!`,
+      message: `Data pelanggan "${name}" berhasil diperbarui!${ftthNodeUpdated ? ' 📍 Node ONU pada Peta FTTH otomatis diperbarui.' : ''}`,
       customer: finalCustomer
     });
   } catch (err: any) {
@@ -230,9 +283,23 @@ export async function updateLocation(req: Request, res: Response) {
       return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
     }
 
+    // Auto-create / update FTTH ONU device node in PostgreSQL
+    try {
+      if (lat && lng) {
+        await syncCustomerToFtthNode({
+          id,
+          name: result.rows[0].name,
+          latitude: lat,
+          longitude: lng
+        });
+      }
+    } catch (ftthErr) {
+      console.warn('[FTTH AUTO-ONU] Auto ONU sync error on updateLocation:', ftthErr);
+    }
+
     res.json({
       success: true,
-      message: `📍 Lokasi titik koordinat "${result.rows[0].name}" (${lat ?? '-'}, ${lng ?? '-'}) berhasil disimpan!`,
+      message: `📍 Lokasi titik koordinat "${result.rows[0].name}" (${lat ?? '-'}, ${lng ?? '-'}) berhasil disimpan & Node ONU pada Peta FTTH tersinkronisasi!`,
       customer: result.rows[0]
     });
   } catch (err: any) {
