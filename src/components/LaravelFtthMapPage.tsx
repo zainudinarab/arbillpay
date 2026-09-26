@@ -57,6 +57,52 @@ if (!document.getElementById(styleId)) {
       border: 3px solid #ef4444 !important;
     }
 
+    /* Radar Beacon Gelombang Merah untuk ODP Alarm Kabel Putus */
+    .node-alarm-radar {
+      animation: blinkAlarmNode 0.5s ease-in-out infinite alternate !important;
+      border: 3.5px solid #fef08a !important;
+      z-index: 10000 !important;
+      transform: scale(1.15) !important;
+    }
+    .node-alarm-radar::before {
+      content: '';
+      position: absolute;
+      inset: -14px;
+      border-radius: 20px;
+      border: 3.5px solid #ef4444;
+      animation: radarWave 1.4s ease-out infinite;
+      pointer-events: none;
+    }
+    .node-alarm-radar::after {
+      content: '';
+      position: absolute;
+      inset: -28px;
+      border-radius: 28px;
+      border: 2.5px dashed #dc2626;
+      animation: radarWave 1.4s ease-out infinite 0.4s;
+      pointer-events: none;
+    }
+    @keyframes radarWave {
+      0% {
+        transform: scale(0.5);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1.7);
+        opacity: 0;
+      }
+    }
+    @keyframes blinkAlarmNode {
+      0% {
+        box-shadow: 0 0 18px #dc2626, 0 0 35px #ef4444;
+        border-color: #ffffff;
+      }
+      100% {
+        box-shadow: 0 0 40px #b91c1c, 0 0 70px #dc2626;
+        border-color: #fef08a;
+      }
+    }
+
     @keyframes blinkOfflineNode {
       0% {
         opacity: 1;
@@ -478,6 +524,7 @@ export default function LaravelFtthMapPage({ profile, t, onLogout, initialOpenMo
   // Scalable Zoom Level of Detail (LOD) & Company Location Center States
   const [zoomLevel, setZoomLevel] = useState<number>(profile?.mapZoom || 16);
   const [enableLodFilter, setEnableLodFilter] = useState<boolean>(true);
+  const [dismissedAlarm, setDismissedAlarm] = useState<boolean>(false);
 
 const DEFAULT_SPLITTER_CATALOG = [
   { id: 'sp_1_2', name: 'Splitter 1:2', category: 'symmetric', ratioCode: '1:2', capacity: 2, passLossDb: 3.5, dropLossDb: 3.5, description: 'PLC Splitter Simetris 2 Port Output' },
@@ -570,6 +617,7 @@ const DEFAULT_SPLITTER_CATALOG = [
   const [editPortsB, setEditPortsB] = useState<number>(1);
   const [editPortsSfp, setEditPortsSfp] = useState<number>(1);
   const [editPortsLan, setEditPortsLan] = useState<number>(8);
+  const [isAlarmBannerDismissed, setIsAlarmBannerDismissed] = useState<boolean>(false);
 
   // OTDR Fiber Fault Locator Simulation States
   const [showOtdrModal, setShowOtdrModal] = useState<boolean>(false);
@@ -771,6 +819,23 @@ const DEFAULT_SPLITTER_CATALOG = [
       }
     }
   }, [nodes]);
+
+  // Helper: Smoothly fly to target node, open popup, and highlight route
+  const focusAndHighlightNode = (targetNode: NodeRecord) => {
+    if (!mapRef.current || !targetNode) return;
+    mapRef.current.flyTo([targetNode.lat, targetNode.lng], 18, {
+      animate: true,
+      duration: 1.2
+    });
+    setTracedNodeId(targetNode.id);
+    setTimeout(() => {
+      const marker = nodeMarkersRef.current.get(targetNode.id);
+      if (marker) {
+        marker.openPopup();
+      }
+    }, 1300);
+    setToastMsg({ text: `🎯 Mengarahkan pandangan peta ke: ${targetNode.name || targetNode.type}`, type: 'info' });
+  };
 
   // Helper: Check if Customer is Live ONLINE on Mikrotik
   const isCustomerOnline = (cust: any): boolean => {
@@ -1841,8 +1906,12 @@ const DEFAULT_SPLITTER_CATALOG = [
 
     // Render Markers
     nodes.forEach((n) => {
+      const odpDiagnostic = checkOdpUpstreamCableCut(n);
+      const isUpstreamCut = odpDiagnostic.isUpstreamCut;
+
       // Progressive Level of Detail (LOD) Filtering for Scale (Ratusan Ribu Node)
-      if (enableLodFilter) {
+      // PENTING: Node dengan ALARM (kabel upstream putus) TIDAK PERNAH disembunyikan agar teknisi langsung melihat di peta!
+      if (enableLodFilter && !isUpstreamCut) {
         if (zoomLevel < 14 && (n.type !== 'OLT' && n.type !== 'ODC')) {
           return; // Far Zoom Out (City Level): Render ONLY OLT & ODC Core Hubs
         }
@@ -1865,7 +1934,6 @@ const DEFAULT_SPLITTER_CATALOG = [
       const cust = getCustomerForNode(n);
       const connectedOdp = getConnectedOdpInfo(n.id);
       const offline = isNodeOffline(n);
-      const odpDiagnostic = checkOdpUpstreamCableCut(n);
 
       let statusBadgeHtml = cust ? (
         offline
@@ -1873,11 +1941,11 @@ const DEFAULT_SPLITTER_CATALOG = [
           : '<div style="position:absolute; top:-8px; right:-10px; background:#10b981; color:white; font-size:7px; font-weight:900; padding:1px 4px; border-radius:4px; border:1px solid white; line-height:1; z-index:20;">ONLINE</div>'
       ) : '';
 
-      if (odpDiagnostic.isUpstreamCut) {
+      if (isUpstreamCut) {
         statusBadgeHtml = '<div style="position:absolute; top:-10px; right:-12px; background:#dc2626; color:white; font-size:7.5px; font-weight:900; padding:2px 5px; border-radius:6px; box-shadow:0 0 14px #dc2626; border:1.5px solid white; line-height:1; z-index:20; animate:pulse 1s infinite;">🚨 ATAS PUTUS</div>';
       }
 
-      const isBlinkingNode = offline || odpDiagnostic.isUpstreamCut;
+      const isBlinkingNode = offline || isUpstreamCut;
 
       // ONU/HTB/SWITCH/ROUTER: show used/total ports; ODP/SPLITTER: show used/1:cap or /capP
       const isCustomInternal = Boolean(n.internalSplitters && n.internalSplitters.length > 0);
@@ -1887,9 +1955,17 @@ const DEFAULT_SPLITTER_CATALOG = [
         ? `${usedPortsCount}/1:${cap}` 
         : `${usedPortsCount}/${cap}`;
 
+      // Floating Beacon Tag on Map for alarming nodes
+      const alarmBeaconTag = isUpstreamCut ? `
+        <div style="position:absolute; top:-38px; left:50%; transform:translateX(-50%); background:#b91c1c; color:#ffffff; font-size:9px; font-weight:900; padding:2.5px 8px; border-radius:8px; border:1.5px solid #fef08a; box-shadow:0 0 18px rgba(220,38,38,0.95); white-space:nowrap; z-index:10002; display:flex; align-items:center; gap:4px; pointer-events:none;">
+          <span style="font-size:11px;">🚨</span><span>KABEL PUTUS (${n.name || `${n.type} #${n.id.slice(-4)}`})</span>
+        </div>
+      ` : '';
+
       const nodeIcon = L.divIcon({
         className: '',
-        html: `<div class="laravel-node-icon ${isBlinkingNode ? 'node-offline-blinking' : ''}" style="background:${isBlinkingNode ? '#dc2626' : (cfg.gradient || cfg.color)}; width:38px; height:42px; border-radius:12px; border:${isSelectedFirst ? '3px solid #0f172a' : '2px solid #ffffff'}; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; box-shadow:0 4px 12px rgba(0,0,0,0.35);">
+        html: `<div class="laravel-node-icon ${isUpstreamCut ? 'node-alarm-radar' : isBlinkingNode ? 'node-offline-blinking' : ''}" style="background:${isUpstreamCut ? '#b91c1c' : isBlinkingNode ? '#dc2626' : (cfg.gradient || cfg.color)}; width:38px; height:42px; border-radius:12px; border:${isUpstreamCut ? '3px solid #fef08a' : isSelectedFirst ? '3px solid #0f172a' : '2px solid #ffffff'}; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; box-shadow:0 4px 12px rgba(0,0,0,0.35);">
+                ${alarmBeaconTag}
                 ${statusBadgeHtml}
                 <div style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; margin-top:1px;">
                   ${getNodeSvgRaw(n.type, 20, '#ffffff')}
@@ -2787,13 +2863,62 @@ const DEFAULT_SPLITTER_CATALOG = [
 
           {/* Smart RFO Cable Cut Diagnostic Alert Banner */}
           {upstreamCutOdps.length > 0 && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-950 text-white px-5 py-2.5 rounded-2xl shadow-2xl border-2 border-rose-500 text-xs font-bold z-[1001] flex items-center gap-3 animate-bounce">
-              <span className="text-xl">🚨</span>
-              <div>
-                <span className="text-rose-400 uppercase font-black text-[10px] block leading-none mb-0.5">Analisa Pintar Sistem FTTH</span>
-                <span>Terdeteksi {upstreamCutOdps.length} ODP dengan Kabel Utama Penyuplai Putus ({upstreamCutOdps.map(n => n.name || `${n.type} #${n.id.slice(-4)}`).join(', ')})!</span>
+            isAlarmBannerDismissed ? (
+              <button
+                onClick={() => setIsAlarmBannerDismissed(false)}
+                className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-950/95 hover:bg-rose-900 text-white px-3.5 py-1.5 rounded-2xl shadow-2xl border-2 border-rose-500 text-xs font-black z-[1001] flex items-center gap-2 animate-bounce cursor-pointer backdrop-blur-md transition-all hover:scale-105"
+                title="Buka kembali rincian alarm kabel putus"
+              >
+                <span className="text-sm">🚨</span>
+                <span className="text-[11px] text-rose-200">{upstreamCutOdps.length} ODP ALARM (Klik Tampilkan)</span>
+              </button>
+            ) : (
+              <div 
+                className="absolute top-4 left-1/2 -translate-x-1/2 bg-rose-950/95 text-white px-4 py-2.5 rounded-2xl shadow-2xl border-2 border-rose-500 text-xs font-bold z-[1001] flex flex-wrap items-center gap-3 backdrop-blur-md transition-all max-w-[92vw]"
+              >
+                <span 
+                  className="text-xl animate-pulse cursor-pointer hover:scale-110 transition-transform" 
+                  onClick={() => focusAndHighlightNode(upstreamCutOdps[0])}
+                  title="Klik untuk langsung fokus ke ODP yang putus"
+                >
+                  🚨
+                </span>
+                <div 
+                  className="cursor-pointer" 
+                  onClick={() => focusAndHighlightNode(upstreamCutOdps[0])}
+                  title="Klik untuk langsung fokus ke ODP yang putus"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-rose-400 uppercase font-black text-[9.5px] block leading-none">Analisa Pintar Sistem FTTH</span>
+                    <span className="bg-rose-500/40 text-rose-200 text-[8.5px] px-1.5 py-0.5 rounded font-mono font-black border border-rose-400/30">Kabel Putus</span>
+                  </div>
+                  <span className="text-white font-extrabold text-[11px] mt-0.5 block leading-tight">
+                    Terdeteksi {upstreamCutOdps.length} ODP dengan Kabel Utama Penyuplai Putus ({upstreamCutOdps.map(n => n.name || `${n.type} #${n.id.slice(-4)}`).join(', ')})!
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  {upstreamCutOdps.map(odpN => (
+                    <button
+                      key={odpN.id}
+                      onClick={() => focusAndHighlightNode(odpN)}
+                      className="bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded-xl text-[11px] flex items-center gap-1 shadow-md cursor-pointer transition-all hover:scale-105"
+                      title={`Fokus dan zoom langsung ke lokasi ${odpN.name || odpN.type} di peta`}
+                    >
+                      <span>🎯</span>
+                      <span>Fokus ke {odpN.name || odpN.type}</span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setIsAlarmBannerDismissed(true)}
+                    className="w-5 h-5 rounded-md bg-rose-900/80 hover:bg-rose-800 text-rose-300 hover:text-white flex items-center justify-center text-[10px] font-black cursor-pointer transition-colors ml-1"
+                    title="Kecilkan Banner Alarm"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Mode Banner Prompt */}
