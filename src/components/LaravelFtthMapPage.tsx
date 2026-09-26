@@ -231,6 +231,7 @@ const DEFAULT_SPLITTER_CATALOG = [
   const [editDescription, setEditDescription] = useState<string>('');
   const [editType, setEditType] = useState<DeviceType>('ODP');
   const [editCapacity, setEditCapacity] = useState<number>(8);
+  const [editSplitterRatio, setEditSplitterRatio] = useState<string>('1:8');
   const [editOutputPower, setEditOutputPower] = useState<number>(9.0);
   const [editCustomerId, setEditCustomerId] = useState<string>('');
 
@@ -1998,6 +1999,7 @@ const DEFAULT_SPLITTER_CATALOG = [
         setEditDescription(nodeObj.description || '');
         setEditType(nodeObj.type);
         setEditCapacity(nodeObj.splitterCapacity || config[nodeObj.type]?.defaultCap || 8);
+        setEditSplitterRatio(nodeObj.splitterRatio || `1:${nodeObj.splitterCapacity || config[nodeObj.type]?.defaultCap || 8}`);
         setEditPortsA(nodeObj.portsA !== undefined ? nodeObj.portsA : 1);
         setEditPortsB(nodeObj.portsB !== undefined ? nodeObj.portsB : 1);
         setEditPortsSfp(nodeObj.portsSfp !== undefined ? nodeObj.portsSfp : (nodeObj.type === 'ROUTER' ? 1 : 2));
@@ -2774,18 +2776,81 @@ const DEFAULT_SPLITTER_CATALOG = [
                   </div>
                 </div>
               ) : editType !== 'CLIENT_RJ45' ? (
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port Splitter:</label>
-                  <select
-                    value={editCapacity}
-                    onChange={(e) => setEditCapacity(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={4}>Splitter 1:4 (4 Port)</option>
-                    <option value={8}>Splitter 1:8 (8 Port)</option>
-                    <option value={16}>Splitter 1:16 (16 Port)</option>
-                    <option value={32}>Splitter 1:32 (32 Port)</option>
-                  </select>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port Splitter:</label>
+                    <select
+                      value={editCapacity}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        setEditCapacity(val);
+                        setEditSplitterRatio(`1:${val}`);
+                      }}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    >
+                      <option value={2}>Splitter 1:2 (2 Port) - Redaman ~3.5 dB</option>
+                      <option value={4}>Splitter 1:4 (4 Port) - Redaman ~7.2 dB</option>
+                      <option value={8}>Splitter 1:8 (8 Port) - Redaman ~10.5 dB</option>
+                      <option value={16}>Splitter 1:16 (16 Port) - Redaman ~13.8 dB</option>
+                      <option value={32}>Splitter 1:32 (32 Port) - Redaman ~17.0 dB</option>
+                      <option value={64}>Splitter 1:64 (64 Port) - Redaman ~20.5 dB</option>
+                    </select>
+                  </div>
+
+                  {(editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-slate-700">Model / Rasio Master Splitter:</label>
+                        <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                          {editSplitterRatio || `1:${editCapacity}`}
+                        </span>
+                      </div>
+                      <select
+                        value={editSplitterRatio}
+                        onChange={(e) => {
+                          const r = e.target.value;
+                          setEditSplitterRatio(r);
+                          if (r.startsWith('1:')) {
+                            const capNum = parseInt(r.split('1:')[1]);
+                            if (capNum) setEditCapacity(capNum);
+                          } else if (r.includes(':') && !r.includes('+')) {
+                            setEditCapacity(2);
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                      >
+                        <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
+                          <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
+                          <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
+                          <option value="1:8">PLC Splitter 1:8 Equal (8 Port, Redaman -10.5 dB)</option>
+                          <option value="1:16">PLC Splitter 1:16 Equal (16 Port, Redaman -13.8 dB)</option>
+                          <option value="1:32">PLC Splitter 1:32 Equal (32 Port, Redaman -17.0 dB)</option>
+                          <option value="1:64">PLC Splitter 1:64 Equal (64 Port, Redaman -20.5 dB)</option>
+                        </optgroup>
+                        <optgroup label="🔀 Rasio FBT Asimetris (2 Port: Pass / Drop)">
+                          <option value="95:5">Rasio 95:5 (Pass 0.4 dB / Drop 13.5 dB)</option>
+                          <option value="90:10">Rasio 90:10 (Pass 0.8 dB / Drop 10.8 dB)</option>
+                          <option value="85:15">Rasio 85:15 (Pass 1.1 dB / Drop 9.0 dB)</option>
+                          <option value="80:20">Rasio 80:20 (Pass 1.4 dB / Drop 7.6 dB)</option>
+                          <option value="75:25">Rasio 75:25 (Pass 1.7 dB / Drop 6.6 dB)</option>
+                          <option value="70:30">Rasio 70:30 (Pass 2.0 dB / Drop 5.8 dB)</option>
+                          <option value="65:35">Rasio 65:35 (Pass 2.4 dB / Drop 5.1 dB)</option>
+                          <option value="60:40">Rasio 60:40 (Pass 2.8 dB / Drop 4.5 dB)</option>
+                          <option value="55:45">Rasio 55:45 (Pass 3.2 dB / Drop 4.0 dB)</option>
+                          <option value="50:50">Rasio 50:50 (Pass 3.5 dB / Drop 3.5 dB)</option>
+                        </optgroup>
+                        {splitterCatalog && splitterCatalog.length > 0 && (
+                          <optgroup label="📂 Dari Master Splitter Katalog">
+                            {splitterCatalog.map((s: any) => (
+                              <option key={s.id} value={s.ratioCode || s.ratio || s.name}>
+                                {s.name} ({s.ratioCode || s.ratio} - Kapasitas: {s.capacity || s.ports || 2} Port)
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ) : null}
 
@@ -2874,6 +2939,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                       : editType === 'ONU'
                       ? editPortsLan
                       : editCapacity,
+                    splitterRatio: (editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') ? editSplitterRatio : undefined,
                     portsA: editType === 'HTB' ? editPortsA : undefined,
                     portsB: editType === 'HTB' ? editPortsB : undefined,
                     portsSfp: (editType === 'SWITCH' || editType === 'ROUTER') ? editPortsSfp : undefined,
