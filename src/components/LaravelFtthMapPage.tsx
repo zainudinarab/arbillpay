@@ -33,16 +33,21 @@ if (!document.getElementById(styleId)) {
       }
     }
 
-    /* Custom Circular Icon Nodes */
+    /* Custom Modern Squircle Icon Nodes */
     .laravel-node-icon {
       display: flex;
       justify-content: center;
       align-items: center;
-      border: 2px solid white;
-      border-radius: 50%;
+      border-radius: 12px;
       color: white;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
       font-weight: bold;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease;
+    }
+    .laravel-node-icon:hover {
+      transform: scale(1.15);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      z-index: 9999 !important;
     }
 
     /* Animasi Kedap-Kedip Merah Perangkat / ONU / Router OFFLINE */
@@ -139,6 +144,205 @@ interface LineRecord {
   cableType?: string;
   totalCores?: number;
   coreSplicingMap?: Record<number, { action: 'INPUT_SPLITTER' | 'BYPASS_PASS' | 'SPARE'; targetNodeName?: string; note?: string }>;
+}
+
+// Dedicated High-Definition Vector SVG Icon Generator for FTTH & ISP GIS Mapping
+export function getNodeSvgRaw(type: DeviceType | string, size: number = 20, color: string = 'currentColor'): string {
+  switch (type) {
+    case 'ODC':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Slanted Rain Roof / Canopy -->
+        <path d="M2.5 5.5 L12 2 L21.5 5.5 Z" fill="${color}" fill-opacity="0.35" stroke-width="1.6" stroke-linejoin="round"/>
+        <!-- Main Outdoor Enclosure Body -->
+        <rect x="3.5" y="5.5" width="17" height="15" rx="1.5" stroke-width="1.6" fill="${color}" fill-opacity="0.12"/>
+        <!-- Vertical Double Door Split -->
+        <line x1="12" y1="5.5" x2="12" y2="20.5" stroke-width="1.5"/>
+        <!-- Door Handles -->
+        <rect x="10.2" y="11" width="1.2" height="3" rx="0.6" fill="${color}"/>
+        <rect x="12.6" y="11" width="1.2" height="3" rx="0.6" fill="${color}"/>
+        <!-- Louver Air Vents (Left & Right Door) -->
+        <line x1="6" y1="8.5" x2="9.5" y2="8.5" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="6" y1="16.5" x2="9.5" y2="16.5" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="14.5" y1="8.5" x2="18" y2="8.5" stroke-width="1.2" stroke-linecap="round"/>
+        <line x1="14.5" y1="16.5" x2="18" y2="16.5" stroke-width="1.2" stroke-linecap="round"/>
+        <!-- Concrete Base Plinth -->
+        <rect x="2.5" y="20.5" width="19" height="2" rx="0.5" fill="${color}"/>
+        <!-- Fiber Optical Indicator Core -->
+        <circle cx="12" cy="8.5" r="1.1" fill="#38bdf8"/>
+      </svg>`;
+
+    case 'ODP':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Pole Mounting Bracket Tabs Top & Bottom -->
+        <rect x="9" y="1" width="6" height="2" rx="0.8" fill="${color}" stroke-width="1"/>
+        <rect x="9" y="21" width="6" height="2" rx="0.8" fill="${color}" stroke-width="1"/>
+        <!-- ODP Outer Enclosure Box -->
+        <rect x="4" y="3" width="16" height="17" rx="2" stroke-width="1.6" fill="${color}" fill-opacity="0.15"/>
+        <!-- Front Latches/Hasps on Right Side -->
+        <rect x="18.5" y="6.5" width="2" height="3" rx="0.8" fill="#fbbf24"/>
+        <rect x="18.5" y="13.5" width="2" height="3" rx="0.8" fill="#fbbf24"/>
+        <!-- Bottom Drop Cable Gland Nozzles -->
+        <path d="M7 20 v2.5 M10 20 v2.5 M14 20 v2.5 M17 20 v2.5" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- Inner Splice Tray / SC Optical Adapters -->
+        <rect x="7" y="6" width="10" height="11" rx="1.2" stroke-width="1" stroke-dasharray="2 1"/>
+        <circle cx="9.5" cy="9" r="1.1" fill="#4ade80"/>
+        <circle cx="14.5" cy="9" r="1.1" fill="#4ade80"/>
+        <circle cx="9.5" cy="13.5" r="1.1" fill="#4ade80"/>
+        <circle cx="14.5" cy="13.5" r="1.1" fill="#4ade80"/>
+      </svg>`;
+
+    case 'ONU':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Dual High-Gain Wi-Fi Antennas -->
+        <path d="M5.5 11 L2.5 3.5" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18.5 11 L21.5 3.5" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="2.5" cy="3.5" r="1" fill="${color}"/>
+        <circle cx="21.5" cy="3.5" r="1" fill="${color}"/>
+        <!-- Sleek Desktop Modem Body -->
+        <rect x="3.5" y="10.5" width="17" height="9" rx="2" stroke-width="1.6" fill="${color}" fill-opacity="0.15"/>
+        <!-- Status Indicator LEDs (Power, PON, LOS, LAN) -->
+        <circle cx="6.5" cy="15" r="1.1" fill="#4ade80"/>
+        <circle cx="10" cy="15" r="1.1" fill="#4ade80"/>
+        <circle cx="13.5" cy="15" r="1.1" fill="#f87171"/>
+        <circle cx="17.5" cy="15" r="1.1" fill="#38bdf8"/>
+        <!-- Fiber Optic Patchcord Entry at Bottom -->
+        <path d="M12 19.5 v2.5" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/>
+        <rect x="10.5" y="19.5" width="3" height="1.5" rx="0.5" fill="#fbbf24"/>
+      </svg>`;
+
+    case 'OLT':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- 19\" Rack Mounting Ears -->
+        <rect x="1" y="6" width="2" height="12" rx="0.5" fill="${color}"/>
+        <circle cx="2" cy="8.5" r="0.6" fill="#0f172a"/>
+        <circle cx="2" cy="15.5" r="0.6" fill="#0f172a"/>
+        <rect x="21" y="6" width="2" height="12" rx="0.5" fill="${color}"/>
+        <circle cx="22" cy="8.5" r="0.6" fill="#0f172a"/>
+        <circle cx="22" cy="15.5" r="0.6" fill="#0f172a"/>
+        <!-- Main 1U Server Chassis -->
+        <rect x="3" y="6" width="18" height="12" rx="1" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <!-- 4 SFP PON Optical Transceiver Cages -->
+        <rect x="5" y="8.5" width="2.5" height="4.5" rx="0.5" fill="#38bdf8" stroke="none"/>
+        <rect x="8.5" y="8.5" width="2.5" height="4.5" rx="0.5" fill="#38bdf8" stroke="none"/>
+        <rect x="12" y="8.5" width="2.5" height="4.5" rx="0.5" fill="#38bdf8" stroke="none"/>
+        <rect x="15.5" y="8.5" width="2.5" height="4.5" rx="0.5" fill="#38bdf8" stroke="none"/>
+        <!-- Laser Warning / Status LEDs -->
+        <circle cx="6.2" cy="15" r="0.8" fill="#4ade80"/>
+        <circle cx="9.7" cy="15" r="0.8" fill="#4ade80"/>
+        <circle cx="13.2" cy="15" r="0.8" fill="#4ade80"/>
+        <circle cx="16.7" cy="15" r="0.8" fill="#4ade80"/>
+        <!-- RJ45 Uplink Port -->
+        <rect x="18.7" y="11" width="1.5" height="3" rx="0.3" fill="#cbd5e1"/>
+      </svg>`;
+
+    case 'SPLITTER':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Single Incoming Fiber Core (Left) -->
+        <path d="M1.5 12 H7" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="3" cy="12" r="1.2" fill="#fbbf24"/>
+        <!-- Optical Splitter Cassette Module Box -->
+        <rect x="7" y="4.5" width="9" height="15" rx="2" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <!-- Internal Optical Splitting Beam Wave -->
+        <path d="M9.5 12 L13.5 7 M9.5 12 L13.5 10.5 M9.5 12 L13.5 13.5 M9.5 12 L13.5 17" stroke="${color}" stroke-width="1.2"/>
+        <!-- 4 Branching Output Fibers (Right) -->
+        <path d="M16 7 H22.5" stroke="#38bdf8" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M16 10.5 H22.5" stroke="#4ade80" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M16 13.5 H22.5" stroke="#f472b6" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M16 17 H22.5" stroke="#fb923c" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>`;
+
+    case 'HTB':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Metal Media Converter Case -->
+        <rect x="2.5" y="5.5" width="19" height="13" rx="1.5" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <!-- SC Optical Port (Side A/B) -->
+        <rect x="4.5" y="8.5" width="4" height="7" rx="0.8" fill="#10b981" stroke="none"/>
+        <circle cx="6.5" cy="12" r="1.2" fill="#ffffff"/>
+        <!-- RJ45 Ethernet LAN Port -->
+        <rect x="15.5" y="8.5" width="4" height="7" rx="0.8" fill="#3b82f6" stroke="none"/>
+        <path d="M16.5 13.5 h2" stroke="#ffffff" stroke-width="1"/>
+        <!-- Bi-directional Media Converter Wave/Lightning -->
+        <path d="M12.5 7.5 L10 12 H13 L11.5 16.5" stroke="#fbbf24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+
+    case 'SWITCH':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Switch Chassis -->
+        <rect x="2" y="6.5" width="20" height="11" rx="1.5" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <!-- Ethernet Port Bank -->
+        <rect x="4" y="10.5" width="2.4" height="4" rx="0.4" fill="#38bdf8"/>
+        <rect x="7.4" y="10.5" width="2.4" height="4" rx="0.4" fill="#38bdf8"/>
+        <rect x="10.8" y="10.5" width="2.4" height="4" rx="0.4" fill="#38bdf8"/>
+        <rect x="14.2" y="10.5" width="2.4" height="4" rx="0.4" fill="#38bdf8"/>
+        <rect x="17.6" y="10.5" width="2.4" height="4" rx="0.4" fill="#38bdf8"/>
+        <!-- Activity Link LEDs -->
+        <circle cx="5.2" cy="8.8" r="0.6" fill="#4ade80"/>
+        <circle cx="8.6" cy="8.8" r="0.6" fill="#4ade80"/>
+        <circle cx="12" cy="8.8" r="0.6" fill="#4ade80"/>
+        <circle cx="15.4" cy="8.8" r="0.6" fill="#4ade80"/>
+        <circle cx="18.8" cy="8.8" r="0.6" fill="#4ade80"/>
+      </svg>`;
+
+    case 'ROUTER':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Router Boundary Circle -->
+        <circle cx="12" cy="12" r="9" stroke-width="1.6" fill="${color}" fill-opacity="0.1"/>
+        <!-- 4 Routing Arrows In/Out -->
+        <path d="M12 4 L12 8 M10 6 L12 8 L14 6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M12 20 L12 16 M10 18 L12 16 L14 18" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 12 L8 12 M6 10 L4 12 L6 14" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20 12 L16 12 M18 10 L20 12 L18 14" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="12" cy="12" r="2.2" fill="#38bdf8"/>
+      </svg>`;
+
+    case 'ROUTER_WIFI':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- 3 External Wireless Antennas -->
+        <path d="M5.5 13 L3 6" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M12 13 L12 4.5" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M18.5 13 L21 6" stroke-width="1.8" stroke-linecap="round"/>
+        <!-- Concentric Wi-Fi Radio Waves -->
+        <path d="M7.5 8.5 C9 7 15 7 16.5 8.5" stroke="#38bdf8" stroke-width="1.4" stroke-linecap="round"/>
+        <path d="M9.5 10.5 C10.5 9.5 13.5 9.5 14.5 10.5" stroke="#38bdf8" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Wireless Router Body -->
+        <rect x="3" y="13" width="18" height="7.5" rx="1.8" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <!-- Front Indicator LEDs -->
+        <circle cx="7" cy="16.8" r="0.8" fill="#4ade80"/>
+        <circle cx="10" cy="16.8" r="0.8" fill="#4ade80"/>
+        <circle cx="13" cy="16.8" r="0.8" fill="#4ade80"/>
+        <circle cx="17" cy="16.8" r="0.8" fill="#38bdf8"/>
+      </svg>`;
+
+    case 'ACCESS_POINT':
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <!-- Radio Waves Outward -->
+        <path d="M4 5.5 C8.5 1.5 15.5 1.5 20 5.5" stroke="#38bdf8" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M6.5 8 C9.5 5 14.5 5 17.5 8" stroke="#38bdf8" stroke-width="1.4" stroke-linecap="round"/>
+        <!-- Circular AP Chassis -->
+        <circle cx="12" cy="14" r="7" stroke-width="1.6" fill="${color}" fill-opacity="0.15"/>
+        <!-- Center Glowing LED Ring -->
+        <circle cx="12" cy="14" r="3" fill="#38bdf8"/>
+        <circle cx="12" cy="14" r="1.2" fill="#ffffff"/>
+      </svg>`;
+
+    case 'CLIENT_RJ45':
+    default:
+      return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="${color}">
+        <rect x="3" y="4" width="18" height="12" rx="1.5" stroke-width="1.5" fill="${color}" fill-opacity="0.15"/>
+        <line x1="7" y1="13" x2="17" y2="13" stroke-width="1"/>
+        <path d="M12 16 v4 M8 20 h8" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>`;
+  }
+}
+
+// React Icon Component for Toolbar, Modals, Tables, etc.
+export function NodeDeviceIcon({ type, size = 18, color = 'currentColor', className = '' }: { type: DeviceType | string; size?: number; color?: string; className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center shrink-0 ${className}`}
+      dangerouslySetInnerHTML={{ __html: getNodeSvgRaw(type, size, color) }}
+    />
+  );
 }
 
 interface LaravelFtthMapPageProps {
@@ -716,17 +920,18 @@ const DEFAULT_SPLITTER_CATALOG = [
 
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
 
-  const config: Record<string, { color: string; iconSymbol: string; defaultCap: number; label: string }> = {
-    'OLT': { color: '#e74c3c', iconSymbol: '🖥️', defaultCap: 32, label: 'OLT Server PON' },
-    'ODC': { color: '#8e44ad', iconSymbol: '🏢', defaultCap: 16, label: 'ODC Cabinet FTTH' },
-    'ODP': { color: '#2ecc71', iconSymbol: '🔲', defaultCap: 8, label: 'ODP Box FTTH' },
-    'SPLITTER': { color: '#f39c12', iconSymbol: '🔀', defaultCap: 4, label: 'Splitter Fiber' },
-    'ONU': { color: '#3498db', iconSymbol: '🏠', defaultCap: 1, label: 'ONU / ONT Pelanggan' },
-    'HTB': { color: '#10b981', iconSymbol: '⚡', defaultCap: 6, label: 'HTB Media Converter (A/B)' },
-    'SWITCH': { color: '#06b6d4', iconSymbol: '🔌', defaultCap: 8, label: 'Switch Hub LAN' },
-    'ROUTER': { color: '#6366f1', iconSymbol: '📡', defaultCap: 5, label: 'Router Mikrotik' },
-    'ROUTER_WIFI': { color: '#f59e0b', iconSymbol: '📶', defaultCap: 4, label: 'Router Wireless' },
-    'ACCESS_POINT': { color: '#14b8a6', iconSymbol: '📡', defaultCap: 2, label: 'Access Point (AP)' }
+  const config: Record<string, { color: string; gradient: string; iconSymbol: string; defaultCap: number; label: string }> = {
+    'OLT': { color: '#e74c3c', gradient: 'linear-gradient(135deg, #ef4444 0%, #be123c 100%)', iconSymbol: '🖥️', defaultCap: 32, label: 'OLT Server PON' },
+    'ODC': { color: '#8e44ad', gradient: 'linear-gradient(135deg, #9333ea 0%, #6b21a8 100%)', iconSymbol: '🏢', defaultCap: 16, label: 'ODC Cabinet FTTH' },
+    'ODP': { color: '#10b981', gradient: 'linear-gradient(135deg, #10b981 0%, #047857 100%)', iconSymbol: '🔲', defaultCap: 8, label: 'ODP Box FTTH' },
+    'SPLITTER': { color: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b 0%, #b45309 100%)', iconSymbol: '🔀', defaultCap: 4, label: 'Splitter Fiber' },
+    'ONU': { color: '#0284c7', gradient: 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)', iconSymbol: '🏠', defaultCap: 1, label: 'ONU / ONT Pelanggan' },
+    'HTB': { color: '#059669', gradient: 'linear-gradient(135deg, #10b981 0%, #064e3b 100%)', iconSymbol: '⚡', defaultCap: 6, label: 'HTB Media Converter (A/B)' },
+    'SWITCH': { color: '#0891b2', gradient: 'linear-gradient(135deg, #06b6d4 0%, #0e7490 100%)', iconSymbol: '🔌', defaultCap: 8, label: 'Switch Hub LAN' },
+    'ROUTER': { color: '#6366f1', gradient: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)', iconSymbol: '📡', defaultCap: 5, label: 'Router Mikrotik' },
+    'ROUTER_WIFI': { color: '#f97316', gradient: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)', iconSymbol: '📶', defaultCap: 4, label: 'Router Wireless' },
+    'ACCESS_POINT': { color: '#14b8a6', gradient: 'linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)', iconSymbol: '📡', defaultCap: 2, label: 'Access Point (AP)' },
+    'CLIENT_RJ45': { color: '#64748b', gradient: 'linear-gradient(135deg, #64748b 0%, #334155 100%)', iconSymbol: '💻', defaultCap: 1, label: 'Perangkat RJ45 (PC/Laptop)' }
   };
 
   // Connection Validation Helper (FTTH, HTB WDM A ↔ B, & UTP LAN RJ45)
@@ -1465,12 +1670,12 @@ const DEFAULT_SPLITTER_CATALOG = [
 
       let statusBadgeHtml = cust ? (
         offline
-          ? '<div style="position:absolute; top:-10px; right:-12px; background:#ef4444; color:white; font-size:7px; font-weight:900; padding:1px 4px; border-radius:4px; box-shadow:0 0 10px #ef4444; border:1px solid white; line-height:1; z-index:20;">OFFLINE</div>'
-          : '<div style="position:absolute; top:-10px; right:-12px; background:#10b981; color:white; font-size:7px; font-weight:900; padding:1px 4px; border-radius:4px; border:1px solid white; line-height:1; z-index:20;">ONLINE</div>'
+          ? '<div style="position:absolute; top:-8px; right:-10px; background:#ef4444; color:white; font-size:7px; font-weight:900; padding:1px 4px; border-radius:4px; box-shadow:0 0 10px #ef4444; border:1px solid white; line-height:1; z-index:20;">OFFLINE</div>'
+          : '<div style="position:absolute; top:-8px; right:-10px; background:#10b981; color:white; font-size:7px; font-weight:900; padding:1px 4px; border-radius:4px; border:1px solid white; line-height:1; z-index:20;">ONLINE</div>'
       ) : '';
 
       if (odpDiagnostic.isUpstreamCut) {
-        statusBadgeHtml = '<div style="position:absolute; top:-12px; right:-14px; background:#dc2626; color:white; font-size:7.5px; font-weight:900; padding:2px 5px; border-radius:6px; box-shadow:0 0 14px #dc2626; border:1.5px solid white; line-height:1; z-index:20; animate:pulse 1s infinite;">🚨 ATAS PUTUS</div>';
+        statusBadgeHtml = '<div style="position:absolute; top:-10px; right:-12px; background:#dc2626; color:white; font-size:7.5px; font-weight:900; padding:2px 5px; border-radius:6px; box-shadow:0 0 14px #dc2626; border:1.5px solid white; line-height:1; z-index:20; animate:pulse 1s infinite;">🚨 ATAS PUTUS</div>';
       }
 
       const isBlinkingNode = offline || odpDiagnostic.isUpstreamCut;
@@ -1482,13 +1687,15 @@ const DEFAULT_SPLITTER_CATALOG = [
 
       const nodeIcon = L.divIcon({
         className: '',
-        html: `<div class="laravel-node-icon ${isBlinkingNode ? 'node-offline-blinking' : ''}" style="background:${isBlinkingNode ? '#dc2626' : cfg.color}; width:34px; height:34px; font-size:14px; border: ${isSelectedFirst ? '3px solid black' : '2px solid white'}; cursor:pointer; flex-direction:column; position:relative;">
+        html: `<div class="laravel-node-icon ${isBlinkingNode ? 'node-offline-blinking' : ''}" style="background:${isBlinkingNode ? '#dc2626' : (cfg.gradient || cfg.color)}; width:38px; height:42px; border-radius:12px; border:${isSelectedFirst ? '3px solid #0f172a' : '2px solid #ffffff'}; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; box-shadow:0 4px 12px rgba(0,0,0,0.35);">
                 ${statusBadgeHtml}
-                <div>${cfg.iconSymbol}</div>
-                <div style="font-size:7.5px; line-height:1; font-family:monospace; margin-top:-2px;">${markerLabel}</div>
+                <div style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; margin-top:1px;">
+                  ${getNodeSvgRaw(n.type, 20, '#ffffff')}
+                </div>
+                <div style="font-size:7.5px; line-height:1.1; font-family:monospace; font-weight:800; background:rgba(15,23,42,0.85); color:#ffffff; padding:1px 3.5px; border-radius:4px; margin-top:2px; border:0.5px solid rgba(255,255,255,0.4); white-space:nowrap; max-width:34px; overflow:hidden; text-overflow:ellipsis;">${markerLabel}</div>
                </div>`,
-        iconSize: [34, 34],
-        iconAnchor: [17, 17]
+        iconSize: [38, 42],
+        iconAnchor: [19, 21]
       });
 
     const m = L.marker([n.lat, n.lng], { icon: nodeIcon, draggable: true }).addTo(layerGroup);
@@ -1561,17 +1768,22 @@ const DEFAULT_SPLITTER_CATALOG = [
       }
 
       const popupHtml = `
-        <div style="font-family: system-ui, sans-serif; font-size: 12px; min-width: 240px; padding: 2px;">
-          <div style="display:flex; align-items:center; justify-between; margin-bottom: 2px;">
-            <div style="font-weight: 900; color: #0f172a; font-size: 13px;">
-              ${n.code ? `<span style="background:#e0f2fe; color:#0369a1; padding:2px 6px; border-radius:5px; font-family:monospace; margin-right:4px; font-weight:900;">[${n.code}]</span>` : ''}
-              ${cust ? `ONU - ${cust.name}` : `${n.type} ${n.name || ''}`}
+        <div style="font-family: system-ui, sans-serif; font-size: 12px; min-width: 250px; padding: 2px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 5px; gap:8px;">
+            <div style="display:flex; align-items:center; gap:7px;">
+              <span style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:8px; background:${cfg.gradient || cfg.color}; color:#ffffff; flex-shrink:0; box-shadow:0 2px 4px rgba(0,0,0,0.2);">
+                ${getNodeSvgRaw(n.type, 17, '#ffffff')}
+              </span>
+              <div style="font-weight: 900; color: #0f172a; font-size: 13px; line-height:1.2;">
+                ${n.code ? `<span style="background:#e0f2fe; color:#0369a1; padding:1px 5px; border-radius:4px; font-family:monospace; margin-right:3px; font-size:11px; font-weight:900;">[${n.code}]</span>` : ''}
+                ${cust ? `ONU - ${cust.name}` : `${n.type} ${n.name || ''}`}
+              </div>
             </div>
             ${odpDiagnostic.isUpstreamCut ? (
-              '<span style="background:#fee2e2; color:#991b1b; font-size:9px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #f87171;">🚨 KABEL ATAS PUTUS</span>'
+              '<span style="background:#fee2e2; color:#991b1b; font-size:9px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #f87171; white-space:nowrap;">🚨 KABEL ATAS PUTUS</span>'
             ) : cust ? (offline
-              ? '<span style="background:#fee2e2; color:#991b1b; font-size:9.5px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #f87171;">🔴 OFFLINE</span>'
-              : '<span style="background:#dcfce7; color:#166534; font-size:9.5px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #4ade80;">🟢 ONLINE</span>'
+              ? '<span style="background:#fee2e2; color:#991b1b; font-size:9.5px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #f87171; white-space:nowrap;">🔴 OFFLINE</span>'
+              : '<span style="background:#dcfce7; color:#166534; font-size:9.5px; font-weight:900; padding:2px 6px; border-radius:6px; border:1px solid #4ade80; white-space:nowrap;">🟢 ONLINE</span>'
             ) : ''}
           </div>
 
@@ -2172,56 +2384,56 @@ const DEFAULT_SPLITTER_CATALOG = [
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('OLT'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'OLT' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'OLT' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#e74c3c' }}
+                style={{ background: config['OLT'].gradient }}
               >
-                <span>🖥️</span>
+                <NodeDeviceIcon type="OLT" size={17} color="#ffffff" />
                 <span>+ OLT PON</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ODC'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ODC' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ODC' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#8e44ad' }}
+                style={{ background: config['ODC'].gradient }}
               >
-                <span>🏢</span>
+                <NodeDeviceIcon type="ODC" size={17} color="#ffffff" />
                 <span>+ ODC Cabinet</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ODP'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ODP' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ODP' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#2ecc71' }}
+                style={{ background: config['ODP'].gradient }}
               >
-                <span>🔲</span>
+                <NodeDeviceIcon type="ODP" size={17} color="#ffffff" />
                 <span>+ ODP Box</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('SPLITTER'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'SPLITTER' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'SPLITTER' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#f39c12' }}
+                style={{ background: config['SPLITTER'].gradient }}
               >
-                <span>🔀</span>
+                <NodeDeviceIcon type="SPLITTER" size={17} color="#ffffff" />
                 <span>+ Splitter</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ONU'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ONU' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ONU' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#3498db' }}
+                style={{ background: config['ONU'].gradient }}
               >
-                <span>🏠</span>
+                <NodeDeviceIcon type="ONU" size={17} color="#ffffff" />
                 <span>+ ONU Pelanggan</span>
               </button>
 
@@ -2229,56 +2441,56 @@ const DEFAULT_SPLITTER_CATALOG = [
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('HTB'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'HTB' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'HTB' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#10b981' }}
+                style={{ background: config['HTB'].gradient }}
               >
-                <span>⚡</span>
+                <NodeDeviceIcon type="HTB" size={17} color="#ffffff" />
                 <span>+ HTB Converter</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('SWITCH'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'SWITCH' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'SWITCH' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#06b6d4' }}
+                style={{ background: config['SWITCH'].gradient }}
               >
-                <span>🔌</span>
+                <NodeDeviceIcon type="SWITCH" size={17} color="#ffffff" />
                 <span>+ Switch Hub</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ROUTER_WIFI'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ROUTER_WIFI' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ROUTER_WIFI' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#f59e0b' }}
+                style={{ background: config['ROUTER_WIFI'].gradient }}
               >
-                <span>📶</span>
+                <NodeDeviceIcon type="ROUTER_WIFI" size={17} color="#ffffff" />
                 <span>+ Router Wireless</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ROUTER'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ROUTER' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ROUTER' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#6366f1' }}
+                style={{ background: config['ROUTER'].gradient }}
               >
-                <span>📡</span>
+                <NodeDeviceIcon type="ROUTER" size={17} color="#ffffff" />
                 <span>+ Router Mikrotik</span>
               </button>
 
               <button
                 onClick={() => { setCurrentMode('add_marker'); setCurrentType('ACCESS_POINT'); setSelectedLineForWaypoint(null); }}
-                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-1.5 transition-all cursor-pointer ${
-                  currentMode === 'add_marker' && currentType === 'ACCESS_POINT' ? 'ring-2 ring-slate-900 shadow-sm' : 'opacity-90 hover:opacity-100'
+                className={`w-full px-2.5 py-1.5 rounded-xl text-[11px] font-bold text-white flex items-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  currentMode === 'add_marker' && currentType === 'ACCESS_POINT' ? 'ring-2 ring-slate-900 shadow-md scale-[1.02]' : 'opacity-95 hover:opacity-100 hover:scale-[1.01]'
                 }`}
-                style={{ backgroundColor: '#14b8a6' }}
+                style={{ background: config['ACCESS_POINT'].gradient }}
               >
-                <span>📡</span>
+                <NodeDeviceIcon type="ACCESS_POINT" size={17} color="#ffffff" />
                 <span>+ Access Point (AP)</span>
               </button>
 
@@ -2611,22 +2823,28 @@ const DEFAULT_SPLITTER_CATALOG = [
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Node Perangkat:</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Tipe Node Perangkat:</label>
+                  <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-bold text-white shadow-xs" style={{ background: config[editType]?.gradient || config[editType]?.color || '#3b82f6' }}>
+                    <NodeDeviceIcon type={editType} size={14} color="#ffffff" />
+                    <span>{config[editType]?.label || editType}</span>
+                  </div>
+                </div>
                 <select
                   value={editType}
                   onChange={(e) => setEditType(e.target.value as any)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="OLT">🖥️ OLT Server PON</option>
-                  <option value="ODC">🏢 ODC Cabinet FTTH</option>
-                  <option value="ODP">🔲 ODP Box FTTH</option>
-                  <option value="SPLITTER">🔀 Splitter Fiber Standalone</option>
-                  <option value="ONU">🏠 ONU / ONT Pelanggan FTTH</option>
-                  <option value="HTB">⚡ HTB Media Converter (A/B)</option>
-                  <option value="SWITCH">🔌 Switch Hub LAN</option>
-                  <option value="ROUTER">📡 Router Mikrotik Gateway</option>
-                  <option value="ROUTER_WIFI">📶 Router Wireless Pelanggan</option>
-                  <option value="ACCESS_POINT">📡 Access Point (AP)</option>
+                  <option value="OLT">OLT Server PON</option>
+                  <option value="ODC">ODC Cabinet FTTH (Outdoor)</option>
+                  <option value="ODP">ODP Box FTTH (Tiang/Wall)</option>
+                  <option value="SPLITTER">Splitter Fiber Standalone</option>
+                  <option value="ONU">ONU / ONT Pelanggan FTTH</option>
+                  <option value="HTB">HTB Media Converter (A/B)</option>
+                  <option value="SWITCH">Switch Hub LAN</option>
+                  <option value="ROUTER">Router Mikrotik Gateway</option>
+                  <option value="ROUTER_WIFI">Router Wireless Pelanggan</option>
+                  <option value="ACCESS_POINT">Access Point (AP)</option>
                 </select>
               </div>
 
@@ -3803,7 +4021,13 @@ const DEFAULT_SPLITTER_CATALOG = [
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
                   <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
-                    <span>{isHTB ? '⚡ Inspector Port HTB' : isNetDevice ? `🔌 Inspector Port ${inspectingNode.type}` : isONU ? '🏠 Inspector Port ONU Pelanggan' : `🔌 Inspector Port ${inspectingNode.type}`}</span>
+                    <span 
+                      className="w-7 h-7 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
+                      style={{ background: config[inspectingNode.type]?.gradient || config[inspectingNode.type]?.color || '#3b82f6' }}
+                    >
+                      <NodeDeviceIcon type={inspectingNode.type} size={16} color="#ffffff" />
+                    </span>
+                    <span>Inspector Port {inspectingNode.type === 'ONU' ? 'Modem Pelanggan (ONU/ONT)' : inspectingNode.type === 'ODP' ? 'ODP Box FTTH' : inspectingNode.type === 'ODC' ? 'ODC Cabinet FTTH' : inspectingNode.type}</span>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-100 text-purple-800">
                       {isHTB ? `${pA}A${pB}B ${pLan}LAN` : isNetDevice ? `${pSfp}SFP ${pLan}LAN` : isONU ? `1 PON FO + ${pLan} LAN` : `1:${cap}`}
                     </span>
@@ -4293,8 +4517,13 @@ const DEFAULT_SPLITTER_CATALOG = [
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between">
                     <div>
                       <div className="text-[10px] font-extrabold uppercase text-rose-700">Perangkat Colok Alat OTDR:</div>
-                      <div className="text-sm font-black text-rose-950 flex items-center gap-1.5 mt-0.5">
-                        <span>{config[otdrNode.type]?.iconSymbol || '📍'}</span>
+                      <div className="text-sm font-black text-rose-950 flex items-center gap-2 mt-0.5">
+                        <span 
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
+                          style={{ background: config[otdrNode.type]?.gradient || config[otdrNode.type]?.color || '#e11d48' }}
+                        >
+                          <NodeDeviceIcon type={otdrNode.type} size={15} color="#ffffff" />
+                        </span>
                         <span>{otdrNode.name || otdrNode.type} (ID: {otdrNode.id})</span>
                       </div>
                     </div>
@@ -4408,7 +4637,12 @@ const DEFAULT_SPLITTER_CATALOG = [
                               : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                           }`}
                         >
-                          <span className="text-base">{config[fromN.type]?.iconSymbol || '📍'}</span>
+                          <span 
+                            className="w-7 h-7 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
+                            style={{ background: config[fromN.type]?.gradient || config[fromN.type]?.color || '#64748b' }}
+                          >
+                            <NodeDeviceIcon type={fromN.type} size={16} color="#ffffff" />
+                          </span>
                           <span>{fromN.name || fromN.type}</span>
                           <span className="text-[10px] text-slate-500 font-semibold">(Node Asal)</span>
                         </button>
@@ -4421,7 +4655,12 @@ const DEFAULT_SPLITTER_CATALOG = [
                               : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                           }`}
                         >
-                          <span className="text-base">{config[toN.type]?.iconSymbol || '📍'}</span>
+                          <span 
+                            className="w-7 h-7 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
+                            style={{ background: config[toN.type]?.gradient || config[toN.type]?.color || '#64748b' }}
+                          >
+                            <NodeDeviceIcon type={toN.type} size={16} color="#ffffff" />
+                          </span>
                           <span>{toN.name || toN.type}</span>
                           <span className="text-[10px] text-slate-500 font-semibold">(Node Ujung)</span>
                         </button>
@@ -4672,9 +4911,9 @@ const DEFAULT_SPLITTER_CATALOG = [
                             <div className="flex items-center gap-2">
                               <span
                                 className="w-8 h-8 rounded-xl text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs"
-                                style={{ backgroundColor: cfg.color }}
+                                style={{ background: cfg.gradient || cfg.color }}
                               >
-                                {cfg.iconSymbol}
+                                <NodeDeviceIcon type={n.type} size={18} color="#ffffff" />
                               </span>
                               <div>
                                 <span className="font-extrabold text-slate-900 block">{n.type}</span>
@@ -4893,9 +5132,9 @@ const DEFAULT_SPLITTER_CATALOG = [
                           <div className="flex items-center gap-3">
                             <div
                               className="w-8 h-8 rounded-xl text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs"
-                              style={{ backgroundColor: cfg.color }}
+                              style={{ background: cfg.gradient || cfg.color }}
                             >
-                              {cfg.iconSymbol}
+                              <NodeDeviceIcon type={node.type} size={18} color="#ffffff" />
                             </div>
                             <div>
                               <div className="flex items-center gap-2 font-extrabold text-slate-900 text-xs">
