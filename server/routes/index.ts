@@ -13,6 +13,7 @@ import ftthMapRoutes from './ftthMapRoutes.js';
 import pppRoutes from './pppRoutes.js';
 import portalRoutes from './portalRoutes.js';
 import flashSaleRoutes from './flashSaleRoutes.js';
+import integrationRoutes from './integrationRoutes.js';
 
 const router = Router();
 
@@ -38,6 +39,7 @@ router.use('/genieacs', genieacsRoutes);
 router.use('/ftth', ftthMapRoutes);
 router.use('/ppp', pppRoutes);
 router.use('/flash-sales', flashSaleRoutes);
+router.use('/integration', integrationRoutes);
 router.use('/portal', portalRoutes);
 router.use('/', portalRoutes);
 router.use('/mikrotik', mikrotikRoutes);

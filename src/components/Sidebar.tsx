@@ -26,7 +26,8 @@ import {
   Cpu,
   ShieldAlert,
   Palette,
-  Flame
+  Flame,
+  Key
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -144,6 +145,7 @@ export default function Sidebar({
       roles: ['owner', 'teknisi', 'marketing', 'kasir'],
       items: [
         { id: 'settings', label: t.settings, icon: Settings, roles: ['owner'] },
+        { id: 'api-secret', label: 'API Secret & Integrasi', icon: Key, roles: ['owner'] },
         { id: 'portal-editor', label: 'Tampilan Pelanggan', icon: Palette, roles: ['owner', 'marketing'] },
         { id: 'notifications', label: 'Notifikasi WA & Gateway', icon: Bell, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'regions', label: 'Data Wilayah', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },

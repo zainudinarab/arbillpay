@@ -65,6 +65,7 @@ import FtthDevicesPage from './components/FtthDevicesPage';
 import FtthSplitterPage from './components/FtthSplitterPage';
 import IsolirManagementPage from './components/IsolirManagementPage';
 import IsolirNoticePage from './components/IsolirNoticePage';
+import ApiSecretPage from './components/ApiSecretPage';
 
 // Import Icons for customer checkout
 import { QrCode, ArrowLeft, ShieldCheck, CheckCircle, ChevronRight, Lock, ShoppingCart, Zap, CreditCard, ArrowRight } from 'lucide-react';
@@ -1059,6 +1060,14 @@ const safeFormatDate = (val: any): string => {
           <SettingsPage
             profile={profile}
             onUpdateProfile={handleUpdateProfile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'api-secret':
+        return (
+          <ApiSecretPage
+            profile={profile}
             t={t}
             onLogout={handleLogout}
           />
