@@ -1688,6 +1688,20 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
           <h2 className="text-2xl font-black font-sans text-slate-800 tracking-tight">Daftar Pelanggan Rumah</h2>
           <div className="flex items-center gap-3 flex-wrap">
             <button
+              onClick={() => {
+                if (!importRouterId && routers.length > 0) {
+                  setImportRouterId(routers[0].id);
+                }
+                setShowImportModal(true);
+              }}
+              className="px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-blue-100 flex items-center gap-2 transition-all cursor-pointer"
+              title="Impor seluruh akun Secret PPP dari Router MikroTik ke database pelanggan"
+            >
+              <Download size={15} />
+              <span>📥 Impor dari MikroTik</span>
+            </button>
+
+            <button
               onClick={handleSyncAllCustomers}
               disabled={syncAllLoading}
               className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-sans font-bold text-xs rounded-xl shadow-md shadow-emerald-100 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
