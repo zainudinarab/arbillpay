@@ -1088,31 +1088,53 @@ const DEFAULT_SPLITTER_CATALOG = [
     // Hybrid Ratio + Distribution Splitter (Tembak Jalur Tengah Jalan):
     // Port #1: Pass Feeder Continuation (Pass % Loss)
     // Port #2 s/d #N: Local Distribution Drop Ports (Drop % Loss + Sub PLC Splitter Loss)
+    if (ratio?.startsWith('1:2 + 1:')) {
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 4;
+      const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
+      return portNum === 1 ? 3.5 : (3.5 + plcLoss);
+    }
+    if (ratio?.startsWith('95:5 + 1:')) {
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
+      const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
+      return portNum === 1 ? 0.4 : (13.5 + plcLoss);
+    }
     if (ratio?.startsWith('90:10 + 1:')) {
-      const subCap = parseInt(ratio.split('1:')[1]) || 8;
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
       const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
       return portNum === 1 ? 0.8 : (10.8 + plcLoss);
     }
+    if (ratio?.startsWith('85:15 + 1:')) {
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
+      const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
+      return portNum === 1 ? 1.1 : (9.0 + plcLoss);
+    }
     if (ratio?.startsWith('80:20 + 1:')) {
-      const subCap = parseInt(ratio.split('1:')[1]) || 8;
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
       const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
       return portNum === 1 ? 1.4 : (7.6 + plcLoss);
     }
+    if (ratio?.startsWith('75:25 + 1:')) {
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
+      const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
+      return portNum === 1 ? 1.7 : (6.6 + plcLoss);
+    }
     if (ratio?.startsWith('70:30 + 1:')) {
-      const subCap = parseInt(ratio.split('1:')[1]) || 8;
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
       const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
       return portNum === 1 ? 2.0 : (5.8 + plcLoss);
     }
     if (ratio?.startsWith('60:40 + 1:')) {
-      const subCap = parseInt(ratio.split('1:')[1]) || 8;
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
       const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
       return portNum === 1 ? 2.8 : (4.5 + plcLoss);
     }
     if (ratio?.startsWith('50:50 + 1:')) {
-      const subCap = parseInt(ratio.split('1:')[1]) || 8;
+      const subCap = parseInt(ratio.split('+ 1:')[1]) || 8;
       const plcLoss = subCap === 4 ? 7.2 : (subCap === 8 ? 10.5 : (subCap === 16 ? 13.8 : 7.2));
       return portNum === 1 ? 3.5 : (3.5 + plcLoss);
     }
+    if (ratio === 'Dual 1:4') return 7.2;
+    if (ratio === 'Dual 1:8') return 10.5;
 
     if (cap === 2) return 3.5;
     if (cap === 4) return 7.2;
@@ -1705,9 +1727,26 @@ const DEFAULT_SPLITTER_CATALOG = [
       let powerHtml = '';
       if (nodeOptPower.inputPower !== 0 || nodeOptPower.outputPower !== 0) {
         const ratio = n.splitterRatio;
-        const isAsymmetric = ratio && ratio.includes(':') && !ratio.startsWith('1:');
+        const isHybrid = ratio && ratio.includes('+');
+        const isAsymmetric = ratio && ratio.includes(':') && !ratio.startsWith('1:') && !isHybrid;
 
-        if (isAsymmetric) {
+        if (isHybrid) {
+          const p1Loss = getSplitterLossDb(ratio, cap, 1);
+          const p2Loss = getSplitterLossDb(ratio, cap, 2);
+          const p1Tx = Number((nodeOptPower.inputPower - p1Loss).toFixed(2));
+          const p2Tx = Number((nodeOptPower.inputPower - p2Loss).toFixed(2));
+
+          const ratioPart = ratio.split(' +')[0];
+          const subPart = ratio.split('+ ')[1] || '1:8';
+
+          powerHtml = `
+            <div style="background:#eff6ff; padding:6px 8px; border-radius:10px; border:1px solid #bfdbfe; margin:5px 0; font-size:10.5px; line-height:1.4;">
+              <div style="font-weight:800; color:#1e3a8a; margin-bottom:2px;">⚡ Daya Masuk (Rx In): <span style="font-family:monospace; color:#0284c7;">${nodeOptPower.inputPower > 0 ? `+${nodeOptPower.inputPower}` : nodeOptPower.inputPower} dBm</span></div>
+              <div style="font-weight:800; color:#065f46;">⏩ Port #1 Pass Feeder (${ratioPart}): <span style="font-family:monospace; color:#059669;">${p1Tx > 0 ? `+${p1Tx}` : p1Tx} dBm</span></div>
+              <div style="font-weight:800; color:#92400e;">🏠 Port #2 s/d #${cap} Drop Lokal (${subPart}): <span style="font-family:monospace; color:#d97706;">${p2Tx > 0 ? `+${p2Tx}` : p2Tx} dBm</span></div>
+            </div>
+          `;
+        } else if (isAsymmetric) {
           // Asymmetric Ratio Splitter (e.g. 90:10, 80:20, 70:30, 60:40, 50:50) -> Show 2 Output Powers!
           const p1Loss = getSplitterLossDb(ratio, cap, 1);
           const p2Loss = getSplitterLossDb(ratio, cap, 2);
@@ -3008,8 +3047,11 @@ const DEFAULT_SPLITTER_CATALOG = [
                     >
                       <option value={2}>Splitter 1:2 (2 Port) - Redaman ~3.5 dB</option>
                       <option value={4}>Splitter 1:4 (4 Port) - Redaman ~7.2 dB</option>
+                      <option value={5}>Hybrid Bertingkat (5 Port: 1 Feeder Pass + 4 Pelanggan)</option>
                       <option value={8}>Splitter 1:8 (8 Port) - Redaman ~10.5 dB</option>
+                      <option value={9}>Hybrid Bertingkat (9 Port: 1 Feeder Pass + 8 Pelanggan)</option>
                       <option value={16}>Splitter 1:16 (16 Port) - Redaman ~13.8 dB</option>
+                      <option value={17}>Hybrid Bertingkat (17 Port: 1 Feeder Pass + 16 Pelanggan)</option>
                       <option value={32}>Splitter 1:32 (32 Port) - Redaman ~17.0 dB</option>
                       <option value={64}>Splitter 1:64 (64 Port) - Redaman ~20.5 dB</option>
                     </select>
@@ -3028,15 +3070,41 @@ const DEFAULT_SPLITTER_CATALOG = [
                         onChange={(e) => {
                           const r = e.target.value;
                           setEditSplitterRatio(r);
-                          if (r.startsWith('1:')) {
+                          if (r.startsWith('1:') && !r.includes('+')) {
                             const capNum = parseInt(r.split('1:')[1]);
                             if (capNum) setEditCapacity(capNum);
+                          } else if (r.includes('+ 1:4')) {
+                            setEditCapacity(5); // 1 Feeder Pass + 4 Drop Pelanggan
+                          } else if (r.includes('+ 1:8')) {
+                            setEditCapacity(9); // 1 Feeder Pass + 8 Drop Pelanggan
+                          } else if (r.includes('+ 1:16')) {
+                            setEditCapacity(17);
                           } else if (r.includes(':') && !r.includes('+')) {
                             setEditCapacity(2);
+                          } else if (r === 'Dual 1:4') {
+                            setEditCapacity(8);
+                          } else if (r === 'Dual 1:8') {
+                            setEditCapacity(16);
                           }
                         }}
                         className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
                       >
+                        <optgroup label="⚡ Hybrid Bertingkat (Rasio Feeder + Drop Pelanggan dalam 1 ODP)">
+                          <option value="80:20 + 1:4">Rasio 80:20 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                          <option value="80:20 + 1:8">Rasio 80:20 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                          <option value="70:30 + 1:4">Rasio 70:30 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                          <option value="70:30 + 1:8">Rasio 70:30 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                          <option value="85:15 + 1:4">Rasio 85:15 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                          <option value="85:15 + 1:8">Rasio 85:15 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                          <option value="90:10 + 1:4">Rasio 90:10 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                          <option value="90:10 + 1:8">Rasio 90:10 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                          <option value="1:2 + 1:4">Cascaded 1:2 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                          <option value="1:2 + 1:8">Cascaded 1:2 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                        </optgroup>
+                        <optgroup label="📦 Multi-Splitter PLC (Dual Modul dalam 1 Box ODP)">
+                          <option value="Dual 1:4">Dual Modul PLC 1:4 (Total 8 Port Pelanggan)</option>
+                          <option value="Dual 1:8">Dual Modul PLC 1:8 (Total 16 Port Pelanggan)</option>
+                        </optgroup>
                         <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
                           <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
                           <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
@@ -4012,6 +4080,14 @@ const DEFAULT_SPLITTER_CATALOG = [
             if (portNum === 1) return `🔵 Fiber PON (Input Optik)`;
             return `🔌 LAN RJ45 #${portNum - 1}`;
           }
+          if (inspectingNode.splitterRatio?.includes('+')) {
+            if (portNum === 1) return `⏩ Port #1 Pass (Feeder Out)`;
+            return `🏠 Port #${portNum} Drop (Pelanggan #${portNum - 1})`;
+          }
+          if (inspectingNode.splitterRatio?.includes(':') && !inspectingNode.splitterRatio?.startsWith('1:')) {
+            if (portNum === 1) return `⏩ Port #1 Pass (${inspectingNode.splitterRatio.split(':')[0]}%)`;
+            if (portNum === 2) return `🏠 Port #2 Drop (${inspectingNode.splitterRatio.split(':')[1]}%)`;
+          }
           return `Port OUT #${portNum}`;
         };
 
@@ -4340,13 +4416,16 @@ const DEFAULT_SPLITTER_CATALOG = [
                     if (isHybrid) {
                       const ratioPart = currentRatio.split(' +')[0];
                       const subPart = currentRatio.split('+ ')[1] || '1:8';
-                      if (portNum === 1) branchLabel = `Pass ${ratioPart.split(':')[0]}% (Feeder Out)`;
-                      else branchLabel = `Drop ${ratioPart.split(':')[1]}% + ${subPart} (Lokal)`;
+                      if (portNum === 1) branchLabel = `⏩ Feeder Pass (${ratioPart})`;
+                      else branchLabel = `🏠 Drop Lokal #${portNum - 1} (${subPart})`;
                     } else if (isAsymmetric) {
-                      if (currentRatio === '90:10') branchLabel = portNum === 1 ? 'Pass 90% (-0.8dB)' : 'Drop 10% (-10.8dB)';
-                      else if (currentRatio === '80:20') branchLabel = portNum === 1 ? 'Pass 80% (-1.4dB)' : 'Drop 20% (-7.6dB)';
-                      else if (currentRatio === '70:30') branchLabel = portNum === 1 ? 'Pass 70% (-2.0dB)' : 'Drop 30% (-5.8dB)';
-                      else if (currentRatio === '60:40') branchLabel = portNum === 1 ? 'Pass 60% (-2.8dB)' : 'Drop 40% (-4.5dB)';
+                      if (currentRatio === '95:5') branchLabel = portNum === 1 ? '⏩ Pass 95% (-0.4dB)' : '🏠 Drop 5% (-13.5dB)';
+                      else if (currentRatio === '90:10') branchLabel = portNum === 1 ? '⏩ Pass 90% (-0.8dB)' : '🏠 Drop 10% (-10.8dB)';
+                      else if (currentRatio === '85:15') branchLabel = portNum === 1 ? '⏩ Pass 85% (-1.1dB)' : '🏠 Drop 15% (-9.0dB)';
+                      else if (currentRatio === '80:20') branchLabel = portNum === 1 ? '⏩ Pass 80% (-1.4dB)' : '🏠 Drop 20% (-7.6dB)';
+                      else if (currentRatio === '75:25') branchLabel = portNum === 1 ? '⏩ Pass 75% (-1.7dB)' : '🏠 Drop 25% (-6.6dB)';
+                      else if (currentRatio === '70:30') branchLabel = portNum === 1 ? '⏩ Pass 70% (-2.0dB)' : '🏠 Drop 30% (-5.8dB)';
+                      else if (currentRatio === '60:40') branchLabel = portNum === 1 ? '⏩ Pass 60% (-2.8dB)' : '🏠 Drop 40% (-4.5dB)';
                       else if (currentRatio === '50:50') branchLabel = 'Equal 50% (-3.5dB)';
                     }
 
