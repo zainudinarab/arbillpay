@@ -15,6 +15,7 @@ export interface FtthNodeData {
   sfpPowerList?: number[];
   attenuationDb?: number;
   customerId?: string | null;
+  internalSplitters?: any[];
 }
 
 export interface FtthCableData {
@@ -47,6 +48,7 @@ async function ensureTablesExist() {
       sfp_powers JSONB DEFAULT '[]'::jsonb,
       attenuation_db NUMERIC(6, 2) DEFAULT 0.00,
       customer_id VARCHAR(64),
+      internal_splitters JSONB DEFAULT '[]'::jsonb,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
   `).catch(() => {});
@@ -59,7 +61,8 @@ async function ensureTablesExist() {
     ADD COLUMN IF NOT EXISTS attenuation_db NUMERIC(6, 2) DEFAULT 0.00,
     ADD COLUMN IF NOT EXISTS calculated_rx_power NUMERIC(6, 2),
     ADD COLUMN IF NOT EXISTS calculated_tx_power NUMERIC(6, 2),
-    ADD COLUMN IF NOT EXISTS total_loss_db NUMERIC(6, 2);
+    ADD COLUMN IF NOT EXISTS total_loss_db NUMERIC(6, 2),
+    ADD COLUMN IF NOT EXISTS internal_splitters JSONB DEFAULT '[]'::jsonb;
   `).catch(() => {});
 
   await pool.query(`
@@ -131,7 +134,7 @@ export async function getFtthMapTopology() {
 
   await ensureTablesExist();
 
-  const nodesRes = await pool.query('SELECT id, name, type, lat, lng, splitter_capacity, splitter_ratio, output_power, sfp_powers, attenuation_db, customer_id FROM ftth_nodes');
+  const nodesRes = await pool.query('SELECT id, name, type, lat, lng, splitter_capacity, splitter_ratio, output_power, sfp_powers, attenuation_db, customer_id, internal_splitters FROM ftth_nodes');
   const cablesRes = await pool.query('SELECT id, from_id, from_port, to_id, to_port, waypoints, cable_length_m, attenuation_db, cable_color, core_number, cable_type, total_cores, core_splicing_map FROM ftth_cables');
 
   const nodes = nodesRes.rows.map(r => ({
@@ -145,7 +148,8 @@ export async function getFtthMapTopology() {
     outputPower: r.output_power !== null && r.output_power !== undefined ? Number(r.output_power) : 9.0,
     sfpPowerList: typeof r.sfp_powers === 'string' ? JSON.parse(r.sfp_powers) : (Array.isArray(r.sfp_powers) ? r.sfp_powers : []),
     attenuationDb: r.attenuation_db !== null && r.attenuation_db !== undefined ? Number(r.attenuation_db) : 0,
-    customerId: r.customer_id ? String(r.customer_id) : null
+    customerId: r.customer_id ? String(r.customer_id) : null,
+    internalSplitters: typeof r.internal_splitters === 'string' ? JSON.parse(r.internal_splitters) : (Array.isArray(r.internal_splitters) ? r.internal_splitters : [])
   }));
 
   const lines = cablesRes.rows.map(r => ({
@@ -193,6 +197,7 @@ export async function saveFtthMapTopology(nodes: FtthNodeData[], lines: FtthCabl
           sfpPowerList: n.sfpPowerList || [],
           attenuationDb: n.attenuationDb !== undefined ? Number(n.attenuationDb) : 0,
           customerId: n.customerId || null,
+          internalSplitters: n.internalSplitters || [],
           updated_at: new Date()
         });
       });
@@ -233,15 +238,16 @@ export async function saveFtthMapTopology(nodes: FtthNodeData[], lines: FtthCabl
 
     for (const n of nodes) {
       await client.query(
-        `INSERT INTO ftth_nodes (id, name, type, lat, lng, splitter_capacity, splitter_ratio, output_power, sfp_powers, attenuation_db, customer_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)`,
+        `INSERT INTO ftth_nodes (id, name, type, lat, lng, splitter_capacity, splitter_ratio, output_power, sfp_powers, attenuation_db, customer_id, internal_splitters)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12::jsonb)`,
         [
           n.id, n.name || n.type, n.type, Number(n.lat), Number(n.lng), 
           Number(n.splitterCapacity || 8), n.splitterRatio || '1:8', 
           n.outputPower !== undefined ? Number(n.outputPower) : 9.0,
           JSON.stringify(n.sfpPowerList || []),
           n.attenuationDb !== undefined ? Number(n.attenuationDb) : 0,
-          n.customerId || null
+          n.customerId || null,
+          JSON.stringify(n.internalSplitters || [])
         ]
       );
     }
