@@ -3470,110 +3470,137 @@ const DEFAULT_SPLITTER_CATALOG = [
                   )}
 
                   {editSplitterMode === 'preset' || (editType !== 'ODP' && editType !== 'ODC' && editType !== 'SPLITTER') ? (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Kapasitas Port Splitter:</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700">Model / Rasio Splitter:</label>
+                          <span className="text-[10px] text-purple-700 font-extrabold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                            {editSplitterRatio || `1:${editCapacity}`}
+                          </span>
+                        </div>
                         <select
-                          value={editCapacity}
+                          value={editSplitterRatio || `1:${editCapacity}`}
                           onChange={(e) => {
-                            const val = parseInt(e.target.value);
-                            setEditCapacity(val);
-                            setEditSplitterRatio(`1:${val}`);
+                            const r = e.target.value;
+                            setEditSplitterRatio(r);
+                            let cap = 8;
+                            if (r.startsWith('1:') && !r.includes('+')) {
+                              cap = parseInt(r.split('1:')[1]) || 8;
+                            } else if (r.includes('+ 1:4')) {
+                              cap = 5; // 1 Feeder Pass + 4 Drop Pelanggan
+                            } else if (r.includes('+ 1:8')) {
+                              cap = 9; // 1 Feeder Pass + 8 Drop Pelanggan
+                            } else if (r.includes('+ 1:16')) {
+                              cap = 17;
+                            } else if (r.includes(':') && !r.includes('+')) {
+                              cap = 2; // Rasio Asimetris FBT (Pass & Drop)
+                            } else if (r === 'Dual 1:4') {
+                              cap = 8;
+                            } else if (r === 'Dual 1:8') {
+                              cap = 16;
+                            } else {
+                              const found = splitterCatalog.find((s: any) => (s.ratioCode || s.name) === r);
+                              if (found) cap = found.capacity || found.ports || 2;
+                            }
+                            setEditCapacity(cap);
                           }}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
                         >
-                          <option value={2}>Splitter 1:2 (2 Port) - Redaman ~3.5 dB</option>
-                          <option value={4}>Splitter 1:4 (4 Port) - Redaman ~7.2 dB</option>
-                          <option value={5}>Hybrid Bertingkat (5 Port: 1 Feeder Pass + 4 Pelanggan)</option>
-                          <option value={8}>Splitter 1:8 (8 Port) - Redaman ~10.5 dB</option>
-                          <option value={9}>Hybrid Bertingkat (9 Port: 1 Feeder Pass + 8 Pelanggan)</option>
-                          <option value={16}>Splitter 1:16 (16 Port) - Redaman ~13.8 dB</option>
-                          <option value={17}>Hybrid Bertingkat (17 Port: 1 Feeder Pass + 16 Pelanggan)</option>
-                          <option value={32}>Splitter 1:32 (32 Port) - Redaman ~17.0 dB</option>
-                          <option value={64}>Splitter 1:64 (64 Port) - Redaman ~20.5 dB</option>
+                          <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
+                            <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
+                            <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
+                            <option value="1:8">PLC Splitter 1:8 Equal (8 Port, Redaman -10.5 dB)</option>
+                            <option value="1:16">PLC Splitter 1:16 Equal (16 Port, Redaman -13.8 dB)</option>
+                            <option value="1:32">PLC Splitter 1:32 Equal (32 Port, Redaman -17.0 dB)</option>
+                            <option value="1:64">PLC Splitter 1:64 Equal (64 Port, Redaman -20.5 dB)</option>
+                          </optgroup>
+                          <optgroup label="🔀 Rasio FBT Asimetris (2 Port: Pass / Drop)">
+                            <option value="95:5">Rasio 95:5 (Pass 0.4 dB / Drop 13.5 dB, 2 Port)</option>
+                            <option value="90:10">Rasio 90:10 (Pass 0.8 dB / Drop 10.8 dB, 2 Port)</option>
+                            <option value="85:15">Rasio 85:15 (Pass 1.1 dB / Drop 9.0 dB, 2 Port)</option>
+                            <option value="80:20">Rasio 80:20 (Pass 1.4 dB / Drop 7.6 dB, 2 Port)</option>
+                            <option value="75:25">Rasio 75:25 (Pass 1.7 dB / Drop 6.6 dB, 2 Port)</option>
+                            <option value="70:30">Rasio 70:30 (Pass 2.0 dB / Drop 5.8 dB, 2 Port)</option>
+                            <option value="65:35">Rasio 65:35 (Pass 2.4 dB / Drop 5.1 dB, 2 Port)</option>
+                            <option value="60:40">Rasio 60:40 (Pass 2.8 dB / Drop 4.5 dB, 2 Port)</option>
+                            <option value="55:45">Rasio 55:45 (Pass 3.2 dB / Drop 4.0 dB, 2 Port)</option>
+                            <option value="50:50">Rasio 50:50 (Pass 3.5 dB / Drop 3.5 dB, 2 Port)</option>
+                          </optgroup>
+                          <optgroup label="⚡ Hybrid Bertingkat (Rasio Feeder + Drop Pelanggan)">
+                            <option value="80:20 + 1:4">Rasio 80:20 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                            <option value="80:20 + 1:8">Rasio 80:20 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                            <option value="70:30 + 1:4">Rasio 70:30 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                            <option value="70:30 + 1:8">Rasio 70:30 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                            <option value="85:15 + 1:4">Rasio 85:15 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                            <option value="85:15 + 1:8">Rasio 85:15 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                            <option value="90:10 + 1:4">Rasio 90:10 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                            <option value="90:10 + 1:8">Rasio 90:10 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                            <option value="1:2 + 1:4">Cascaded 1:2 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
+                            <option value="1:2 + 1:8">Cascaded 1:2 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
+                          </optgroup>
+                          <optgroup label="📦 Multi-Splitter PLC (Dual Modul dalam 1 Box ODP)">
+                            <option value="Dual 1:4">Dual Modul PLC 1:4 (Total 8 Port Pelanggan)</option>
+                            <option value="Dual 1:8">Dual Modul PLC 1:8 (Total 16 Port Pelanggan)</option>
+                          </optgroup>
+                          {splitterCatalog && splitterCatalog.length > 0 && (
+                            <optgroup label="📂 Dari Master Splitter Katalog">
+                              {splitterCatalog.map((s: any) => (
+                                <option key={s.id} value={s.ratioCode || s.ratio || s.name}>
+                                  {s.name} ({s.ratioCode || s.ratio} - Kapasitas: {s.capacity || s.ports || 2} Port)
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
 
-                      {(editType === 'ODP' || editType === 'ODC' || editType === 'SPLITTER') && (
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-[11px] font-bold text-slate-700">Model / Rasio Master Splitter:</label>
-                            <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
-                              {editSplitterRatio || `1:${editCapacity}`}
+                      {/* Live Output Port & Loss Summary Pill */}
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5 shadow-2xs">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-slate-600 flex items-center gap-1.5">
+                            <span>🔌 Kapasitas Port Fisik:</span>
+                            <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-mono font-black text-[11px]">
+                              {editCapacity} Port
                             </span>
-                          </div>
-                          <select
-                            value={editSplitterRatio}
-                            onChange={(e) => {
-                              const r = e.target.value;
-                              setEditSplitterRatio(r);
-                              if (r.startsWith('1:') && !r.includes('+')) {
-                                const capNum = parseInt(r.split('1:')[1]);
-                                if (capNum) setEditCapacity(capNum);
-                              } else if (r.includes('+ 1:4')) {
-                                setEditCapacity(5); // 1 Feeder Pass + 4 Drop Pelanggan
-                              } else if (r.includes('+ 1:8')) {
-                                setEditCapacity(9); // 1 Feeder Pass + 8 Drop Pelanggan
-                              } else if (r.includes('+ 1:16')) {
-                                setEditCapacity(17);
-                              } else if (r.includes(':') && !r.includes('+')) {
-                                setEditCapacity(2);
-                              } else if (r === 'Dual 1:4') {
-                                setEditCapacity(8);
-                              } else if (r === 'Dual 1:8') {
-                                setEditCapacity(16);
-                              }
-                            }}
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
-                          >
-                            <optgroup label="⚡ Hybrid Bertingkat (Rasio Feeder + Drop Pelanggan dalam 1 ODP)">
-                              <option value="80:20 + 1:4">Rasio 80:20 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                              <option value="80:20 + 1:8">Rasio 80:20 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                              <option value="70:30 + 1:4">Rasio 70:30 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                              <option value="70:30 + 1:8">Rasio 70:30 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                              <option value="85:15 + 1:4">Rasio 85:15 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                              <option value="85:15 + 1:8">Rasio 85:15 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                              <option value="90:10 + 1:4">Rasio 90:10 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                              <option value="90:10 + 1:8">Rasio 90:10 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                              <option value="1:2 + 1:4">Cascaded 1:2 + PLC 1:4 (1 Feeder Pass + 4 Pelanggan, Total 5 Port)</option>
-                              <option value="1:2 + 1:8">Cascaded 1:2 + PLC 1:8 (1 Feeder Pass + 8 Pelanggan, Total 9 Port)</option>
-                            </optgroup>
-                            <optgroup label="📦 Multi-Splitter PLC (Dual Modul dalam 1 Box ODP)">
-                              <option value="Dual 1:4">Dual Modul PLC 1:4 (Total 8 Port Pelanggan)</option>
-                              <option value="Dual 1:8">Dual Modul PLC 1:8 (Total 16 Port Pelanggan)</option>
-                            </optgroup>
-                            <optgroup label="⚖️ PLC Splitter Simetris (Equal Loss)">
-                              <option value="1:2">PLC Splitter 1:2 Equal (2 Port, Redaman -3.5 dB)</option>
-                              <option value="1:4">PLC Splitter 1:4 Equal (4 Port, Redaman -7.2 dB)</option>
-                              <option value="1:8">PLC Splitter 1:8 Equal (8 Port, Redaman -10.5 dB)</option>
-                              <option value="1:16">PLC Splitter 1:16 Equal (16 Port, Redaman -13.8 dB)</option>
-                              <option value="1:32">PLC Splitter 1:32 Equal (32 Port, Redaman -17.0 dB)</option>
-                              <option value="1:64">PLC Splitter 1:64 Equal (64 Port, Redaman -20.5 dB)</option>
-                            </optgroup>
-                            <optgroup label="🔀 Rasio FBT Asimetris (2 Port: Pass / Drop)">
-                              <option value="95:5">Rasio 95:5 (Pass 0.4 dB / Drop 13.5 dB)</option>
-                              <option value="90:10">Rasio 90:10 (Pass 0.8 dB / Drop 10.8 dB)</option>
-                              <option value="85:15">Rasio 85:15 (Pass 1.1 dB / Drop 9.0 dB)</option>
-                              <option value="80:20">Rasio 80:20 (Pass 1.4 dB / Drop 7.6 dB)</option>
-                              <option value="75:25">Rasio 75:25 (Pass 1.7 dB / Drop 6.6 dB)</option>
-                              <option value="70:30">Rasio 70:30 (Pass 2.0 dB / Drop 5.8 dB)</option>
-                              <option value="65:35">Rasio 65:35 (Pass 2.4 dB / Drop 5.1 dB)</option>
-                              <option value="60:40">Rasio 60:40 (Pass 2.8 dB / Drop 4.5 dB)</option>
-                              <option value="55:45">Rasio 55:45 (Pass 3.2 dB / Drop 4.0 dB)</option>
-                              <option value="50:50">Rasio 50:50 (Pass 3.5 dB / Drop 3.5 dB)</option>
-                            </optgroup>
-                            {splitterCatalog && splitterCatalog.length > 0 && (
-                              <optgroup label="📂 Dari Master Splitter Katalog">
-                                {splitterCatalog.map((s: any) => (
-                                  <option key={s.id} value={s.ratioCode || s.ratio || s.name}>
-                                    {s.name} ({s.ratioCode || s.ratio} - Kapasitas: {s.capacity || s.ports || 2} Port)
-                                  </option>
-                                ))}
-                              </optgroup>
-                            )}
-                          </select>
+                          </span>
+                          <span className="text-[10.5px] text-slate-500 font-mono font-bold">
+                            Model: {editSplitterRatio || `1:${editCapacity}`}
+                          </span>
                         </div>
-                      )}
+                        <div className="text-[10.5px] text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 font-mono leading-relaxed">
+                          {(() => {
+                            const ratio = editSplitterRatio || `1:${editCapacity}`;
+                            const isHybrid = ratio.includes('+');
+                            const isAsym = ratio.includes(':') && !ratio.startsWith('1:') && !isHybrid;
+                            if (isHybrid) {
+                              const p1Loss = getSplitterLossDb(ratio, editCapacity, 1);
+                              const p2Loss = getSplitterLossDb(ratio, editCapacity, 2);
+                              return (
+                                <div>
+                                  <div className="text-emerald-700 font-bold">⏩ Port #1 (Pass Feeder): -{p1Loss} dB</div>
+                                  <div className="text-amber-700 font-bold">🏠 Port #2 s/d #{editCapacity} (Drop Pelanggan): -{p2Loss} dB</div>
+                                </div>
+                              );
+                            } else if (isAsym) {
+                              const p1Loss = getSplitterLossDb(ratio, editCapacity, 1);
+                              const p2Loss = getSplitterLossDb(ratio, editCapacity, 2);
+                              return (
+                                <div>
+                                  <div className="text-emerald-700 font-bold">⏩ Port #1 (Pass Feeder Lanjut): -{p1Loss} dB</div>
+                                  <div className="text-amber-700 font-bold">🏠 Port #2 (Drop Lokal Pelanggan): -{p2Loss} dB</div>
+                                </div>
+                              );
+                            } else {
+                              const loss = getSplitterLossDb(ratio, editCapacity, 1);
+                              return (
+                                <div className="text-blue-700 font-bold">
+                                  ⚖️ Seluruh {editCapacity} Port PLC simetris dengan redaman seragam: -{loss} dB
+                                </div>
+                              );
+                            }
+                          })()}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     /* CUSTOM MULTI-SPLITTER CASCADING TREE BUILDER */
