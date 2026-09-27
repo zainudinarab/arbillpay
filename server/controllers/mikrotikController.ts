@@ -6,7 +6,7 @@ import { getFirestore } from '../config/firebase.js';
 import crypto from 'crypto';
 import { parseMikrotikHotspotComment, parseMikrotikPppComment, cleanToDateOnly } from '../utils/mikrotikComment.js';
 import { redisGet, redisSet, redisDel, isRedisReady } from '../config/redis.js';
-import { testSnmpConnection } from '../services/snmpService.js';
+import { testSnmpConnection, fetchRouterInterfacesSnmp, SnmpInterfaceRecord } from '../services/snmpService.js';
 
 // --- ROUTERS ---
 export async function listRouters(req: Request, res: Response) {
@@ -30,15 +30,21 @@ export async function listRouters(req: Request, res: Response) {
       SELECT r.id, r.name, r.ip_address, r.api_port, r.username, r.password, r.status, 
              COALESCE(r.dns_name, 'arab.net') as dns_name,
              COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
+             COALESCE(r.traffic_sampling_enabled, true) as traffic_sampling_enabled,
              COALESCE(r.snmp_enabled, false) as snmp_enabled,
              COALESCE(r.snmp_port, 161) as snmp_port,
              COALESCE(r.snmp_community, 'public') as snmp_community,
              COALESCE(r.snmp_version, 'v2c') as snmp_version,
+             COALESCE(r.snmp_username, 'arbill_snmp') as snmp_username,
+             COALESCE(r.snmp_auth_proto, 'SHA') as snmp_auth_proto,
+             r.snmp_auth_pass,
+             COALESCE(r.snmp_priv_proto, 'AES') as snmp_priv_proto,
+             r.snmp_priv_pass,
              r.last_synced, r.created_at,
              COUNT(rp.id)::int as profile_count
       FROM routers r
       LEFT JOIN router_profiles rp ON r.id = rp.router_id
-      GROUP BY r.id, r.dns_name, r.hotspot_ip, r.snmp_enabled, r.snmp_port, r.snmp_community, r.snmp_version
+      GROUP BY r.id, r.dns_name, r.hotspot_ip, r.traffic_sampling_enabled, r.snmp_enabled, r.snmp_port, r.snmp_community, r.snmp_version, r.snmp_username, r.snmp_auth_proto, r.snmp_auth_pass, r.snmp_priv_proto, r.snmp_priv_pass
       ORDER BY r.created_at DESC
     `);
     res.json({ success: true, routers: result.rows });
@@ -143,10 +149,10 @@ export async function testConnection(req: Request, res: Response) {
 }
 
 /**
- * Tes Live Koneksi SNMP ke Router MikroTik
+ * Tes Live Koneksi SNMP ke Router MikroTik (mendukung v1, v2c, dan v3 authPriv)
  */
 export async function testSnmp(req: Request, res: Response) {
-  const { host, port, community, version } = req.body;
+  const { host, port, community, version, snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass, router_id } = req.body;
   if (!host) {
     return res.status(400).json({ success: false, message: 'Host / IP Address router wajib diisi untuk tes SNMP.' });
   }
@@ -155,9 +161,55 @@ export async function testSnmp(req: Request, res: Response) {
     const cleanHost = String(host).trim();
     const cleanPort = Number(port) || 161;
     const cleanComm = String(community || 'public').trim();
-    const cleanVer = (version === 'v1' ? 'v1' : 'v2c') as 'v1' | 'v2c';
+    const cleanVer = (version || 'v2c') as 'v1' | 'v2c' | 'v3';
 
-    const result = await testSnmpConnection(cleanHost, cleanPort, cleanComm, cleanVer);
+    let authUser = snmp_username ? String(snmp_username).trim() : 'arbill_snmp';
+    let authProto = snmp_auth_proto || 'SHA';
+    let authPass = snmp_auth_pass ? String(snmp_auth_pass).trim() : '';
+    let privProto = snmp_priv_proto || 'AES';
+    let privPass = snmp_priv_pass ? String(snmp_priv_pass).trim() : '';
+
+    // Jika SNMPv3 dan password belum terisi di form tapi router_id diberikan, ambil dari database
+    if (cleanVer === 'v3' && (!authPass || !privPass) && router_id) {
+      try {
+        const saved = await pool.query(
+          'SELECT snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass FROM routers WHERE id = $1',
+          [router_id]
+        );
+        if (saved.rows.length > 0) {
+          const r = saved.rows[0];
+          if (!authUser && r.snmp_username) authUser = r.snmp_username;
+          if (!authProto && r.snmp_auth_proto) authProto = r.snmp_auth_proto;
+          if (!authPass && r.snmp_auth_pass) authPass = r.snmp_auth_pass;
+          if (!privProto && r.snmp_priv_proto) privProto = r.snmp_priv_proto;
+          if (!privPass && r.snmp_priv_pass) privPass = r.snmp_priv_pass;
+        }
+      } catch (_) {}
+    }
+
+    // Validasi SNMPv3 AuthPriv: Password wajib minimal 8 karakter
+    if (cleanVer === 'v3') {
+      if (!authPass || !privPass) {
+        return res.json({
+          success: false,
+          message: '⚠️ Password Otentikasi & Enkripsi (min. 8 karakter) wajib diisi untuk SNMPv3 (AuthPriv). Silakan isi atau klik "🎲 Generate Otomatis".'
+        });
+      }
+      if (authPass.length < 8 || privPass.length < 8) {
+        return res.json({
+          success: false,
+          message: '⚠️ Password Otentikasi dan Enkripsi SNMPv3 minimal harus 8 karakter sesuai standar SNMPv3.'
+        });
+      }
+    }
+
+    const result = await testSnmpConnection(cleanHost, cleanPort, cleanComm, cleanVer, {
+      username: authUser,
+      authProto: authProto as any,
+      authPass: authPass,
+      privProto: privProto as any,
+      privPass: privPass
+    });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal tes SNMP: ${err.message}` });
@@ -169,7 +221,16 @@ export async function testSnmp(req: Request, res: Response) {
  */
 export async function enableSnmpOnMikrotik(req: Request, res: Response) {
   const { id } = req.params;
-  const { community = 'public', port = 161, version = 'v2c' } = req.body;
+  const { 
+    community = 'public', 
+    port = 161, 
+    version = 'v2c',
+    snmp_username = 'arbill_snmp',
+    snmp_auth_proto = 'SHA',
+    snmp_auth_pass = '',
+    snmp_priv_proto = 'AES',
+    snmp_priv_pass = ''
+  } = req.body;
 
   try {
     const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
@@ -177,6 +238,29 @@ export async function enableSnmpOnMikrotik(req: Request, res: Response) {
       return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
     }
     const router = rRes.rows[0];
+
+    let finalAuthPass = snmp_auth_pass ? String(snmp_auth_pass).trim() : (router.snmp_auth_pass || '');
+    let finalPrivPass = snmp_priv_pass ? String(snmp_priv_pass).trim() : (router.snmp_priv_pass || '');
+    let finalUser = snmp_username ? String(snmp_username).trim() : (router.snmp_username || 'arbill_snmp');
+    let finalAuthProto = snmp_auth_proto || router.snmp_auth_proto || 'SHA';
+    let finalPrivProto = snmp_priv_proto || router.snmp_priv_proto || 'AES';
+
+    const isV3 = version === 'v3';
+
+    if (isV3) {
+      if (!finalAuthPass || !finalPrivPass) {
+        return res.status(400).json({
+          success: false,
+          message: '⚠️ Password Otentikasi dan Enkripsi SNMPv3 wajib diisi minimal 8 karakter. Silakan klik "🎲 Generate Otomatis" atau isi password terlebih dahulu.'
+        });
+      }
+      if (finalAuthPass.length < 8 || finalPrivPass.length < 8) {
+        return res.status(400).json({
+          success: false,
+          message: '⚠️ Password Otentikasi dan Enkripsi SNMPv3 minimal harus 8 karakter sesuai standar SNMPv3.'
+        });
+      }
+    }
 
     const conn = new RouterOSAPI({
       host: router.ip_address,
@@ -193,30 +277,61 @@ export async function enableSnmpOnMikrotik(req: Request, res: Response) {
       '=enabled=yes',
       '=contact=Arbill Network Support',
       '=location=POP Data Center',
-      '=trap-version=2'
+      `=trap-version=${isV3 ? '3' : '2'}`
     ]);
 
     // 2. Cek dan pastikan SNMP Community tersedia
-    const cleanComm = String(community || 'public').trim();
+    const targetCommName = isV3 ? String(finalUser || 'arbill_snmp').trim() : String(community || 'public').trim();
     let existingComms: any[] = [];
     try {
       const commList = await conn.write('/snmp/community/print');
       if (Array.isArray(commList)) existingComms = commList;
     } catch (_) {}
 
-    const matchComm = existingComms.find((c: any) => c.name === cleanComm);
-    if (matchComm && matchComm['.id']) {
-      await conn.write('/snmp/community/set', [
-        `=.id=${matchComm['.id']}`,
+    const matchComm = existingComms.find((c: any) => c.name === targetCommName);
+
+    if (isV3) {
+      const authProtoMikrotik = (finalAuthProto || 'SHA').toUpperCase() === 'MD5' ? 'MD5' : 'SHA1';
+      const privProtoMikrotik = (finalPrivProto || 'AES').toUpperCase() === 'DES' ? 'DES' : 'AES';
+      
+      const v3Params = [
+        '=security=private',
+        `=authentication-protocol=${authProtoMikrotik}`,
+        `=authentication-password=${finalAuthPass}`,
+        `=encryption-protocol=${privProtoMikrotik}`,
+        `=encryption-password=${finalPrivPass}`,
         '=read-access=yes',
+        '=write-access=no',
         '=addresses=0.0.0.0/0'
-      ]);
+      ];
+
+      if (matchComm && matchComm['.id']) {
+        await conn.write('/snmp/community/set', [
+          `=.id=${matchComm['.id']}`,
+          ...v3Params
+        ]);
+      } else {
+        await conn.write('/snmp/community/add', [
+          `=name=${targetCommName}`,
+          ...v3Params
+        ]);
+      }
     } else {
-      await conn.write('/snmp/community/add', [
-        `=name=${cleanComm}`,
-        '=read-access=yes',
-        '=addresses=0.0.0.0/0'
-      ]);
+      if (matchComm && matchComm['.id']) {
+        await conn.write('/snmp/community/set', [
+          `=.id=${matchComm['.id']}`,
+          '=security=none',
+          '=read-access=yes',
+          '=addresses=0.0.0.0/0'
+        ]);
+      } else {
+        await conn.write('/snmp/community/add', [
+          `=name=${targetCommName}`,
+          '=security=none',
+          '=read-access=yes',
+          '=addresses=0.0.0.0/0'
+        ]);
+      }
     }
 
     // 3. Pastikan port UDP 161 diizinkan di firewall input jika ada filter rule
@@ -252,19 +367,40 @@ export async function enableSnmpOnMikrotik(req: Request, res: Response) {
       SET snmp_enabled = true,
           snmp_port = $1,
           snmp_community = $2,
-          snmp_version = $3
-      WHERE id = $4
-    `, [Number(port) || 161, cleanComm, version || 'v2c', id]);
+          snmp_version = $3,
+          snmp_username = $4,
+          snmp_auth_proto = $5,
+          snmp_auth_pass = $6,
+          snmp_priv_proto = $7,
+          snmp_priv_pass = $8
+      WHERE id = $9
+    `, [
+      Number(port) || 161, 
+      targetCommName, 
+      version || 'v2c',
+      finalUser,
+      finalAuthProto,
+      finalAuthPass || null,
+      finalPrivProto,
+      finalPrivPass || null,
+      id
+    ]);
 
     // 5. Uji koneksi SNMP live
     let snmpTestResult: any = null;
     try {
-      snmpTestResult = await testSnmpConnection(router.ip_address, Number(port) || 161, cleanComm, (version === 'v1' ? 'v1' : 'v2c'));
+      snmpTestResult = await testSnmpConnection(router.ip_address, Number(port) || 161, targetCommName, version || 'v2c', {
+        username: finalUser,
+        authProto: finalAuthProto,
+        authPass: finalAuthPass,
+        privProto: finalPrivProto,
+        privPass: finalPrivPass
+      });
     } catch (_) {}
 
     res.json({
       success: true,
-      message: `⚡ SNMP di MikroTik "${router.name}" BERHASIL DIAKTIFKAN OTOMATIS via API!`,
+      message: `⚡ SNMP ${version.toUpperCase()} di MikroTik "${router.name}" BERHASIL DIAKTIFKAN OTOMATIS via API!`,
       snmp_test: snmpTestResult
     });
   } catch (err: any) {
@@ -273,7 +409,12 @@ export async function enableSnmpOnMikrotik(req: Request, res: Response) {
 }
 
 export async function addRouter(req: Request, res: Response) {
-  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version } = req.body;
+  const { 
+    name, ip_address, api_port, username, password, dns_name, hotspot_ip, 
+    traffic_sampling_enabled,
+    snmp_enabled, snmp_port, snmp_community, snmp_version,
+    snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
+  } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -283,21 +424,34 @@ export async function addRouter(req: Request, res: Response) {
     const routerId = `rtr-${Date.now().toString(36)}`;
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
+    const cleanTrafficSampling = traffic_sampling_enabled !== undefined ? Boolean(traffic_sampling_enabled) : true;
     const cleanSnmpEnabled = Boolean(snmp_enabled);
     const cleanSnmpPort = Number(snmp_port) || 161;
     const cleanSnmpCommunity = (snmp_community || 'public').trim();
     const cleanSnmpVersion = (snmp_version || 'v2c').trim();
+    const cleanSnmpUser = (snmp_username || 'arbill_snmp').trim();
+    const cleanAuthProto = (snmp_auth_proto || 'SHA').trim();
+    const cleanAuthPass = snmp_auth_pass ? String(snmp_auth_pass).trim() : null;
+    const cleanPrivProto = (snmp_priv_proto || 'AES').trim();
+    const cleanPrivPass = snmp_priv_pass ? String(snmp_priv_pass).trim() : null;
 
     const result = await pool.query(`
       INSERT INTO routers (
         id, name, ip_address, api_port, username, password, status, dns_name, hotspot_ip,
-        snmp_enabled, snmp_port, snmp_community, snmp_version
+        traffic_sampling_enabled,
+        snmp_enabled, snmp_port, snmp_community, snmp_version,
+        snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8, $9, $10, $11, $12)
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version, created_at
+      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, 
+                traffic_sampling_enabled,
+                snmp_enabled, snmp_port, snmp_community, snmp_version,
+                snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass,
+                created_at
     `, [
       routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '',
-      cleanDns, cleanHotspotIp, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion
+      cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
+      cleanSnmpUser, cleanAuthProto, cleanAuthPass, cleanPrivProto, cleanPrivPass
     ]);
 
     const p1 = `rp-${Date.now().toString(36)}-1`;
@@ -320,7 +474,12 @@ export async function addRouter(req: Request, res: Response) {
 
 export async function editRouter(req: Request, res: Response) {
   const { id } = req.params;
-  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, status, snmp_enabled, snmp_port, snmp_community, snmp_version } = req.body;
+  const { 
+    name, ip_address, api_port, username, password, dns_name, hotspot_ip, status, 
+    traffic_sampling_enabled,
+    snmp_enabled, snmp_port, snmp_community, snmp_version,
+    snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
+  } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -329,10 +488,16 @@ export async function editRouter(req: Request, res: Response) {
   try {
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
+    const cleanTrafficSampling = traffic_sampling_enabled !== undefined ? Boolean(traffic_sampling_enabled) : undefined;
     const cleanSnmpEnabled = Boolean(snmp_enabled);
     const cleanSnmpPort = Number(snmp_port) || 161;
     const cleanSnmpCommunity = (snmp_community || 'public').trim();
     const cleanSnmpVersion = (snmp_version || 'v2c').trim();
+    const cleanSnmpUser = (snmp_username || 'arbill_snmp').trim();
+    const cleanAuthProto = (snmp_auth_proto || 'SHA').trim();
+    const cleanAuthPass = snmp_auth_pass !== undefined ? (snmp_auth_pass ? String(snmp_auth_pass).trim() : null) : undefined;
+    const cleanPrivProto = (snmp_priv_proto || 'AES').trim();
+    const cleanPrivPass = snmp_priv_pass !== undefined ? (snmp_priv_pass ? String(snmp_priv_pass).trim() : null) : undefined;
 
     const result = await pool.query(`
       UPDATE routers
@@ -344,15 +509,26 @@ export async function editRouter(req: Request, res: Response) {
           status = $6,
           dns_name = $7,
           hotspot_ip = $8,
-          snmp_enabled = $9,
-          snmp_port = $10,
-          snmp_community = $11,
-          snmp_version = $12
-      WHERE id = $13
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version, last_synced
+          traffic_sampling_enabled = COALESCE($9, traffic_sampling_enabled),
+          snmp_enabled = $10,
+          snmp_port = $11,
+          snmp_community = $12,
+          snmp_version = $13,
+          snmp_username = $14,
+          snmp_auth_proto = $15,
+          snmp_auth_pass = COALESCE($16, snmp_auth_pass),
+          snmp_priv_proto = $17,
+          snmp_priv_pass = COALESCE($18, snmp_priv_pass)
+      WHERE id = $19
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, 
+                traffic_sampling_enabled,
+                snmp_enabled, snmp_port, snmp_community, snmp_version,
+                snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass,
+                last_synced
     `, [
       name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null,
-      status || 'online', cleanDns, cleanHotspotIp, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion, id
+      status || 'online', cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
+      cleanSnmpUser, cleanAuthProto, cleanAuthPass ?? null, cleanPrivProto, cleanPrivPass ?? null, id
     ]);
 
     if (result.rows.length === 0) {
@@ -366,6 +542,33 @@ export async function editRouter(req: Request, res: Response) {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function toggleRouterTrafficSampling(req: Request, res: Response) {
+  const { id } = req.params;
+  const { enabled } = req.body;
+  try {
+    const isEnabled = enabled !== undefined ? Boolean(enabled) : true;
+    const result = await pool.query(`
+      UPDATE routers
+      SET traffic_sampling_enabled = $1
+      WHERE id = $2
+      RETURNING id, name, traffic_sampling_enabled
+    `, [isEnabled, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+
+    const rtr = result.rows[0];
+    return res.json({
+      success: true,
+      traffic_sampling_enabled: rtr.traffic_sampling_enabled,
+      message: `Pengambilan data trafik router "${rtr.name}" berhasil ${rtr.traffic_sampling_enabled ? 'DIAKTIFKAN (Berjalan)' : 'DINONAKTIFKAN (Dijeda)'}.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 }
 
@@ -2809,7 +3012,7 @@ export async function syncIsolirComponent(req: Request, res: Response) {
 
     const doUnsyncScheduler = async () => {
       const scheds: any = await conn.write('/system/scheduler/print');
-      const schedList = Array.isArray(scheds) ? schedList : [];
+      const schedList = Array.isArray(scheds) ? scheds : [];
       let removedSched = 0;
       for (const s of schedList) {
         if (s.name === 'monitor-ppp-arbil') {
@@ -3505,6 +3708,31 @@ export async function getRouterInterfaces(req: Request, res: Response) {
 
     conn.close();
 
+    // Jika router mengaktifkan SNMP, ambil data counter 64-bit langsung via SNMP
+    const snmpMap = new Map<string, SnmpInterfaceRecord>();
+    if (router.snmp_enabled) {
+      try {
+        const snmpData = await fetchRouterInterfacesSnmp(
+          router.ip_address,
+          router.snmp_port || 161,
+          router.snmp_community || 'public',
+          router.snmp_version || 'v2c',
+          {
+            username: router.snmp_username,
+            authProto: router.snmp_auth_proto,
+            authPass: router.snmp_auth_pass,
+            privProto: router.snmp_priv_proto,
+            privPass: router.snmp_priv_pass
+          }
+        );
+        if (Array.isArray(snmpData)) {
+          snmpData.forEach(s => snmpMap.set(s.name, s));
+        }
+      } catch (snmpErr: any) {
+        console.warn(`[GET INTERFACES] SNMP overlay warning:`, snmpErr.message);
+      }
+    }
+
     // Query DB settings for monitored interfaces
     const dbIfacesRes = await pool.query(
       'SELECT id, name, interface_type, linked_node_id, is_monitored, last_rx_bytes, last_tx_bytes, last_polled_at FROM router_interfaces WHERE router_id = $1',
@@ -3527,8 +3755,12 @@ export async function getRouterInterfaces(req: Request, res: Response) {
       if (isRunning) totalRunning++;
       else totalDown++;
 
-      const rxByte = BigInt(iface['rx-byte'] || 0);
-      const txByte = BigInt(iface['tx-byte'] || 0);
+      const snmpItem = snmpMap.get(iface.name);
+      const rxByte = snmpItem ? snmpItem.rxByte : BigInt(iface['rx-byte'] || 0);
+      const txByte = snmpItem ? snmpItem.txByte : BigInt(iface['tx-byte'] || 0);
+      const rxError = snmpItem ? snmpItem.inErrors : parseInt(iface['rx-error'] || '0', 10);
+      const txError = snmpItem ? snmpItem.outErrors : parseInt(iface['tx-error'] || '0', 10);
+
       totalRxBytesAll += rxByte;
       totalTxBytesAll += txByte;
 
@@ -3574,8 +3806,8 @@ export async function getRouterInterfaces(req: Request, res: Response) {
         txFormatted: formatBytes(txByte),
         rxSpeedMbps,
         txSpeedMbps,
-        rxError: parseInt(iface['rx-error'] || '0', 10),
-        txError: parseInt(iface['tx-error'] || '0', 10),
+        rxError,
+        txError,
         rxDrop: parseInt(iface['rx-drop'] || '0', 10),
         txDrop: parseInt(iface['tx-drop'] || '0', 10),
         isMonitored: dbConfig ? Boolean(dbConfig.is_monitored) : true,
@@ -3612,7 +3844,8 @@ export async function getRouterInterfaces(req: Request, res: Response) {
         ip_address: router.ip_address,
         dns_name: router.dns_name,
         snmp_enabled: Boolean(router.snmp_enabled),
-        snmp_port: router.snmp_port || 161
+        snmp_port: router.snmp_port || 161,
+        traffic_sampling_enabled: router.traffic_sampling_enabled !== false
       },
       summary: {
         total: formattedInterfaces.length,
@@ -3680,5 +3913,114 @@ export async function getInterfaceTrafficSamples(req: Request, res: Response) {
     res.json({ success: true, samples });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Controller Endpoint: Membaca histori lengkap statistik trafik interface
+ * Mendukung 3 layer data:
+ * 1. redis_samples: Buffer realtime 1-menitan (30 menit terakhir di RAM Redis)
+ * 2. logs_30m: Histori True Average & Peak 30-menitan dari PostgreSQL (interface_traffic_logs)
+ * 3. daily_summary: Rangkuman per hari (Total Kuota GB, Max Peak, Average Mbps)
+ */
+export async function getInterfaceTrafficHistory(req: Request, res: Response) {
+  const { id, interface_name } = req.params;
+  const { days = '7' } = req.query;
+
+  try {
+    const numDays = Math.min(90, Math.max(1, parseInt(String(days)) || 7));
+    const ifaceKey = `${id}_${interface_name}`;
+
+    // 1. Ambil 30-menit terakhir langsung dari Redis
+    let redisSamples: any[] = [];
+    try {
+      const { getRecentInterfaceSamples } = await import('../services/trafficSamplingService.js');
+      redisSamples = await getRecentInterfaceSamples(id, interface_name);
+    } catch (_) {}
+
+    // 2. Ambil log 30-menit dari PostgreSQL
+    const logs30mRes = await pool.query(`
+      SELECT 
+        id, interface_name, interface_type,
+        avg_rx_mbps, avg_tx_mbps, peak_rx_mbps, peak_tx_mbps,
+        delta_rx_bytes, delta_tx_bytes, interval_seconds, recorded_at
+      FROM interface_traffic_logs
+      WHERE router_id = $1 AND (interface_name = $2 OR interface_id = $3)
+        AND recorded_at >= NOW() - ($4 || ' days')::INTERVAL
+      ORDER BY recorded_at ASC
+    `, [id, interface_name, ifaceKey, numDays]);
+
+    // 3. Ambil ringkasan per hari dari PostgreSQL
+    const dailyRes = await pool.query(`
+      SELECT 
+        TO_CHAR(recorded_at, 'YYYY-MM-DD') as log_date,
+        ROUND(AVG(avg_rx_mbps), 2) as avg_rx_mbps,
+        ROUND(AVG(avg_tx_mbps), 2) as avg_tx_mbps,
+        ROUND(MAX(peak_rx_mbps), 2) as peak_rx_mbps,
+        ROUND(MAX(peak_tx_mbps), 2) as peak_tx_mbps,
+        SUM(delta_rx_bytes) as total_rx_bytes,
+        SUM(delta_tx_bytes) as total_tx_bytes,
+        COUNT(*)::int as sample_count
+      FROM interface_traffic_logs
+      WHERE router_id = $1 AND (interface_name = $2 OR interface_id = $3)
+        AND recorded_at >= NOW() - ($4 || ' days')::INTERVAL
+      GROUP BY TO_CHAR(recorded_at, 'YYYY-MM-DD')
+      ORDER BY log_date ASC
+    `, [id, interface_name, ifaceKey, numDays]);
+
+    // Format logs 30m
+    const logs30m = logs30mRes.rows.map(r => ({
+      id: r.id,
+      interface_name: r.interface_name,
+      interface_type: r.interface_type,
+      avg_rx_mbps: parseFloat(r.avg_rx_mbps || 0),
+      avg_tx_mbps: parseFloat(r.avg_tx_mbps || 0),
+      peak_rx_mbps: parseFloat(r.peak_rx_mbps || 0),
+      peak_tx_mbps: parseFloat(r.peak_tx_mbps || 0),
+      delta_rx_gb: Number((Number(r.delta_rx_bytes || 0) / (1024 * 1024 * 1024)).toFixed(3)),
+      delta_tx_gb: Number((Number(r.delta_tx_bytes || 0) / (1024 * 1024 * 1024)).toFixed(3)),
+      total_gb: Number(((Number(r.delta_rx_bytes || 0) + Number(r.delta_tx_bytes || 0)) / (1024 * 1024 * 1024)).toFixed(3)),
+      recorded_at: r.recorded_at
+    }));
+
+    // Format daily
+    const daily = dailyRes.rows.map(r => ({
+      log_date: r.log_date,
+      avg_rx_mbps: parseFloat(r.avg_rx_mbps || 0),
+      avg_tx_mbps: parseFloat(r.avg_tx_mbps || 0),
+      peak_rx_mbps: parseFloat(r.peak_rx_mbps || 0),
+      peak_tx_mbps: parseFloat(r.peak_tx_mbps || 0),
+      total_rx_gb: Number((Number(r.total_rx_bytes || 0) / (1024 * 1024 * 1024)).toFixed(3)),
+      total_tx_gb: Number((Number(r.total_tx_bytes || 0) / (1024 * 1024 * 1024)).toFixed(3)),
+      total_gb: Number(((Number(r.total_rx_bytes || 0) + Number(r.total_tx_bytes || 0)) / (1024 * 1024 * 1024)).toFixed(3)),
+      sample_count: r.sample_count
+    }));
+
+    res.json({
+      success: true,
+      router_id: id,
+      interface_name,
+      redis_samples: redisSamples,
+      logs_30m: logs30m,
+      daily_summary: daily
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal memuat histori grafik trafik: ${err.message}` });
+  }
+}
+
+/**
+ * Controller Endpoint: Trigger Rollup Trafik Manual (Force Rollup sekarang untuk testing/update seketika)
+ */
+export async function triggerManualTrafficRollup(req: Request, res: Response) {
+  try {
+    const { rollupTrafficToPostgres } = await import('../services/trafficSamplingService.js');
+    const savedCount = await rollupTrafficToPostgres();
+    res.json({
+      success: true,
+      message: `⚡ Rollup 30-menit berhasil dieksekusi manual! ${savedCount} interface dirangkum ke database PostgreSQL.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal rollup manual: ${err.message}` });
   }
 }

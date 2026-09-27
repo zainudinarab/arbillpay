@@ -190,6 +190,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPackageFilter, setSelectedPackageFilter] = useState<string>('all');
+  const [selectedRouterFilter, setSelectedRouterFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'non-active' | 'terminated'>('all');
 
   // Pagination State
@@ -1600,6 +1601,27 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
     }
   });
 
+  // Router Distribution Counts (Right Card)
+  const routerCounts: { [rId: string]: { name: string; count: number } } = {};
+  routers.forEach(r => {
+    routerCounts[r.id] = { name: r.name, count: 0 };
+  });
+  let unassignedRouterCount = 0;
+  combinedCustomers.forEach(c => {
+    if (c.router_id && routerCounts[c.router_id]) {
+      routerCounts[c.router_id].count++;
+    } else if (c.router_name) {
+      const match = routers.find(r => r.name === c.router_name);
+      if (match && routerCounts[match.id]) {
+        routerCounts[match.id].count++;
+      } else {
+        unassignedRouterCount++;
+      }
+    } else {
+      unassignedRouterCount++;
+    }
+  });
+
   // Filter Customers
   const filteredCustomers = combinedCustomers.filter(c => {
     const term = searchTerm.toLowerCase();
@@ -1615,19 +1637,23 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                           (c.provinsi || '').toLowerCase().includes(term);
     const matchesPackage = selectedPackageFilter === 'all' || 
                            (selectedPackageFilter === 'unregistered' ? c.is_in_database === false : c.package_id === selectedPackageFilter);
+    const matchesRouter = selectedRouterFilter === 'all' ||
+                          (selectedRouterFilter === 'none'
+                            ? (!c.router_id && !c.router_name)
+                            : (c.router_id === selectedRouterFilter || (c.router_name && routers.find(r => r.id === selectedRouterFilter)?.name === c.router_name)));
     const matchesStatus = statusFilter === 'all' || 
                           (statusFilter === 'pending' && c.status === 'pending') ||
                           (statusFilter === 'online' && c.status === 'active' && isUserOnline(c)) ||
                           (statusFilter === 'offline' && c.status === 'active' && !isUserOnline(c)) ||
                           (statusFilter === 'non-active' && (c.status === 'isolated' || c.status === 'non-active' || c.status === 'off')) ||
                           (statusFilter === 'terminated' && c.status === 'terminated');
-    return matchesSearch && matchesPackage && matchesStatus;
+    return matchesSearch && matchesPackage && matchesRouter && matchesStatus;
   });
 
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedPackageFilter, statusFilter]);
+  }, [searchTerm, selectedPackageFilter, selectedRouterFilter, statusFilter]);
 
   const totalItems = filteredCustomers.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
@@ -1838,10 +1864,31 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                 />
               </div>
 
+              {/* Router Filter */}
+              <select
+                value={selectedRouterFilter}
+                onChange={(e) => setSelectedRouterFilter(e.target.value)}
+                className="w-full sm:w-48 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                title="Filter berdasarkan Router MikroTik"
+              >
+                <option value="all">🌐 Semua Router ({routers.length})</option>
+                {routers.map(r => {
+                  const count = routerCounts[r.id]?.count || 0;
+                  return (
+                    <option key={r.id} value={r.id}>
+                      🌐 {r.name} ({count})
+                    </option>
+                  );
+                })}
+                {unassignedRouterCount > 0 && (
+                  <option value="none">⚠️ Tanpa Router ({unassignedRouterCount})</option>
+                )}
+              </select>
+
               <select
                 value={selectedPackageFilter}
                 onChange={(e) => setSelectedPackageFilter(e.target.value)}
-                className="w-full sm:w-48 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full sm:w-48 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="all">Semua Paket</option>
                 {unregisteredCount > 0 && (
@@ -1861,7 +1908,7 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
               </button>
 
               <button
-                onClick={() => { setSearchTerm(''); setSelectedPackageFilter('all'); setStatusFilter('all'); }}
+                onClick={() => { setSearchTerm(''); setSelectedPackageFilter('all'); setSelectedRouterFilter('all'); setStatusFilter('all'); }}
                 className="w-full sm:w-auto px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0"
               >
                 <RefreshCw size={14} />
@@ -2155,6 +2202,75 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                       </span>
                     </div>
                   ))
+                )}
+              </div>
+            </div>
+
+            {/* JUMLAH PER ROUTER Card */}
+            <div className="bg-[#1E293B] text-white rounded-3xl p-5 shadow-sm border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-700">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Server size={14} className="text-blue-400" />
+                  <span>JUMLAH PER ROUTER</span>
+                </h3>
+                {selectedRouterFilter !== 'all' && (
+                  <button
+                    onClick={() => setSelectedRouterFilter('all')}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2 text-xs">
+                {routers.length === 0 ? (
+                  <div className="text-slate-400 text-xs py-2">Belum ada router terdaftar.</div>
+                ) : (
+                  routers.map(r => {
+                    const count = routerCounts[r.id]?.count || 0;
+                    const isSelected = selectedRouterFilter === r.id;
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => setSelectedRouterFilter(isSelected ? 'all' : r.id)}
+                        className={`flex items-center justify-between py-2 px-2.5 rounded-xl transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-blue-600/30 border-blue-500 text-white shadow-xs'
+                            : 'border-transparent hover:bg-slate-800/60 text-slate-200'
+                        }`}
+                        title={`Klik untuk filter router ${r.name}`}
+                      >
+                        <span className="font-semibold flex items-center gap-1.5 truncate">
+                          <span>🌐</span>
+                          <span className={isSelected ? 'font-black text-blue-200' : ''}>{r.name}</span>
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full font-black text-xs shrink-0 ${
+                          isSelected ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-200'
+                        }`}>
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+                {unassignedRouterCount > 0 && (
+                  <div
+                    onClick={() => setSelectedRouterFilter(selectedRouterFilter === 'none' ? 'all' : 'none')}
+                    className={`flex items-center justify-between py-2 px-2.5 rounded-xl transition-all cursor-pointer border ${
+                      selectedRouterFilter === 'none'
+                        ? 'bg-amber-600/30 border-amber-500 text-white shadow-xs'
+                        : 'border-transparent hover:bg-slate-800/60 text-amber-300'
+                    }`}
+                    title="Pelanggan yang belum dialokasikan ke router tertentu"
+                  >
+                    <span className="font-semibold truncate">⚠️ Tanpa Router</span>
+                    <span className={`px-2.5 py-0.5 rounded-full font-black text-xs shrink-0 ${
+                      selectedRouterFilter === 'none' ? 'bg-amber-600 text-white' : 'bg-slate-700 text-amber-300'
+                    }`}>
+                      {unassignedRouterCount}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>

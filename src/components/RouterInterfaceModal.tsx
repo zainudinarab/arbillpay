@@ -15,6 +15,7 @@ import {
   HardDrive
 } from 'lucide-react';
 import { getApiUrl } from '../config/api';
+import TrafficHistoryModal from './TrafficHistoryModal';
 
 export interface MikrotikInterface {
   id: string;
@@ -60,7 +61,7 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
     totalRxGb: number;
     totalTxGb: number;
   } | null>(null);
-  const [routerMeta, setRouterMeta] = useState<{ snmp_enabled?: boolean; snmp_port?: number } | null>(null);
+  const [routerMeta, setRouterMeta] = useState<{ snmp_enabled?: boolean; snmp_port?: number; traffic_sampling_enabled?: boolean } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
@@ -68,9 +69,37 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+  const [togglingSampling, setTogglingSampling] = useState<boolean>(false);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [trafficHistoryIface, setTrafficHistoryIface] = useState<string | null>(null);
 
   const timerRef = useRef<any>(null);
+
+  const handleToggleSampling = async () => {
+    if (!router.id) return;
+    const currentState = routerMeta?.traffic_sampling_enabled !== false;
+    const nextState = !currentState;
+    setTogglingSampling(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${router.id}/toggle-traffic-sampling`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextState })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRouterMeta(prev => prev ? { ...prev, traffic_sampling_enabled: nextState } : null);
+        setToastMsg({ type: 'success', text: data.message });
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengubah status pengambilan data' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err.message });
+    } finally {
+      setTogglingSampling(false);
+    }
+  };
 
   const fetchInterfaces = async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -103,12 +132,12 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
     fetchInterfaces();
   }, [router.id]);
 
-  // Auto-refresh interval (every 8 seconds if enabled)
+  // Auto-refresh interval (every 5 seconds if enabled)
   useEffect(() => {
     if (autoRefresh) {
       timerRef.current = setInterval(() => {
         fetchInterfaces();
-      }, 8000);
+      }, 5000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
@@ -215,7 +244,42 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleSampling}
+              disabled={togglingSampling}
+              className={`px-3 py-1.5 font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
+                routerMeta?.traffic_sampling_enabled !== false
+                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+              }`}
+              title={
+                routerMeta?.traffic_sampling_enabled !== false
+                  ? 'Pengambilan data trafik background tiap 1 menit AKTIF. Klik untuk MENJEDA.'
+                  : 'Pengambilan data trafik background sedang DIJEDA. Klik untuk MENGAKTIFKAN kembali.'
+              }
+            >
+              <Activity size={12} className={routerMeta?.traffic_sampling_enabled !== false ? 'animate-pulse text-emerald-600' : 'text-amber-700'} />
+              <span>
+                {togglingSampling
+                  ? 'Menyimpan...'
+                  : routerMeta?.traffic_sampling_enabled !== false
+                  ? '🟢 Ambil Data: Aktif'
+                  : '⏸️ Ambil Data: Dijeda'}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTrafficHistoryIface(interfaces[0]?.name || 'ether1')}
+              className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer hover:scale-[1.02]"
+              title="Buka grafik analisis trafik 30-menit Redis & harian"
+            >
+              <Activity size={13} />
+              <span>📈 Grafik Trafik</span>
+            </button>
+
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
@@ -223,10 +287,10 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
                   : 'bg-slate-100 text-slate-600 border-slate-200'
               }`}
-              title="Aktifkan atau jeda pembaruan otomatis setiap 8 detik"
+              title="Aktifkan atau jeda pembaruan otomatis setiap 5 detik"
             >
               <Radio size={13} className={autoRefresh ? 'animate-pulse text-emerald-600' : ''} />
-              <span>{autoRefresh ? 'Live (8s)' : 'Jeda'}</span>
+              <span>{autoRefresh ? 'Live (5s)' : 'Jeda'}</span>
             </button>
 
             <button
@@ -365,6 +429,7 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
                   <th className="p-3">Akumulasi Kuota</th>
                   <th className="p-3">Kesehatan Port</th>
                   <th className="p-3 text-center">Log 30-Mnt</th>
+                  <th className="p-3 text-center">Grafik</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -494,6 +559,19 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
                           />
                         </button>
                       </td>
+
+                      {/* Grafik Button */}
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setTrafficHistoryIface(iface.name)}
+                          className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] rounded-xl border border-indigo-200 transition-all flex items-center justify-center gap-1 cursor-pointer mx-auto shadow-2xs hover:scale-105"
+                          title="Lihat grafik 30 menit (Redis), log 30m, dan rekap harian"
+                        >
+                          <Activity size={12} className="text-indigo-600" />
+                          <span>Grafik</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -515,6 +593,18 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
           </button>
         </div>
       </div>
+
+      {/* Traffic History & Analytics Modal */}
+      {trafficHistoryIface && (
+        <TrafficHistoryModal
+          routerId={router.id}
+          routerName={router.name}
+          interfaceName={trafficHistoryIface}
+          availableInterfaces={interfaces}
+          onSelectInterface={(name) => setTrafficHistoryIface(name)}
+          onClose={() => setTrafficHistoryIface(null)}
+        />
+      )}
     </div>
   );
 }

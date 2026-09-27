@@ -7,6 +7,7 @@ import {
   CreditCard,
   Settings,
   Plus,
+  Activity,
   UserCheck,
   Globe,
   Router,
@@ -98,6 +99,7 @@ export default function Sidebar({
       items: [
         { id: 'packages', label: 'Paket Internet', icon: Router, roles: ['owner', 'teknisi'] },
         { id: 'routers', label: 'Daftar Router', icon: Server, roles: ['owner', 'teknisi'] },
+        { id: 'traffic-monitor', label: 'Grafik Trafik SNMP', icon: Activity, roles: ['owner', 'teknisi'] },
         { id: 'ip-pools', label: 'Address Pool', icon: Network, roles: ['owner', 'teknisi'] },
         { id: 'profiles', label: 'Profile Mikrotik', icon: Zap, roles: ['owner', 'teknisi'] },
         { id: 'isolir-system', label: 'Sistem Isolir', icon: ShieldAlert, roles: ['owner', 'teknisi'] },

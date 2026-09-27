@@ -17,7 +17,12 @@ import {
   Key,
   User,
   Activity,
-  Radio
+  Radio,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Shield,
+  Lock
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -42,6 +47,12 @@ export interface RouterItem {
   snmp_port?: number;
   snmp_community?: string;
   snmp_version?: string;
+  snmp_username?: string;
+  snmp_auth_proto?: 'SHA' | 'MD5';
+  snmp_auth_pass?: string;
+  snmp_priv_proto?: 'AES' | 'DES';
+  snmp_priv_pass?: string;
+  traffic_sampling_enabled?: boolean;
   status: 'online' | 'offline' | 'testing';
   last_synced?: string;
   profile_count?: number;
@@ -89,9 +100,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [snmpPort, setSnmpPort] = useState('161');
   const [snmpCommunity, setSnmpCommunity] = useState('public');
   const [snmpVersion, setSnmpVersion] = useState('v2c');
+  const [snmpUsername, setSnmpUsername] = useState('arbill_snmp');
+  const [snmpAuthProto, setSnmpAuthProto] = useState<'SHA' | 'MD5'>('SHA');
+  const [snmpAuthPass, setSnmpAuthPass] = useState('');
+  const [snmpPrivProto, setSnmpPrivProto] = useState<'AES' | 'DES'>('AES');
+  const [snmpPrivPass, setSnmpPrivPass] = useState('');
+  const [showSnmpPasswords, setShowSnmpPasswords] = useState(false);
   const [testingSnmp, setTestingSnmp] = useState(false);
   const [enablingSnmpId, setEnablingSnmpId] = useState<string | null>(null);
   const [testSnmpResult, setTestSnmpResult] = useState<{ success: boolean; message: string; sysName?: string; uptime?: string } | null>(null);
+  const [trafficSamplingEnabled, setTrafficSamplingEnabled] = useState(true);
+  const [togglingSamplingId, setTogglingSamplingId] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -201,7 +220,33 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setSnmpPort('161');
     setSnmpCommunity('public');
     setSnmpVersion('v2c');
+    setSnmpUsername('arbill_snmp');
+    setSnmpAuthProto('SHA');
+    setSnmpAuthPass('');
+    setSnmpPrivProto('AES');
+    setSnmpPrivPass('');
+    setShowSnmpPasswords(false);
     setTestSnmpResult(null);
+    setTrafficSamplingEnabled(true);
+  };
+
+  const generateRandomSnmpV3Credentials = () => {
+    const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*';
+    const genPass = (len = 16) => {
+      let res = '';
+      for (let i = 0; i < len; i++) {
+        res += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return res;
+    };
+    const randSuffix = Math.random().toString(36).substring(2, 6);
+    setSnmpUsername(`arbill_sec_${randSuffix}`);
+    setSnmpAuthProto('SHA');
+    setSnmpAuthPass(genPass(16));
+    setSnmpPrivProto('AES');
+    setSnmpPrivPass(genPass(16));
+    setShowSnmpPasswords(true);
+    setToastMsg({ type: 'success', text: '🎲 Kredensial SNMPv3 (SHA + AES) berhasil digenerate otomatis!' });
   };
 
   const handleTestConnection = async () => {
@@ -259,15 +304,25 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
     try {
       const apiUrl = getApiUrl();
+      const body: any = {
+        host: ipAddress.trim(),
+        port: parseInt(snmpPort) || 161,
+        community: snmpCommunity.trim() || 'public',
+        version: snmpVersion,
+        router_id: editingRouter?.id || null
+      };
+      if (snmpVersion === 'v3') {
+        body.snmp_username = snmpUsername.trim() || 'arbill_snmp';
+        body.snmp_auth_proto = snmpAuthProto;
+        body.snmp_auth_pass = snmpAuthPass.trim();
+        body.snmp_priv_proto = snmpPrivProto;
+        body.snmp_priv_pass = snmpPrivPass.trim();
+      }
+
       const res = await fetch(`${apiUrl}/api/routers/test-snmp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host: ipAddress.trim(),
-          port: parseInt(snmpPort) || 161,
-          community: snmpCommunity.trim() || 'public',
-          version: snmpVersion
-        })
+        body: JSON.stringify(body)
       });
       const data = await parseJsonResponse(res);
       setTestSnmpResult(data);
@@ -330,7 +385,13 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         snmp_enabled: snmpEnabled,
         snmp_port: parseInt(snmpPort) || 161,
         snmp_community: snmpCommunity.trim() || 'public',
-        snmp_version: snmpVersion
+        snmp_version: snmpVersion,
+        snmp_username: snmpUsername.trim() || 'arbill_snmp',
+        snmp_auth_proto: snmpAuthProto,
+        snmp_auth_pass: snmpAuthPass.trim(),
+        snmp_priv_proto: snmpPrivProto,
+        snmp_priv_pass: snmpPrivPass.trim(),
+        traffic_sampling_enabled: trafficSamplingEnabled
       };
 
       if (apiUrl) {
@@ -378,10 +439,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setApiPort(rtr.api_port.toString());
     setUsername(rtr.username);
     setPassword('');
+    setTrafficSamplingEnabled(rtr.traffic_sampling_enabled !== false);
     setSnmpEnabled(Boolean(rtr.snmp_enabled));
     setSnmpPort((rtr.snmp_port || 161).toString());
     setSnmpCommunity(rtr.snmp_community || 'public');
     setSnmpVersion(rtr.snmp_version || 'v2c');
+    setSnmpUsername(rtr.snmp_username || 'arbill_snmp');
+    setSnmpAuthProto(rtr.snmp_auth_proto || 'SHA');
+    setSnmpAuthPass(rtr.snmp_auth_pass || '');
+    setSnmpPrivProto(rtr.snmp_priv_proto || 'AES');
+    setSnmpPrivPass(rtr.snmp_priv_pass || '');
+    setShowSnmpPasswords(false);
     setTestConnResult(null);
     setTestSnmpResult(null);
     setShowEditModal(true);
@@ -409,10 +477,16 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         api_port: parseInt(apiPort) || 8728,
         username: username.trim(),
         password: password.trim() || undefined,
+        traffic_sampling_enabled: trafficSamplingEnabled,
         snmp_enabled: snmpEnabled,
         snmp_port: parseInt(snmpPort) || 161,
         snmp_community: snmpCommunity.trim() || 'public',
-        snmp_version: snmpVersion
+        snmp_version: snmpVersion,
+        snmp_username: snmpUsername.trim() || 'arbill_snmp',
+        snmp_auth_proto: snmpAuthProto,
+        snmp_auth_pass: snmpAuthPass.trim(),
+        snmp_priv_proto: snmpPrivProto,
+        snmp_priv_pass: snmpPrivPass.trim()
       };
 
       if (apiUrl) {
@@ -450,6 +524,34 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       setToastMsg({ type: 'error', text: 'Gagal memperbarui data router: ' + (err?.message || 'Error') });
     } finally {
       setSubmitLoading(false);
+    }
+  };
+
+  const handleToggleTrafficSampling = async (rtr: RouterItem) => {
+    const nextState = rtr.traffic_sampling_enabled === false ? true : false;
+    setTogglingSamplingId(rtr.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/toggle-traffic-sampling`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextState })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: data.message || `Pengambilan data trafik ${nextState ? 'diaktifkan' : 'dinonaktifkan'}`
+        });
+        setRouters(prev => prev.map(item => item.id === rtr.id ? { ...item, traffic_sampling_enabled: nextState } : item));
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengubah status pengambilan data.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal toggle sampling: ${err.message}` });
+    } finally {
+      setTogglingSamplingId(null);
     }
   };
 
@@ -681,8 +783,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                       Polling Trafik
                     </span>
                     {rtr.snmp_enabled ? (
-                      <span className="font-mono font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 text-[11px] flex items-center gap-1">
-                        📡 SNMP v2c (UDP {rtr.snmp_port || 161})
+                      <span className="font-mono font-extrabold text-[11px] flex items-center gap-1">
+                        {rtr.snmp_version === 'v3' ? (
+                          <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1 shadow-2xs" title={`SNMPv3 User: ${rtr.snmp_username || 'arbill_snmp'} (AuthPriv SHA/AES)`}>
+                            <ShieldCheck size={12} className="text-emerald-600" />
+                            <span>SNMP v3 (UDP {rtr.snmp_port || 161})</span>
+                          </span>
+                        ) : (
+                          <span className="text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            📡 SNMP {rtr.snmp_version || 'v2c'} (UDP {rtr.snmp_port || 161})
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <div className="flex items-center gap-1.5">
@@ -700,6 +811,42 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                         </button>
                       </div>
                     )}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Activity size={14} className={rtr.traffic_sampling_enabled !== false ? 'text-emerald-500' : 'text-slate-400'} />
+                      Ambil Data Trafik
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        rtr.traffic_sampling_enabled !== false
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-slate-100 text-slate-500 border border-slate-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${rtr.traffic_sampling_enabled !== false ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                        <span>{rtr.traffic_sampling_enabled !== false ? 'Aktif' : 'Nonaktif'}</span>
+                      </span>
+
+                      <button
+                        onClick={() => handleToggleTrafficSampling(rtr)}
+                        disabled={togglingSamplingId === rtr.id}
+                        className={`px-2 py-0.5 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 border ${
+                          rtr.traffic_sampling_enabled !== false
+                            ? 'bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border-slate-200 hover:border-rose-200'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-2xs'
+                        }`}
+                        title={rtr.traffic_sampling_enabled !== false ? 'Hentikan pengambilan data trafik di background' : 'Nyalakan kembali pengambilan data trafik di background'}
+                      >
+                        {togglingSamplingId === rtr.id ? (
+                          <RefreshCw size={10} className="animate-spin" />
+                        ) : rtr.traffic_sampling_enabled !== false ? (
+                          <span>⏸️ Jeda</span>
+                        ) : (
+                          <span>▶️ Aktifkan</span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 text-[10px] text-slate-400">
@@ -970,6 +1117,30 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                   {/* Kolom 2: SNMP Poller Settings */}
                   <div className="space-y-4">
+                    {/* Background Traffic Sampling Switch */}
+                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Activity size={16} className={trafficSamplingEnabled ? 'text-emerald-600' : 'text-slate-400'} />
+                          <div>
+                            <span className="text-xs font-extrabold text-slate-800">Ambil Data Trafik di Background</span>
+                            <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${trafficSamplingEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-200 text-slate-600'}`}>
+                              {trafficSamplingEnabled ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={trafficSamplingEnabled}
+                          onChange={(e) => setTrafficSamplingEnabled(e.target.checked)}
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Jika diaktifkan, server secara otomatis membaca trafik router tiap 1 menit untuk grafik 30-menit & kuota harian. Jika dinonaktifkan, background polling tidak dijalankan.
+                      </p>
+                    </div>
+
                     <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
                       <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">SNMP Poller (Sampling 1-Menit)</h4>
@@ -994,7 +1165,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                       {snmpEnabled ? (
                         <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
                               <input
@@ -1006,6 +1177,113 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                               />
                             </div>
                             <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                              <select
+                                value={snmpVersion}
+                                onChange={(e) => setSnmpVersion(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                              >
+                                <option value="v2c">v2c (64-bit Default)</option>
+                                <option value="v3">v3 (AuthPriv - Enkripsi Teraman)</option>
+                                <option value="v1">v1 (32-bit Legacy)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {snmpVersion === 'v3' ? (
+                            <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-200/80 space-y-3 animate-fade-in">
+                              <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/60">
+                                <div className="flex items-center gap-1.5 text-indigo-900 font-extrabold text-xs">
+                                  <Shield size={14} className="text-indigo-600" />
+                                  <span>Kredensial SNMPv3 (AuthPriv)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={generateRandomSnmpV3Credentials}
+                                  className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[11px] font-extrabold rounded-lg border border-amber-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                  title="Generate username dan password enkripsi acak yang kuat"
+                                >
+                                  <Sparkles size={12} className="text-amber-600" />
+                                  <span>🎲 Generate Otomatis</span>
+                                </button>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Username SNMPv3 (User / Community)</label>
+                                <input
+                                  type="text"
+                                  value={snmpUsername}
+                                  onChange={(e) => setSnmpUsername(e.target.value)}
+                                  placeholder="arbill_snmp"
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Auth Protocol</label>
+                                  <select
+                                    value={snmpAuthProto}
+                                    onChange={(e) => setSnmpAuthProto(e.target.value as any)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                                  >
+                                    <option value="SHA">SHA (Default)</option>
+                                    <option value="MD5">MD5</option>
+                                  </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold text-slate-700">Authentication Password</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowSnmpPasswords(!showSnmpPasswords)}
+                                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      {showSnmpPasswords ? <EyeOff size={11} /> : <Eye size={11} />}
+                                      <span>{showSnmpPasswords ? 'Tutup' : 'Lihat'}</span>
+                                    </button>
+                                  </div>
+                                  <input
+                                    type={showSnmpPasswords ? 'text' : 'password'}
+                                    value={snmpAuthPass}
+                                    onChange={(e) => setSnmpAuthPass(e.target.value)}
+                                    placeholder="Min. 8 karakter password..."
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Privacy Protocol</label>
+                                  <select
+                                    value={snmpPrivProto}
+                                    onChange={(e) => setSnmpPrivProto(e.target.value as any)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                                  >
+                                    <option value="AES">AES-128 (Default)</option>
+                                    <option value="DES">DES</option>
+                                  </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Encryption Password</label>
+                                  <input
+                                    type={showSnmpPasswords ? 'text' : 'password'}
+                                    value={snmpPrivPass}
+                                    onChange={(e) => setSnmpPrivPass(e.target.value)}
+                                    placeholder="Min. 8 karakter password..."
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-200/80 text-[10px] text-emerald-800 leading-tight flex items-center gap-1.5">
+                                <ShieldCheck size={13} className="shrink-0 text-emerald-600" />
+                                <span>Trafik via port UDP {snmpPort} dienkripsi AES & diotentikasi SHA. 100% aman di internet.</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
                               <input
                                 type="text"
@@ -1015,18 +1293,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                                 placeholder="public"
                               />
                             </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
-                              <select
-                                value={snmpVersion}
-                                onChange={(e) => setSnmpVersion(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                              >
-                                <option value="v2c">v2c (64-bit Recommended)</option>
-                                <option value="v1">v1 (32-bit Legacy)</option>
-                              </select>
-                            </div>
-                          </div>
+                          )}
 
                           <div className="pt-1">
                             <button
@@ -1228,6 +1495,30 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                   {/* Kolom 2: Pengaturan Poller SNMP */}
                   <div className="space-y-4">
+                    {/* Background Traffic Sampling Switch */}
+                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Activity size={16} className={trafficSamplingEnabled ? 'text-emerald-600' : 'text-slate-400'} />
+                          <div>
+                            <span className="text-xs font-extrabold text-slate-800">Ambil Data Trafik di Background</span>
+                            <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${trafficSamplingEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-200 text-slate-600'}`}>
+                              {trafficSamplingEnabled ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={trafficSamplingEnabled}
+                          onChange={(e) => setTrafficSamplingEnabled(e.target.checked)}
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Jika diaktifkan, server secara otomatis membaca trafik router tiap 1 menit untuk grafik 30-menit & kuota harian. Jika dinonaktifkan, background polling tidak dijalankan.
+                      </p>
+                    </div>
+
                     <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">SNMP Poller (Sampling 1-Menit)</h4>
@@ -1252,7 +1543,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                       {snmpEnabled ? (
                         <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
                               <input
@@ -1264,6 +1555,113 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                               />
                             </div>
                             <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                              <select
+                                value={snmpVersion}
+                                onChange={(e) => setSnmpVersion(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                              >
+                                <option value="v2c">v2c (64-bit Default)</option>
+                                <option value="v3">v3 (AuthPriv - Enkripsi Teraman)</option>
+                                <option value="v1">v1 (32-bit Legacy)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {snmpVersion === 'v3' ? (
+                            <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-200/80 space-y-3 animate-fade-in">
+                              <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/60">
+                                <div className="flex items-center gap-1.5 text-indigo-900 font-extrabold text-xs">
+                                  <Shield size={14} className="text-indigo-600" />
+                                  <span>Kredensial SNMPv3 (AuthPriv)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={generateRandomSnmpV3Credentials}
+                                  className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 text-[11px] font-extrabold rounded-lg border border-amber-300 flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                                  title="Generate username dan password enkripsi acak yang kuat"
+                                >
+                                  <Sparkles size={12} className="text-amber-600" />
+                                  <span>🎲 Generate Otomatis</span>
+                                </button>
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Username SNMPv3 (User / Community)</label>
+                                <input
+                                  type="text"
+                                  value={snmpUsername}
+                                  onChange={(e) => setSnmpUsername(e.target.value)}
+                                  placeholder="arbill_snmp"
+                                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Auth Protocol</label>
+                                  <select
+                                    value={snmpAuthProto}
+                                    onChange={(e) => setSnmpAuthProto(e.target.value as any)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                                  >
+                                    <option value="SHA">SHA (Default)</option>
+                                    <option value="MD5">MD5</option>
+                                  </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[11px] font-bold text-slate-700">Authentication Password</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowSnmpPasswords(!showSnmpPasswords)}
+                                      className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      {showSnmpPasswords ? <EyeOff size={11} /> : <Eye size={11} />}
+                                      <span>{showSnmpPasswords ? 'Tutup' : 'Lihat'}</span>
+                                    </button>
+                                  </div>
+                                  <input
+                                    type={showSnmpPasswords ? 'text' : 'password'}
+                                    value={snmpAuthPass}
+                                    onChange={(e) => setSnmpAuthPass(e.target.value)}
+                                    placeholder="Min. 8 karakter password..."
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div className="sm:col-span-1">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Privacy Protocol</label>
+                                  <select
+                                    value={snmpPrivProto}
+                                    onChange={(e) => setSnmpPrivProto(e.target.value as any)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                                  >
+                                    <option value="AES">AES-128 (Default)</option>
+                                    <option value="DES">DES</option>
+                                  </select>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Encryption Password</label>
+                                  <input
+                                    type={showSnmpPasswords ? 'text' : 'password'}
+                                    value={snmpPrivPass}
+                                    onChange={(e) => setSnmpPrivPass(e.target.value)}
+                                    placeholder="Min. 8 karakter password..."
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-200/80 text-[10px] text-emerald-800 leading-tight flex items-center gap-1.5">
+                                <ShieldCheck size={13} className="shrink-0 text-emerald-600" />
+                                <span>Trafik via port UDP {snmpPort} dienkripsi AES & diotentikasi SHA. 100% aman di internet.</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
                               <input
                                 type="text"
@@ -1273,24 +1671,17 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                                 placeholder="public"
                               />
                             </div>
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
-                              <select
-                                value={snmpVersion}
-                                onChange={(e) => setSnmpVersion(e.target.value)}
-                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                              >
-                                <option value="v2c">v2c (64-bit Recommended)</option>
-                                <option value="v1">v1 (32-bit Legacy)</option>
-                              </select>
-                            </div>
-                          </div>
+                          )}
 
                           <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 pt-1">
                             <button
                               type="button"
                               onClick={async () => {
                                 if (!editingRouter) return;
+                                if (snmpVersion === 'v3' && (!snmpAuthPass.trim() && !editingRouter.snmp_auth_pass)) {
+                                  setToastMsg({ type: 'error', text: '⚠️ Harap isi Authentication Password & Encryption Password (min. 8 karakter) atau klik "🎲 Generate Otomatis" terlebih dahulu!' });
+                                  return;
+                                }
                                 setTestingSnmp(true);
                                 setTestSnmpResult(null);
                                 try {
@@ -1299,9 +1690,14 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
-                                      community: snmpCommunity.trim() || 'public',
+                                      community: snmpVersion === 'v3' ? (snmpUsername.trim() || 'arbill_snmp') : (snmpCommunity.trim() || 'public'),
                                       port: parseInt(snmpPort) || 161,
-                                      version: snmpVersion
+                                      version: snmpVersion,
+                                      snmp_username: snmpUsername.trim() || 'arbill_snmp',
+                                      snmp_auth_proto: snmpAuthProto,
+                                      snmp_auth_pass: snmpAuthPass.trim(),
+                                      snmp_priv_proto: snmpPrivProto,
+                                      snmp_priv_pass: snmpPrivPass.trim()
                                     })
                                   });
                                   const data = await parseJsonResponse(res);

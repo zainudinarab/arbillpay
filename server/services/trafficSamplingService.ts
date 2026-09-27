@@ -24,12 +24,14 @@ export async function sampleAllRoutersTraffic(): Promise<void> {
   try {
     const res = await pool.query(`
       SELECT id, name, ip_address, api_port, username, password,
+             COALESCE(traffic_sampling_enabled, true) as traffic_sampling_enabled,
              COALESCE(snmp_enabled, false) as snmp_enabled,
              COALESCE(snmp_port, 161) as snmp_port,
              COALESCE(snmp_community, 'public') as snmp_community,
-             COALESCE(snmp_version, 'v2c') as snmp_version
+             COALESCE(snmp_version, 'v2c') as snmp_version,
+             snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
       FROM routers
-      WHERE status = 'online'
+      WHERE status = 'online' AND COALESCE(traffic_sampling_enabled, true) = true
     `);
     routers = res.rows || [];
   } catch (err: any) {
@@ -63,7 +65,14 @@ export async function sampleAllRoutersTraffic(): Promise<void> {
             rtr.ip_address,
             rtr.snmp_port,
             rtr.snmp_community,
-            rtr.snmp_version
+            rtr.snmp_version,
+            {
+              username: rtr.snmp_username,
+              authProto: rtr.snmp_auth_proto,
+              authPass: rtr.snmp_auth_pass,
+              privProto: rtr.snmp_priv_proto,
+              privPass: rtr.snmp_priv_pass
+            }
           );
           if (snmpData && snmpData.length > 0) {
             interfaceReadings = snmpData;
@@ -161,9 +170,9 @@ export async function sampleAllRoutersTraffic(): Promise<void> {
           // Simpan snapshot live (1ms read)
           redis.set(liveKey, JSON.stringify(sample), 'EX', 120).catch(() => {});
 
-          // Tambah ke list buffer 30-menit (maksimal simpan 35 sample terakhir)
+          // Tambah ke list buffer 30-menit (simpan hingga 70 sample terakhir @ 30s)
           redis.rpush(redisListKey, JSON.stringify(sample)).catch(() => {});
-          redis.ltrim(redisListKey, -35, -1).catch(() => {});
+          redis.ltrim(redisListKey, -70, -1).catch(() => {});
           redis.expire(redisListKey, 3600).catch(() => {});
         }
       }
@@ -331,9 +340,9 @@ let isSamplingRunning = false;
 let isRollupRunning = false;
 
 export function startTrafficSamplingWorker() {
-  console.log('🚀 [TRAFFIC WORKER] Memulai Scheduler High-Precision Traffic Sampling...');
+  console.log('🚀 [TRAFFIC WORKER] Memulai Scheduler High-Precision Traffic Sampling (Sistem Hybrid: 30 Detik Background)...');
 
-  // 1. Sampling tiap 1 Menit (60 detik)
+  // 1. Sampling tiap 30 Detik (Sistem Hybrid: Akurat, Cepat, Beban Ringan)
   setInterval(async () => {
     if (isSamplingRunning) return;
     isSamplingRunning = true;
@@ -344,7 +353,7 @@ export function startTrafficSamplingWorker() {
     } finally {
       isSamplingRunning = false;
     }
-  }, 60 * 1000);
+  }, 30 * 1000);
 
   // 2. Rollup tiap 30 Menit (1800 detik)
   setInterval(async () => {

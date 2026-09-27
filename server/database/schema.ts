@@ -287,7 +287,13 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS snmp_enabled BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS snmp_port INT DEFAULT 161,
       ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(128) DEFAULT 'public',
-      ADD COLUMN IF NOT EXISTS snmp_version VARCHAR(16) DEFAULT 'v2c';
+      ADD COLUMN IF NOT EXISTS snmp_version VARCHAR(16) DEFAULT 'v2c',
+      ADD COLUMN IF NOT EXISTS snmp_username VARCHAR(128) DEFAULT 'arbill_snmp',
+      ADD COLUMN IF NOT EXISTS snmp_auth_proto VARCHAR(16) DEFAULT 'SHA',
+      ADD COLUMN IF NOT EXISTS snmp_auth_pass VARCHAR(128),
+      ADD COLUMN IF NOT EXISTS snmp_priv_proto VARCHAR(16) DEFAULT 'AES',
+      ADD COLUMN IF NOT EXISTS snmp_priv_pass VARCHAR(128),
+      ADD COLUMN IF NOT EXISTS traffic_sampling_enabled BOOLEAN DEFAULT true;
 
       -- Pastikan default validity_iso dan grace_period_iso terisi jika masih NULL
       UPDATE packages SET validity_iso = 'P1M' WHERE validity_iso IS NULL;

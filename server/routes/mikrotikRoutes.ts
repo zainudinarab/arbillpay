@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { 
-  listRouters, testConnection, testSnmp, enableSnmpOnMikrotik, addRouter, editRouter, deleteRouter,
+  listRouters, testConnection, testSnmp, enableSnmpOnMikrotik, addRouter, editRouter, toggleRouterTrafficSampling, deleteRouter,
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
   getIsolirStatus, setupIsolirOnMikrotik, syncIsolirComponent, getIsolirScript, getIsolatedCustomers,
   getWalledGardenStatus, setupWalledGarden, removeWalledGarden,
-  getRouterInterfaces, toggleInterfaceMonitoring, linkInterfaceToFtthNode, getInterfaceTrafficSamples
+  getRouterInterfaces, toggleInterfaceMonitoring, linkInterfaceToFtthNode, getInterfaceTrafficSamples,
+  getInterfaceTrafficHistory, triggerManualTrafficRollup
 } from '../controllers/mikrotikController.js';
 
 const router = Router();
@@ -18,13 +19,16 @@ router.post('/routers/test-snmp', testSnmp);
 router.post('/routers/:id/enable-snmp', enableSnmpOnMikrotik);
 router.post('/routers', addRouter);
 router.put('/routers/:id', editRouter);
+router.post('/routers/:id/toggle-traffic-sampling', toggleRouterTrafficSampling);
 router.delete('/routers/:id', deleteRouter);
 
 // Router Live Interface Monitoring & Inspection
 router.get('/routers/:id/interfaces', getRouterInterfaces);
 router.get('/routers/:id/interfaces/:interface_name/samples', getInterfaceTrafficSamples);
+router.get('/routers/:id/interfaces/:interface_name/history', getInterfaceTrafficHistory);
 router.post('/routers/:id/interfaces/toggle-monitor', toggleInterfaceMonitoring);
 router.post('/routers/:id/interfaces/link-node', linkInterfaceToFtthNode);
+router.post('/traffic/rollup-now', triggerManualTrafficRollup);
 
 // Router Profiles
 router.get('/router-profiles', listProfiles);

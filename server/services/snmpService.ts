@@ -1,5 +1,13 @@
 import snmp from 'net-snmp';
 
+export interface SnmpV3Options {
+  username?: string;
+  authProto?: 'SHA' | 'MD5';
+  authPass?: string;
+  privProto?: 'AES' | 'DES';
+  privPass?: string;
+}
+
 export interface SnmpTestResult {
   success: boolean;
   message: string;
@@ -19,14 +27,33 @@ export interface SnmpInterfaceRecord {
 }
 
 /**
- * Helper untuk membuat SNMP Session dengan konfigurasi timeout & retries
+ * Helper untuk membuat SNMP Session (v1, v2c, maupun v3 authPriv)
  */
 function createSession(
   host: string,
   port = 161,
   community = 'public',
-  version: 'v1' | 'v2c' = 'v2c'
+  version: 'v1' | 'v2c' | 'v3' = 'v2c',
+  v3Options?: SnmpV3Options
 ): any {
+  if (version === 'v3') {
+    const isMd5 = (v3Options?.authProto || 'SHA').toUpperCase() === 'MD5';
+    const isDes = (v3Options?.privProto || 'AES').toUpperCase() === 'DES';
+    const user = {
+      name: v3Options?.username || 'arbill_snmp',
+      level: snmp.SecurityLevel.authPriv,
+      authProtocol: isMd5 ? snmp.AuthProtocols.md5 : snmp.AuthProtocols.sha,
+      authKey: v3Options?.authPass || '',
+      privProtocol: isDes ? snmp.PrivProtocols.des : snmp.PrivProtocols.aes,
+      privKey: v3Options?.privPass || ''
+    };
+    return snmp.createV3Session(host, user, {
+      port: Number(port) || 161,
+      timeout: 3500,
+      retries: 1
+    });
+  }
+
   const snmpVersion = version === 'v1' ? snmp.Version1 : snmp.Version2c;
   return snmp.createSession(host, community, {
     port: Number(port) || 161,
@@ -37,19 +64,20 @@ function createSession(
 }
 
 /**
- * Tes koneksi SNMP ke Router MikroTik
+ * Tes koneksi SNMP ke Router MikroTik (mendukung v1, v2c, dan v3 authPriv)
  * Membaca sysDescr.0, sysName.0, sysUpTime.0
  */
 export async function testSnmpConnection(
   host: string,
   port = 161,
   community = 'public',
-  version: 'v1' | 'v2c' = 'v2c'
+  version: 'v1' | 'v2c' | 'v3' = 'v2c',
+  v3Options?: SnmpV3Options
 ): Promise<SnmpTestResult> {
   return new Promise((resolve) => {
     let session: any;
     try {
-      session = createSession(host, port, community, version);
+      session = createSession(host, port, community, version, v3Options);
     } catch (err: any) {
       return resolve({
         success: false,
@@ -64,11 +92,15 @@ export async function testSnmpConnection(
     ];
 
     session.get(oids, (error: any, varbinds: any[]) => {
-      session.close();
+      try {
+        session.close();
+      } catch (_) {}
+
       if (error) {
+        const idLabel = version === 'v3' ? `User: ${v3Options?.username || 'arbill_snmp'}` : `Community: ${community}`;
         return resolve({
           success: false,
-          message: `SNMP Timeout / Gagal terhubung ke ${host}:${port} (Community: ${community}): ${error.toString()}`
+          message: `SNMP ${version.toUpperCase()} Timeout / Gagal terhubung ke ${host}:${port} (${idLabel}): ${error.toString()}`
         });
       }
 
@@ -97,7 +129,7 @@ export async function testSnmpConnection(
 
       resolve({
         success: true,
-        message: `⚡ SNMP Terhubung Sukses! System: "${sysName || host}" (Uptime: ${uptime || 'Aktif'})`,
+        message: `⚡ SNMP ${version.toUpperCase()} Terhubung Sukses! System: "${sysName || host}" (Uptime: ${uptime || 'Aktif'})`,
         sysName,
         sysDescr,
         uptime
@@ -108,18 +140,19 @@ export async function testSnmpConnection(
 
 /**
  * Menarik seluruh interface router MikroTik via SNMP 64-bit (ifHCInOctets / ifHCOutOctets)
- * Mendukung pembacaan berkecepatan tinggi tanpa overhead TCP/API
+ * Mendukung v1, v2c, dan v3 authPriv terenkripsi
  */
 export async function fetchRouterInterfacesSnmp(
   host: string,
   port = 161,
   community = 'public',
-  version: 'v1' | 'v2c' = 'v2c'
+  version: 'v1' | 'v2c' | 'v3' = 'v2c',
+  v3Options?: SnmpV3Options
 ): Promise<SnmpInterfaceRecord[]> {
   return new Promise((resolve) => {
     let session: any;
     try {
-      session = createSession(host, port, community, version);
+      session = createSession(host, port, community, version, v3Options);
     } catch (err) {
       return resolve([]);
     }
@@ -232,7 +265,6 @@ export async function fetchRouterInterfacesSnmp(
             if (idx > 0) {
               const rec = getOrInit(idx);
               try {
-                // Buffer 64-bit integer
                 if (Buffer.isBuffer(vb.value)) {
                   rec.rxByte = BigInt('0x' + vb.value.toString('hex'));
                 } else {
