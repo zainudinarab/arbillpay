@@ -779,3 +779,62 @@ export async function deleteOltOnuCLI(
     };
   }
 }
+
+/**
+ * 8. Aktifkan Layanan SNMP pada OLT via SSH CLI
+ */
+export async function enableOltSnmpCLI(
+  olt: OltRecord,
+  community = 'public'
+): Promise<{ success: boolean; message: string; output: string }> {
+  const brand = olt.brand || 'vsol';
+  let commands: string[] = [];
+
+  if (brand === 'vsol' || brand === 'hsgq' || brand === 'bdcom') {
+    commands = [
+      'configure terminal',
+      'snmp-server start',
+      `snmp-server community ${community} ro`,
+      'end',
+      'write'
+    ];
+  } else if (brand === 'zte') {
+    commands = [
+      'configure terminal',
+      'snmp-server server enable',
+      `snmp-server community ${community} view AllView rw`,
+      'end',
+      'write'
+    ];
+  } else if (brand === 'huawei') {
+    commands = [
+      'system-view',
+      'snmp-agent',
+      'snmp-agent sys-info version v2c',
+      `snmp-agent community read ${community}`,
+      'return',
+      'save'
+    ];
+  } else {
+    commands = [
+      `snmp-server community ${community} ro`,
+      'write'
+    ];
+  }
+
+  try {
+    const output = await executeOltSshCommands(olt, commands, 12000);
+    return {
+      success: true,
+      message: `SNMP berhasil diaktifkan pada OLT ${olt.name} dengan Community "${community}"!`,
+      output
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Gagal mengaktifkan SNMP via SSH: ${err.message}`,
+      output: ''
+    };
+  }
+}
+

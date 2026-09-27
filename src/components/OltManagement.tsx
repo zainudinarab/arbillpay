@@ -545,6 +545,35 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
     }
   };
 
+  // Aktifkan SNMP OLT otomatis via SSH (seperti MikroTik tanpa perlu buka web OLT)
+  const handleEnableSnmp = async (olt: OltItem) => {
+    if (!window.confirm(`Aktifkan layanan SNMP pada OLT "${olt.name}" via SSH secara otomatis dengan Community "${olt.snmp_community || 'public'}"?`)) return;
+    try {
+      setToastMsg({ type: 'success', text: `Mengirim perintah konfigurasi SNMP ke OLT ${olt.name} via SSH...` });
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${olt.id}/enable-snmp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ community: olt.snmp_community || 'public' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: `✅ ${data.message} ${data.test?.success ? `(Status: ${data.test.sysName || 'Aktif'})` : ''}`
+        });
+        loadOlts();
+      } else {
+        setToastMsg({
+          type: 'error',
+          text: data.message || 'Gagal mengaktifkan SNMP OLT via SSH'
+        });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Error aktifkan SNMP: ${err.message}` });
+    }
+  };
+
   // Read optical power for an ONU
   const handleCheckOpticalPower = async (onu: OnuListItem) => {
     const onuKey = `${onu.pon_port}:${onu.onu_id}`;
@@ -921,6 +950,16 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         >
                           <Activity size={12} />
                           <span>Tes SNMP</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleEnableSnmp(olt)}
+                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Konfigurasi & Aktifkan SNMP otomatis di OLT via CLI SSH"
+                        >
+                          <Zap size={12} />
+                          <span>Aktifkan SNMP</span>
                         </button>
 
                         <button

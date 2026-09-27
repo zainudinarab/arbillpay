@@ -8,6 +8,7 @@ import {
   scanUnconfiguredOnus,
   registerOltOnuCLI,
   deleteOltOnuCLI,
+  enableOltSnmpCLI,
   OltRecord
 } from '../services/oltService.js';
 import { testSnmpConnection } from '../services/snmpService.js';
@@ -658,3 +659,34 @@ export async function getUnconfiguredOnusAction(req: Request, res: Response) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
+export async function enableOltSnmpAction(req: Request, res: Response) {
+  const { id } = req.params;
+  const { community = 'public' } = req.body;
+
+  try {
+    const r = await pool.query('SELECT * FROM olts WHERE id = $1', [id]);
+    if (r.rows.length === 0) return res.status(404).json({ success: false, message: 'OLT tidak ditemukan.' });
+    const olt: OltRecord = r.rows[0];
+
+    const result = await enableOltSnmpCLI(olt, community);
+    if (!result.success) {
+      return res.status(500).json(result);
+    }
+
+    // Update community & snmp_enabled di database
+    await pool.query('UPDATE olts SET snmp_enabled = true, snmp_community = $1 WHERE id = $2', [community, id]);
+
+    // Sekaligus lakukan tes koneksi SNMP
+    const testResult = await testSnmpConnection(olt.ip_address, olt.snmp_port || 161, community, (olt.snmp_version as any) || 'v2c');
+
+    res.json({
+      success: true,
+      message: result.message,
+      test: testResult
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal mengaktifkan SNMP: ${err.message}` });
+  }
+}
+

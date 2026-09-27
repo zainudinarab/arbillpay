@@ -14,6 +14,7 @@ import {
   getOnuOptical,
   rebootOnuAction,
   testOltSnmpAction,
+  enableOltSnmpAction,
   getUnconfiguredOnusAction
 } from '../controllers/oltController.js';
 
@@ -26,6 +27,7 @@ router.put('/olts/:id', editOlt);
 router.delete('/olts/:id', deleteOlt);
 router.post('/olts/:id/test-connection', testOlt);
 router.post('/olts/:id/test-snmp', testOltSnmpAction);
+router.post('/olts/:id/enable-snmp', enableOltSnmpAction);
 router.post('/olts/:id/link-node', linkOltToNode);
 
 // OLT Port PON & ONU Control & Database Cache
