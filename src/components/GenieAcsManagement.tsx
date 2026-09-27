@@ -74,6 +74,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   const [showWifiPassword, setShowWifiPassword] = useState<boolean>(false);
   const [isWifiSaving, setIsWifiSaving] = useState<boolean>(false);
 
+  const [modalWanMode, setModalWanMode] = useState<'pppoe' | 'bridge'>('pppoe');
   const [modalWanUsername, setModalWanUsername] = useState<string>('');
   const [modalWanPassword, setModalWanPassword] = useState<string>('');
   const [modalWanVlan, setModalWanVlan] = useState<string>('');
@@ -382,8 +383,9 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
 
   // Save WAN / PPPoE Config
   const handleSaveWanConfig = async () => {
-    if (!selectedDeviceForManage || !modalWanUsername) {
-      alert('Username PPPoE wajib diisi.');
+    if (!selectedDeviceForManage) return;
+    if (modalWanMode === 'pppoe' && !modalWanUsername) {
+      alert('Username PPPoE wajib diisi untuk mode Route.');
       return;
     }
 
@@ -396,6 +398,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          mode: modalWanMode,
           username: modalWanUsername,
           password: modalWanPassword,
           vlan_id: modalWanVlan,
@@ -1320,74 +1323,166 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                           </div>
                         </div>
 
-                        {/* PPPoE Username */}
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Username PPPoE *</label>
-                          <input
-                            type="text"
-                            required
-                            value={modalWanUsername}
-                            onChange={(e) => setModalWanUsername(e.target.value)}
-                            placeholder="Contoh: ppp_ahmad@speednet"
-                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          />
-                        </div>
-
-                        {/* PPPoE Password */}
-                        <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Password PPPoE</label>
-                          <div className="relative">
-                            <input
-                              type={showWanPassword ? 'text' : 'password'}
-                              value={modalWanPassword}
-                              onChange={(e) => setModalWanPassword(e.target.value)}
-                              placeholder="Ketik password baru (biarkan kosong jika tidak diubah)"
-                              className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            />
+                        {/* WAN Mode Selector (PPPoE vs Bridge Hotspot) */}
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Pilih Tipe / Mode Operasi WAN:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <button
                               type="button"
-                              onClick={() => setShowWanPassword(!showWanPassword)}
-                              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                              onClick={() => setModalWanMode('pppoe')}
+                              className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                                modalWanMode === 'pppoe'
+                                  ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs'
+                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
                             >
-                              {showWanPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                              <div className="flex items-center gap-2 font-bold text-xs">
+                                <Globe size={15} className="text-indigo-600" />
+                                <span>🌐 Mode PPPoE (Route Internet)</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                Untuk pelanggan internet rumahan/bulanan. ONT melakukan dial PPPoE, NAT, dan DHCP lokal.
+                              </p>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setModalWanMode('bridge')}
+                              className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                                modalWanMode === 'bridge'
+                                  ? 'bg-amber-50 border-amber-600 text-amber-900 shadow-xs'
+                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 font-bold text-xs">
+                                <Zap size={15} className="text-amber-600" />
+                                <span>⚡ Mode Bridge (Hotspot Voucher)</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                Jembatan langsung ke Hotspot MikroTik. HP pengguna langsung muncul login voucher Arbill.
+                              </p>
                             </button>
                           </div>
                         </div>
 
-                        {/* VLAN ID & Connection Index */}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID (Opsional)</label>
-                            <input
-                              type="number"
-                              value={modalWanVlan}
-                              onChange={(e) => setModalWanVlan(e.target.value)}
-                              placeholder="Contoh: 100"
-                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            />
-                          </div>
+                        {modalWanMode === 'bridge' ? (
+                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
+                            <div className="flex items-start gap-3">
+                              <Zap size={18} className="text-amber-600 mt-0.5 shrink-0" />
+                              <div className="text-xs text-amber-900 leading-relaxed">
+                                <strong className="block font-bold">Mode Bridge Hotspot Aktif</strong>
+                                Trafik Wi-Fi atau LAN akan langsung diteruskan ke VLAN Hotspot MikroTik tanpa proses NAT di modem. Pengguna yang tersambung ke Wi-Fi akan langsung memunculkan form login voucher Arbill.
+                              </div>
+                            </div>
 
-                          <div>
-                            <label className="block text-xs font-bold text-slate-700 mb-1">Indeks Profil WAN</label>
-                            <input
-                              type="text"
-                              disabled
-                              value={`Device.1 / PPP.${modalPppIndex}`}
-                              className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500"
-                            />
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID Hotspot MikroTik *</label>
+                              <input
+                                type="number"
+                                required
+                                value={modalWanVlan}
+                                onChange={(e) => setModalWanVlan(e.target.value)}
+                                placeholder="Contoh: 100 atau 200"
+                                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                              />
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Masukkan ID VLAN Hotspot dari MikroTik yang melewati port OLT Anda.
+                              </p>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <>
+                            {/* PPPoE Username */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-xs font-bold text-slate-700">Username PPPoE *</label>
+                                {deviceDetail?.customer?.pppoe_username && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setModalWanUsername(deviceDetail.customer.pppoe_username)}
+                                    className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                                  >
+                                    Salin dari Akun Pelanggan ({deviceDetail.customer.pppoe_username})
+                                  </button>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                required
+                                value={modalWanUsername}
+                                onChange={(e) => setModalWanUsername(e.target.value)}
+                                placeholder="Contoh: ppp_ahmad@speednet"
+                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              />
+                            </div>
+
+                            {/* PPPoE Password */}
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">Password PPPoE</label>
+                              <div className="relative">
+                                <input
+                                  type={showWanPassword ? 'text' : 'password'}
+                                  value={modalWanPassword}
+                                  onChange={(e) => setModalWanPassword(e.target.value)}
+                                  placeholder="Ketik password baru (biarkan kosong jika tidak diubah)"
+                                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowWanPassword(!showWanPassword)}
+                                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                >
+                                  {showWanPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* VLAN ID & Connection Index */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID (Opsional)</label>
+                                <input
+                                  type="number"
+                                  value={modalWanVlan}
+                                  onChange={(e) => setModalWanVlan(e.target.value)}
+                                  placeholder="Contoh: 200"
+                                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Indeks Profil WAN</label>
+                                <input
+                                  type="text"
+                                  disabled
+                                  value={`Device.1 / PPP.${modalPppIndex}`}
+                                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
 
                         {/* Submit Button */}
                         <div className="pt-3 border-t border-slate-100 flex justify-end">
                           <button
                             type="button"
                             onClick={handleSaveWanConfig}
-                            disabled={isWanSaving || !modalWanUsername}
-                            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                            disabled={isWanSaving || (modalWanMode === 'pppoe' && !modalWanUsername)}
+                            className={`px-6 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 text-white ${
+                              modalWanMode === 'bridge' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                            }`}
                           >
                             {isWanSaving && <RefreshCw size={14} className="animate-spin" />}
-                            <span>{isWanSaving ? 'Menerapkan TR-069...' : '💾 Terapkan Konfigurasi WAN PPPoE'}</span>
+                            <span>
+                              {isWanSaving 
+                                ? 'Menerapkan TR-069...' 
+                                : modalWanMode === 'bridge'
+                                ? '⚡ Terapkan Mode Bridge Hotspot'
+                                : '💾 Terapkan Mode PPPoE Route'}
+                            </span>
                           </button>
                         </div>
                       </div>

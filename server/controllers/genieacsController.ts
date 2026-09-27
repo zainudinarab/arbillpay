@@ -502,27 +502,57 @@ export async function getDeviceDetail(req: Request, res: Response) {
  */
 export async function updateDeviceWan(req: Request, res: Response) {
   const { device_id } = req.params;
-  const { username, password, vlan_id, wan_conn_index = '1', ppp_index = '1' } = req.body;
+  const { 
+    mode = 'pppoe', 
+    username, 
+    password, 
+    vlan_id, 
+    wan_conn_index = '1', 
+    ppp_index = '1' 
+  } = req.body;
   const cleanUrl = genieAcsSettings.url;
 
-  if (!username) {
-    return res.status(400).json({ success: false, message: 'Username PPPoE wajib diisi.' });
-  }
+  const parameterValues: [string, any, string][] = [];
 
-  const parameterValues: [string, any, string][] = [
-    [`InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.Username`, username, 'xsd:string']
-  ];
-
-  if (password) {
+  if (mode === 'bridge') {
     parameterValues.push([
-      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.Password`, password, 'xsd:string'
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.ConnectionType`, 'PPPoE_Bridged', 'xsd:string'
     ]);
-  }
-
-  if (vlan_id) {
     parameterValues.push([
-      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, 'FALSE', 'xsd:boolean'
     ]);
+    if (vlan_id) {
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
+      ]);
+    }
+  } else {
+    // Mode PPPoE Route
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username PPPoE wajib diisi untuk mode Route.' });
+    }
+
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.ConnectionType`, 'IP_Routed', 'xsd:string'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, 'TRUE', 'xsd:boolean'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.Username`, username, 'xsd:string'
+    ]);
+
+    if (password) {
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.Password`, password, 'xsd:string'
+      ]);
+    }
+
+    if (vlan_id) {
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
+      ]);
+    }
   }
 
   try {
@@ -536,9 +566,10 @@ export async function updateDeviceWan(req: Request, res: Response) {
     });
 
     if (r.ok) {
+      const modeDesc = mode === 'bridge' ? 'Bridge Hotspot (Voucher)' : `PPPoE Route (${username})`;
       res.json({
         success: true,
-        message: `🌐 Pengaturan WAN PPPoE (${username}) berhasil dikirim ke ONT "${device_id}" via TR-069!`
+        message: `🌐 Pengaturan WAN ${modeDesc} berhasil dikirim ke ONT "${device_id}" via TR-069!`
       });
     } else {
       res.status(500).json({ success: false, message: `GenieACS gagal memproses task WAN (HTTP ${r.status})` });
