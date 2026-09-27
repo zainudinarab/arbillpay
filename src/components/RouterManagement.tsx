@@ -828,212 +828,252 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
       {/* Modal Tambah Router Baru */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-4xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center bg-blue-50/60 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center border border-blue-100">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 text-[#2563EB] flex items-center justify-center border border-blue-200">
                   <Plus size={20} />
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Tambah Router Mikrotik Baru</h3>
-                  <p className="text-xs text-slate-400">Tes koneksi terlebih dahulu sebelum menyimpan ke database</p>
+                  <p className="text-xs text-slate-500">Konfigurasi API RouterOS dan SNMP Poller</p>
                 </div>
               </div>
               <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
             </div>
 
-            <form onSubmit={handleCreateRouter} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: Router Mikrotik Utama (CCR Pusat)"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                </div>
+            <form onSubmit={handleCreateRouter} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+                  {/* Kolom 1: Parameter Akses & API MikroTik */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#2563EB]"></span>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Akses Router & Socket API</h4>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: arab.net"
-                    value={dnsName}
-                    onChange={(e) => setDnsName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">Identitas penyedia / domain voucher (misal: arab.net)</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway Login)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: 10.0.0.1"
-                    value={hotspotIp}
-                    onChange={(e) => setHotspotIp(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">IP Host login voucher langsung (cth: 10.0.0.1)</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="192.168.88.1"
-                    value={ipAddress}
-                    onChange={(e) => setIpAddress(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">Host untuk socket RouterOS API</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Port API (Default: 8728)</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="8728"
-                    value={apiPort}
-                    onChange={(e) => setApiPort(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Username Login Router</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="admin"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password Login Router</label>
-                <input
-                  type="password"
-                  placeholder="Password Mikrotik..."
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
-                />
-              </div>
-
-              {/* Pengaturan Poller SNMP */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Radio size={16} className="text-indigo-600" />
-                    <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller (High-Precision 1-Menit)</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={snmpEnabled}
-                    onChange={(e) => setSnmpEnabled(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Menarik trafik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
-                </p>
-
-                {snmpEnabled && (
-                  <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
-                        <input
-                          type="number"
-                          value={snmpPort}
-                          onChange={(e) => setSnmpPort(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          placeholder="161"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
                         <input
                           type="text"
-                          value={snmpCommunity}
-                          onChange={(e) => setSnmpCommunity(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          placeholder="public"
+                          required
+                          placeholder="Contoh: Router Mikrotik Utama"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
                         />
                       </div>
+
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
-                        <select
-                          value={snmpVersion}
-                          onChange={(e) => setSnmpVersion(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="v2c">v2c (64-bit Recommended)</option>
-                          <option value="v1">v1 (32-bit Legacy)</option>
-                        </select>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: arab.net"
+                          value={dnsName}
+                          onChange={(e) => setDnsName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-[#2563EB] focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Domain voucher (misal: arab.net)</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway)</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: 10.0.0.1"
+                          value={hotspotIp}
+                          onChange={(e) => setHotspotIp(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Host login voucher (10.0.0.1)</span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="192.168.88.1"
+                          value={ipAddress}
+                          onChange={(e) => setIpAddress(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Host socket RouterOS API</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Port API (Default: 8728)</label>
+                        <input
+                          type="number"
+                          required
+                          placeholder="8728"
+                          value={apiPort}
+                          onChange={(e) => setApiPort(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Username Login Router</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="admin"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Password Login Router</label>
+                      <input
+                        type="password"
+                        placeholder="Password Mikrotik..."
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-[#2563EB] focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* Tombol Test Socket API */}
+                    <div className="pt-2">
                       <button
                         type="button"
-                        onClick={handleTestSnmp}
-                        disabled={testingSnmp}
-                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                        onClick={handleTestConnection}
+                        disabled={testingConn}
+                        className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                       >
-                        <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
-                        <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
+                        <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
+                        <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
                       </button>
-                      {testSnmpResult && (
-                        <span className={`text-[11px] font-bold ${testSnmpResult.success ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {testSnmpResult.message}
-                        </span>
+
+                      {testConnResult && (
+                        <div className={`mt-2.5 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                          testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                        }`}>
+                          {testConnResult.success ? <CheckCircle2 size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+                          <span className="text-[11px] leading-tight">{testConnResult.message}</span>
+                        </div>
                       )}
                     </div>
                   </div>
-                )}
+
+                  {/* Kolom 2: SNMP Poller Settings */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">SNMP Poller (Sampling 1-Menit)</h4>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-3.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Radio size={16} className="text-indigo-600" />
+                          <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={snmpEnabled}
+                          onChange={(e) => setSnmpEnabled(e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Menarik counter statistik trafik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
+                      </p>
+
+                      {snmpEnabled ? (
+                        <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
+                              <input
+                                type="number"
+                                value={snmpPort}
+                                onChange={(e) => setSnmpPort(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                placeholder="161"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                              <input
+                                type="text"
+                                value={snmpCommunity}
+                                onChange={(e) => setSnmpCommunity(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                placeholder="public"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                              <select
+                                value={snmpVersion}
+                                onChange={(e) => setSnmpVersion(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                              >
+                                <option value="v2c">v2c (64-bit Recommended)</option>
+                                <option value="v1">v1 (32-bit Legacy)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="pt-1">
+                            <button
+                              type="button"
+                              onClick={handleTestSnmp}
+                              disabled={testingSnmp}
+                              className="w-full sm:w-auto px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                              <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
+                            </button>
+
+                            {testSnmpResult && (
+                              <div className={`mt-2 p-2.5 rounded-xl border text-[11px] font-bold ${testSnmpResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                                {testSnmpResult.message}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 bg-blue-50/70 rounded-xl border border-blue-100 text-[10px] text-blue-700 leading-relaxed">
+                            💡 <b>Tips:</b> Jika router menggunakan VPN / Remote Tunnel, isi Port SNMP dengan port forward tunnel UDP (misal: <code>4479</code>).
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl text-[11px] text-amber-700">
+                          SNMP dinonaktifkan. Pengambilan trafik akan menggunakan fallback polling API standar.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* TEST CONNECTION BUTTON & STATUS BANNER */}
-              <div className="pt-2">
+              {/* Fixed Footer: Pinned at bottom */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                 <button
                   type="button"
-                  onClick={handleTestConnection}
-                  disabled={testingConn}
-                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-xl cursor-pointer transition-all"
                 >
-                  <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
-                  <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
+                  Batal
                 </button>
-
-                {testConnResult && (
-                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
-                    }`}>
-                    {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                    <span>{testConnResult.message}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={submitLoading}
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-[#2563EB] hover:bg-blue-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2 transition-all"
+                >
                   {submitLoading && <RefreshCw size={14} className="animate-spin" />}
                   <span>{submitLoading ? 'Menyimpan...' : 'Simpan Router'}</span>
                 </button>
@@ -1045,247 +1085,292 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
       {/* Modal Edit Router */}
       {showEditModal && editingRouter && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-lg shadow-2xl overflow-hidden animate-slide-up">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl border border-slate-100 w-full max-w-4xl shadow-2xl overflow-hidden animate-slide-up max-h-[92vh] flex flex-col">
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex justify-between items-center bg-indigo-50/60 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center border border-indigo-200">
                   <Edit size={20} />
                 </div>
                 <div>
                   <h3 className="font-sans font-bold text-base text-slate-800">Edit Config Router Mikrotik</h3>
-                  <p className="text-xs text-slate-500">Ubah IP Address, Port, atau Password API</p>
+                  <p className="text-xs text-slate-500">Ubah IP Address, Port, Password API, dan SNMP Poller</p>
                 </div>
               </div>
-              <button onClick={() => { setShowEditModal(false); setEditingRouter(null); }} className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer">&times;</button>
+              <button
+                onClick={() => { setShowEditModal(false); setEditingRouter(null); }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer"
+              >
+                &times;
+              </button>
             </div>
 
-            <form onSubmit={handleUpdateRouter} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
+            <form onSubmit={handleUpdateRouter} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 items-start">
+                  {/* Kolom 1: Parameter Akses & API MikroTik */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Akses Router & Socket API</h4>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: arab.net"
-                    value={dnsName}
-                    onChange={(e) => setDnsName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">Identitas penyedia / domain voucher (misal: arab.net)</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway Login)</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Contoh: 10.0.0.1"
-                    value={hotspotIp}
-                    onChange={(e) => setHotspotIp(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">IP Host login voucher langsung (cth: 10.0.0.1)</span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
-                  <input
-                    type="text"
-                    required
-                    value={ipAddress}
-                    onChange={(e) => setIpAddress(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                  <span className="text-[10px] text-slate-400">Host untuk socket RouterOS API</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">API Port (Default: 8728)</label>
-                  <input
-                    type="number"
-                    required
-                    value={apiPort}
-                    onChange={(e) => setApiPort(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
-                  <input
-                    type="text"
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional)</label>
-                <input
-                  type="password"
-                  placeholder="Kosongkan jika tidak diubah..."
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
-                />
-              </div>
-
-              {/* Pengaturan Poller SNMP */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Radio size={16} className="text-indigo-600" />
-                    <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller (High-Precision 1-Menit)</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={snmpEnabled}
-                    onChange={(e) => setSnmpEnabled(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                  />
-                </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  Menarik trafik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
-                </p>
-
-                {snmpEnabled && (
-                  <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
-                        <input
-                          type="number"
-                          value={snmpPort}
-                          onChange={(e) => setSnmpPort(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          placeholder="161"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Nama Router</label>
                         <input
                           type="text"
-                          value={snmpCommunity}
-                          onChange={(e) => setSnmpCommunity(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          placeholder="public"
+                          required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-sans focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                         />
                       </div>
+
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
-                        <select
-                          value={snmpVersion}
-                          onChange={(e) => setSnmpVersion(e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                        >
-                          <option value="v2c">v2c (64-bit Recommended)</option>
-                          <option value="v1">v1 (32-bit Legacy)</option>
-                        </select>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Domain Hotspot</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: arab.net"
+                          value={dnsName}
+                          onChange={(e) => setDnsName(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-indigo-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Domain voucher (misal: arab.net)</span>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">IP Hotspot (Gateway)</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Contoh: 10.0.0.1"
+                          value={hotspotIp}
+                          onChange={(e) => setHotspotIp(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Host login voucher (10.0.0.1)</span>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">IP Address / Domain API</label>
+                        <input
+                          type="text"
+                          required
+                          value={ipAddress}
+                          onChange={(e) => setIpAddress(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                        />
+                        <span className="text-[10px] text-slate-400">Host socket RouterOS API</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">API Port (Default: 8728)</label>
+                        <input
+                          type="number"
+                          required
+                          value={apiPort}
+                          onChange={(e) => setApiPort(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
+                        <input
+                          type="text"
+                          required
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Password Baru (Opsional)</label>
+                      <input
+                        type="password"
+                        placeholder="Kosongkan jika tidak diubah..."
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    {/* Tombol Test API */}
+                    <div className="pt-2">
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!editingRouter) return;
-                          setTestingSnmp(true);
-                          setTestSnmpResult(null);
-                          try {
-                            const apiUrl = getApiUrl();
-                            const res = await fetch(`${apiUrl}/api/routers/${editingRouter.id}/enable-snmp`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                community: snmpCommunity.trim() || 'public',
-                                port: parseInt(snmpPort) || 161,
-                                version: snmpVersion
-                              })
-                            });
-                            const data = await parseJsonResponse(res);
-                            if (data.success) {
-                              setSnmpEnabled(true);
-                              setTestSnmpResult({ success: true, message: data.message });
-                              setToastMsg({ type: 'success', text: data.message });
-                              fetchRouters();
-                            } else {
-                              setTestSnmpResult({ success: false, message: data.message });
-                            }
-                          } catch (e: any) {
-                            setTestSnmpResult({ success: false, message: e.message });
-                          } finally {
-                            setTestingSnmp(false);
-                          }
-                        }}
-                        disabled={testingSnmp}
-                        className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                        onClick={handleTestConnection}
+                        disabled={testingConn}
+                        className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                       >
-                        <Zap size={13} className={testingSnmp ? 'animate-spin' : ''} />
-                        <span>{testingSnmp ? 'Mengaktifkan di MikroTik...' : '🚀 Aktifkan di MikroTik Otomatis (via API)'}</span>
+                        <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
+                        <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={handleTestSnmp}
-                        disabled={testingSnmp}
-                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
-                        <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
-                      </button>
-                      {testSnmpResult && (
-                        <div className={`w-full mt-1.5 p-2 rounded-xl border text-[11px] font-bold ${testSnmpResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
-                          {testSnmpResult.message}
+                      {testConnResult && (
+                        <div className={`mt-2.5 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${
+                          testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
+                        }`}>
+                          {testConnResult.success ? <CheckCircle2 size={16} className="shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+                          <span className="text-[11px] leading-tight">{testConnResult.message}</span>
                         </div>
                       )}
                     </div>
                   </div>
-                )}
+
+                  {/* Kolom 2: Pengaturan Poller SNMP */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">SNMP Poller (Sampling 1-Menit)</h4>
+                    </div>
+
+                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-3.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Radio size={16} className="text-indigo-600" />
+                          <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={snmpEnabled}
+                          onChange={(e) => setSnmpEnabled(e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        Menarik counter statistik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
+                      </p>
+
+                      {snmpEnabled ? (
+                        <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
+                              <input
+                                type="number"
+                                value={snmpPort}
+                                onChange={(e) => setSnmpPort(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                placeholder="161"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                              <input
+                                type="text"
+                                value={snmpCommunity}
+                                onChange={(e) => setSnmpCommunity(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                placeholder="public"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                              <select
+                                value={snmpVersion}
+                                onChange={(e) => setSnmpVersion(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                              >
+                                <option value="v2c">v2c (64-bit Recommended)</option>
+                                <option value="v1">v1 (32-bit Legacy)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!editingRouter) return;
+                                setTestingSnmp(true);
+                                setTestSnmpResult(null);
+                                try {
+                                  const apiUrl = getApiUrl();
+                                  const res = await fetch(`${apiUrl}/api/routers/${editingRouter.id}/enable-snmp`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      community: snmpCommunity.trim() || 'public',
+                                      port: parseInt(snmpPort) || 161,
+                                      version: snmpVersion
+                                    })
+                                  });
+                                  const data = await parseJsonResponse(res);
+                                  if (data.success) {
+                                    setSnmpEnabled(true);
+                                    setTestSnmpResult({ success: true, message: data.message });
+                                    setToastMsg({ type: 'success', text: data.message });
+                                    fetchRouters();
+                                  } else {
+                                    setTestSnmpResult({ success: false, message: data.message });
+                                  }
+                                } catch (e: any) {
+                                  setTestSnmpResult({ success: false, message: e.message });
+                                } finally {
+                                  setTestingSnmp(false);
+                                }
+                              }}
+                              disabled={testingSnmp}
+                              className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <Zap size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                              <span>{testingSnmp ? 'Mengaktifkan di MikroTik...' : '🚀 Aktifkan di MikroTik Otomatis (via API)'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={handleTestSnmp}
+                              disabled={testingSnmp}
+                              className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                              <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
+                            </button>
+                          </div>
+
+                          {testSnmpResult && (
+                            <div className={`p-2.5 rounded-xl border text-[11px] font-bold ${testSnmpResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
+                              {testSnmpResult.message}
+                            </div>
+                          )}
+
+                          <div className="p-2.5 bg-blue-50/70 rounded-xl border border-blue-100 text-[10px] text-blue-700 leading-relaxed">
+                            💡 <b>Tips:</b> Jika router menggunakan VPN / Remote Tunnel, isi Port SNMP dengan port forward tunnel UDP (misal: <code>4479</code>).
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl text-[11px] text-amber-700">
+                          SNMP dinonaktifkan. Pengambilan trafik akan menggunakan fallback polling API standar.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* TEST CONNECTION BUTTON & STATUS BANNER */}
-              <div className="pt-2">
+              {/* Fixed Footer: Pinned at bottom */}
+              <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50/90 flex items-center justify-between shrink-0">
                 <button
                   type="button"
-                  onClick={handleTestConnection}
-                  disabled={testingConn}
-                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                  onClick={() => { setShowEditModal(false); setEditingRouter(null); }}
+                  className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-xl cursor-pointer transition-all"
                 >
-                  <Radio size={14} className={testingConn ? 'animate-pulse text-amber-400' : 'text-emerald-400'} />
-                  <span>{testingConn ? 'Menguji Koneksi Socket Mikrotik API...' : '⚡ Tes Koneksi Router Mikrotik (Node RouterOS)'}</span>
+                  Batal
                 </button>
-
-                {testConnResult && (
-                  <div className={`mt-3 p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fade-in ${testConnResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'
-                    }`}>
-                    {testConnResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-                    <span>{testConnResult.message}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => { setShowEditModal(false); setEditingRouter(null); }} className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer">Batal</button>
-                <button type="submit" disabled={submitLoading} className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={submitLoading}
+                  className="px-6 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md cursor-pointer flex items-center gap-2 transition-all"
+                >
                   {submitLoading && <RefreshCw size={14} className="animate-spin" />}
                   <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan'}</span>
                 </button>
