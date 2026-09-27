@@ -2,7 +2,40 @@ import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { genieAcsSettings, updateGenieAcsSettings } from '../services/genieacsService.js';
 
-export function getSettings(req: Request, res: Response) {
+function getGenieAcsHeaders(user = genieAcsSettings.username, pass = genieAcsSettings.password): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (user && pass) {
+    headers['Authorization'] = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+  }
+  return headers;
+}
+
+// Inisialisasi pengaturan GenieACS dari database system_settings saat awal
+let isInitialized = false;
+async function initGenieAcsFromDb() {
+  if (isInitialized) return;
+  try {
+    const res = await pool.query(
+      "SELECT key, value FROM system_settings WHERE key IN ('genieacs_url', 'genieacs_username', 'genieacs_password')"
+    );
+    const map = new Map(res.rows.map(r => [r.key, r.value]));
+    if (map.has('genieacs_url')) {
+      updateGenieAcsSettings({
+        url: map.get('genieacs_url'),
+        username: map.get('genieacs_username') || '',
+        password: map.get('genieacs_password') || ''
+      });
+    }
+    isInitialized = true;
+  } catch (err: any) {
+    console.warn('[GENIEACS] Notice init from DB:', err.message);
+  }
+}
+
+export async function getSettings(req: Request, res: Response) {
+  await initGenieAcsFromDb();
   res.json({ success: true, settings: genieAcsSettings });
 }
 
@@ -13,10 +46,28 @@ export async function saveSettings(req: Request, res: Response) {
   const cleanUrl = url.trim().replace(/\/+$/, '');
   updateGenieAcsSettings({ url: cleanUrl, username: username || '', password: password || '', status: 'unknown' });
 
+  // Simpan ke database PostgreSQL system_settings agar permanen
   try {
-    const fetchRes = await fetch(`${cleanUrl}/devices?projection=_id`, { timeout: 4000 } as any);
+    await pool.query(`
+      INSERT INTO system_settings (key, value, updated_at) VALUES
+      ('genieacs_url', $1, NOW()),
+      ('genieacs_username', $2, NOW()),
+      ('genieacs_password', $3, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+    `, [cleanUrl, username || '', password || '']);
+  } catch (dbErr: any) {
+    console.warn('[GENIEACS] Gagal menyimpan ke system_settings:', dbErr.message);
+  }
+
+  try {
+    const fetchRes = await fetch(`${cleanUrl}/devices?projection=_id`, {
+      headers: getGenieAcsHeaders(username, password),
+      signal: AbortSignal.timeout(4000)
+    });
     if (fetchRes.ok) {
       updateGenieAcsSettings({ status: 'connected' });
+      // Segera refresh cache agar perangkat langsung muncul
+      refreshGenieAcsCache().catch(() => {});
       return res.json({
         success: true,
         message: '⚡ Koneksi ke GenieACS NBI API Server Berhasil!',
@@ -55,45 +106,58 @@ export async function refreshGenieAcsCache() {
   genieCache.isFetching = true;
 
   try {
+    await initGenieAcsFromDb();
     const cleanUrl = genieAcsSettings.url;
     let deviceList: any[] = [];
 
     try {
-      const fetchRes = await fetch(`${cleanUrl}/devices`, { timeout: 4000 } as any);
+      const fetchRes = await fetch(`${cleanUrl}/devices`, {
+        headers: getGenieAcsHeaders(),
+        signal: AbortSignal.timeout(5000)
+      });
       if (fetchRes.ok) {
         const rawDevs: any = await fetchRes.json();
         if (Array.isArray(rawDevs)) {
           deviceList = rawDevs.map((d: any) => {
-            const sn = d._id || d.VirtualParameters?.SerialNumber?._value || 'ZTEG12345678';
-            const manufacturer = d.InternetGatewayDevice?.DeviceInfo?.Manufacturer?._value || 'ZTE';
-            const productClass = d.InternetGatewayDevice?.DeviceInfo?.ProductClass?._value || 'F663NV3';
-            const rxPower = d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.Stats?.RxPower?._value || '-19.5 dBm';
+            const sn = d._deviceId?._SerialNumber || d.VirtualParameters?.SerialNumber?._value || d._id || 'UNKNOWN-SN';
+            const manufacturer = d._deviceId?._Manufacturer || d.InternetGatewayDevice?.DeviceInfo?.Manufacturer?._value || 'ZTE';
+            const productClass = d._deviceId?._ProductClass || d.InternetGatewayDevice?.DeviceInfo?.ProductClass?._value || 'ONT/ONU';
+            
+            // Ekstraksi Redaman RX Optik dari TR-069
+            const rxPower = d.VirtualParameters?.RxPower?._value ||
+              d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.Stats?.RxPower?._value ||
+              d.InternetGatewayDevice?.WANDevice?.['1']?.WANDSLInterfaceConfig?.Stats?.RxPower?._value ||
+              d.Device?.Optical?.Interface?.['1']?.OpticalSignalLevel?._value ||
+              '-19.5 dBm';
+
             const lastInform = d._lastInform ? new Date(d._lastInform).toLocaleString() : 'Baru saja';
-            const isOnline = d._lastInform ? (Date.now() - new Date(d._lastInform).getTime()) < 5 * 60 * 1000 : true;
+            const isOnline = d._lastInform ? (Date.now() - new Date(d._lastInform).getTime()) < 24 * 60 * 60 * 1000 : true;
+
+            const ssid = d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration?.['1']?.SSID?._value ||
+              d.Device?.WiFi?.SSID?.['1']?.SSID?._value ||
+              'Wi-Fi Aktif';
+
+            const externalIp = d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.ExternalIPAddress?._value ||
+              d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANIPConnection?.['1']?.ExternalIPAddress?._value ||
+              null;
 
             return {
               id: d._id || sn,
               sn: sn,
               manufacturer: manufacturer,
               product_class: productClass,
-              rx_power: rxPower,
-              rx_power_num: parseFloat(rxPower) || -19.5,
-              wifi_ssid: d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration?.['1']?.SSID?._value || 'HOME-WIFI',
+              rx_power: String(rxPower).includes('dBm') ? String(rxPower) : `${rxPower} dBm`,
+              rx_power_num: parseFloat(String(rxPower)) || -19.5,
+              wifi_ssid: ssid,
+              external_ip: externalIp,
               is_online: isOnline,
               last_inform: lastInform
             };
           });
         }
       }
-    } catch (e: any) {}
-
-    if (deviceList.length === 0) {
-      deviceList = [
-        { id: 'ZTEG01234567', sn: 'ZTEG01234567', manufacturer: 'ZTE Corporation', product_class: 'F663NV3', rx_power: '-19.2 dBm', rx_power_num: -19.2, wifi_ssid: 'PUSKOMNET-FAST', is_online: true, last_inform: 'Online (2 mnt lalu)' },
-        { id: 'ZTEG89012345', sn: 'ZTEG89012345', manufacturer: 'ZTE Corporation', product_class: 'F670L', rx_power: '-22.5 dBm', rx_power_num: -22.5, wifi_ssid: 'WIFI-RUMAH-2', is_online: true, last_inform: 'Online (1 mnt lalu)' },
-        { id: 'HWTC45678901', sn: 'HWTC45678901', manufacturer: 'Huawei Technologies', product_class: 'HG8245H', rx_power: '-26.8 dBm', rx_power_num: -26.8, wifi_ssid: 'HUAWEI-NET', is_online: false, last_inform: 'Offline (2 jam lalu)' },
-        { id: 'FHNT23456789', sn: 'FHNT23456789', manufacturer: 'FiberHome', product_class: 'HG6245D', rx_power: '-18.7 dBm', rx_power_num: -18.7, wifi_ssid: 'FIBER-PLUS', is_online: true, last_inform: 'Online (5 mnt lalu)' }
-      ];
+    } catch (e: any) {
+      console.warn('[GENIEACS CACHE WORKER] Fetch error:', e.message);
     }
 
     const custRes = await pool.query('SELECT customer_code, name, sn_onu, pppoe_username FROM customers WHERE sn_onu IS NOT NULL OR pppoe_username IS NOT NULL');
@@ -127,7 +191,9 @@ setInterval(() => {
 }, 60 * 1000);
 
 // Initialize GenieACS cache on startup
-refreshGenieAcsCache().catch(() => {});
+setTimeout(() => {
+  refreshGenieAcsCache().catch(() => {});
+}, 3000);
 
 export async function listDevices(req: Request, res: Response) {
   try {
@@ -177,16 +243,23 @@ export async function rebootDevice(req: Request, res: Response) {
   const cleanUrl = genieAcsSettings.url;
 
   try {
-    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=3000&connection_request`, {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=3000&connection_request`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getGenieAcsHeaders(),
       body: JSON.stringify({ name: 'reboot' })
-    }).catch(() => null);
-
-    res.json({
-      success: true,
-      message: `🔄 Perintah Reboot TR-069 berhasil dikirim ke perangkat ONU "${device_id}"!`
     });
+
+    if (r.ok) {
+      res.json({
+        success: true,
+        message: `🔄 Perintah Reboot TR-069 berhasil dikirim ke perangkat ONU "${device_id}"!`
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: `GenieACS mengembalikan status HTTP ${r.status}`
+      });
+    }
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -202,9 +275,9 @@ export async function updateDeviceWifi(req: Request, res: Response) {
   }
 
   try {
-    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=3000&connection_request`, {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=3000&connection_request`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getGenieAcsHeaders(),
       body: JSON.stringify({
         name: 'setParameterValues',
         parameterValues: [
@@ -212,12 +285,19 @@ export async function updateDeviceWifi(req: Request, res: Response) {
           ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', password || '12345678', 'xsd:string']
         ]
       })
-    }).catch(() => null);
-
-    res.json({
-      success: true,
-      message: `📶 Perintah penyesuaian Wi-Fi SSID "${ssid}" berhasil terkirim ke ONU "${device_id}" via TR-069!`
     });
+
+    if (r.ok) {
+      res.json({
+        success: true,
+        message: `📶 Perintah penyesuaian Wi-Fi SSID "${ssid}" berhasil terkirim ke ONU "${device_id}" via TR-069!`
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: `GenieACS mengembalikan status HTTP ${r.status}`
+      });
+    }
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
