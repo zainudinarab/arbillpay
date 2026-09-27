@@ -58,7 +58,7 @@ export interface OltCapabilities {
 export interface OltItem {
   id: string;
   name: string;
-  brand: 'zte' | 'huawei' | 'vsol' | 'hsgq' | 'bdcom' | 'fiberhome' | 'generic';
+  brand: 'zte' | 'huawei' | 'vsol' | 'hsairpo' | 'cdata' | 'hsgq' | 'bdcom' | 'fiberhome' | 'generic' | string;
   model?: string;
   ip_address: string;
   ssh_port?: number;
@@ -150,7 +150,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
 
   // Form Fields
   const [name, setName] = useState('');
-  const [brand, setBrand] = useState<'zte' | 'huawei' | 'vsol' | 'hsgq' | 'bdcom' | 'fiberhome' | 'generic'>('zte');
+  const [brand, setBrand] = useState<'zte' | 'huawei' | 'vsol' | 'hsairpo' | 'cdata' | 'hsgq' | 'bdcom' | 'fiberhome' | 'generic' | string>('zte');
   const [model, setModel] = useState('C320');
   const [ipAddress, setIpAddress] = useState('');
   const [sshPort, setSshPort] = useState(22);
@@ -1621,12 +1621,16 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                       if (b === 'zte') setModel('C320');
                       else if (b === 'huawei') setModel('MA5608T');
                       else if (b === 'vsol') setModel('V1600G1');
+                      else if (b === 'hsairpo') setModel('V1600GS');
+                      else if (b === 'cdata') setModel('FD1208S');
                     }}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                   >
+                    <option value="hsairpo">HSAirPo (V1600 Series / V-Sol OEM)</option>
+                    <option value="vsol">VSOL (GPON / EPON Pizza Box)</option>
+                    <option value="cdata">C-Data (FD1104 / FD1208 / FD1608)</option>
                     <option value="zte">ZTE (C300 / C320 / C220)</option>
                     <option value="huawei">Huawei (MA5608T / MA5683T / MA5800)</option>
-                    <option value="vsol">VSOL (GPON / EPON Pizza Box)</option>
                     <option value="hsgq">HSGQ (GPON / EPON)</option>
                     <option value="bdcom">BDCom (GPON / EPON)</option>
                     <option value="fiberhome">FiberHome (AN5516)</option>

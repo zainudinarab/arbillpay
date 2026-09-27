@@ -5,4 +5,5 @@ export * from './driverFactory.js';
 export * from './drivers/vsolDriver.js';
 export * from './drivers/zteDriver.js';
 export * from './drivers/huaweiDriver.js';
+export * from './drivers/cdataDriver.js';
 export * from './drivers/genericDriver.js';
