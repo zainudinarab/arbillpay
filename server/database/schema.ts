@@ -517,6 +517,28 @@ export async function initDatabaseSchema() {
       console.warn('Package smart seeder notice:', err.message);
     }
 
+    // 10.5 FTTH Real-Time Rollup & 30-Day Historical Traffic
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ftth_traffic_history (
+        id BIGSERIAL PRIMARY KEY,
+        node_id VARCHAR(64) NOT NULL,
+        node_name VARCHAR(255),
+        node_type VARCHAR(32) DEFAULT 'ODP',
+        recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        avg_download_mbps NUMERIC(8, 2) DEFAULT 0,
+        peak_download_mbps NUMERIC(8, 2) DEFAULT 0,
+        avg_upload_mbps NUMERIC(8, 2) DEFAULT 0,
+        peak_upload_mbps NUMERIC(8, 2) DEFAULT 0,
+        active_clients INT DEFAULT 0,
+        total_clients INT DEFAULT 0,
+        total_bytes_transferred BIGINT DEFAULT 0,
+        interval_minutes INT DEFAULT 30
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ftth_traffic_history_node_time ON ftth_traffic_history (node_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ftth_traffic_history_time ON ftth_traffic_history (recorded_at DESC);
+    `).catch(() => {});
+
     // 11. Smart Migration for Flash Sales
     try {
       const fsCheck = await pool.query('SELECT COUNT(*)::int as total FROM flash_sales');

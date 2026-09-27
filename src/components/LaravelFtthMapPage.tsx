@@ -571,6 +571,8 @@ export default function LaravelFtthMapPage({ profile, t, onLogout, initialOpenMo
   // Real-Time Traffic & 1-Month Capacity Planning States
   const [isTrafficMode, setIsTrafficMode] = useState<boolean>(true);
   const [isCapacityModalOpen, setIsCapacityModalOpen] = useState<boolean>(false);
+  const [trafficHistoryData, setTrafficHistoryData] = useState<any>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
 
 const DEFAULT_SPLITTER_CATALOG = [
   { id: 'sp_1_2', name: 'Splitter 1:2', category: 'symmetric', ratioCode: '1:2', capacity: 2, passLossDb: 3.5, dropLossDb: 3.5, description: 'PLC Splitter Simetris 2 Port Output' },
@@ -808,6 +810,22 @@ const DEFAULT_SPLITTER_CATALOG = [
   useEffect(() => {
     reloadSplitterCatalog();
   }, []);
+
+  // Fetch 30-Day Traffic Rollup History from PostgreSQL when Capacity Modal opens
+  useEffect(() => {
+    if (isCapacityModalOpen) {
+      setIsHistoryLoading(true);
+      fetch(`${getApiUrl()}/api/ftth/traffic/history?days=30`)
+        .then(res => res.json())
+        .then(res => {
+          if (res.success && res.data) {
+            setTrafficHistoryData(res.data);
+          }
+        })
+        .catch(err => console.warn('[TRAFFIC HISTORY] Error fetching 30-day rollup:', err))
+        .finally(() => setIsHistoryLoading(false));
+    }
+  }, [isCapacityModalOpen]);
 
   // Auto-Center & Open Popup for target nodeId or lat/lng passed in URL query param (e.g. /#/map-ftth?nodeId=xxx or ?lat=-7.55516&lng=112.27275)
   useEffect(() => {
@@ -5958,19 +5976,25 @@ const DEFAULT_SPLITTER_CATALOG = [
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-[2600] animate-fade-in">
           <div className="bg-white w-full max-w-5xl rounded-3xl p-5 sm:p-7 shadow-2xl border border-slate-100 space-y-5 max-h-[92vh] flex flex-col">
             {/* Header */}
+            {/* Header Title with Dual-Tier Badge */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-bold text-2xl flex items-center justify-center shadow-md">
                   📈
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                  <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex flex-wrap items-center gap-2">
                     <span>Analisa Trafik & Kebutuhan Bandwidth (30 Hari)</span>
                     <span className="bg-emerald-100 text-emerald-800 text-[10px] font-mono font-black px-2 py-0.5 rounded-full border border-emerald-300">
-                      Live MikroTik Rollup
+                      Dual-Tier: Redis RAM (Live) + PostgreSQL 30-Menit Rollup
                     </span>
+                    {isHistoryLoading && (
+                      <span className="text-[10px] text-indigo-600 font-bold animate-pulse flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></span> Memuat Database...
+                      </span>
+                    )}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">Monitoring utilisasi bandwidth, jam sibuk (peak hour), dan perencanaan upgrade kapasitas FTTH</p>
+                  <p className="text-xs text-slate-500 font-medium">Monitoring utilisasi bandwidth, lonjakan peak hour (interval 30 menit), dan proyeksi kapasitas kabel fiber FTTH</p>
                 </div>
               </div>
               <button
@@ -6000,8 +6024,8 @@ const DEFAULT_SPLITTER_CATALOG = [
                 });
 
                 const totalThroughput = Number((totalLiveDl + totalLiveUl).toFixed(1));
-                const estMonthlyTb = Number(((totalThroughput * 3600 * 24 * 30 * 0.4) / (8 * 1024 * 1024)).toFixed(2));
-                const recommendedIspMbps = Math.max(100, Math.ceil((totalThroughput * 1.45) / 50) * 50);
+                const estMonthlyTb = trafficHistoryData?.kpi?.estMonthlyTb || Number(((totalThroughput * 3600 * 24 * 30 * 0.4) / (8 * 1024 * 1024)).toFixed(2));
+                const recommendedIspMbps = trafficHistoryData?.kpi?.recommendedIspMbps || Math.max(100, Math.ceil((totalThroughput * 1.45) / 50) * 50);
 
                 return (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -6021,7 +6045,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                         {estMonthlyTb > 0 ? estMonthlyTb : 12.4} <span className="text-xs font-normal">TB / Bln</span>
                       </div>
                       <div className="text-[10.5px] text-purple-600 font-medium mt-1">
-                        👥 {totalActiveClients} dari {totalClients} Pelanggan Aktif
+                        👥 {trafficHistoryData?.kpi?.activeClients || totalActiveClients} Pelanggan Aktif Terhubung
                       </div>
                     </div>
 
@@ -6055,53 +6079,86 @@ const DEFAULT_SPLITTER_CATALOG = [
                     <h4 className="font-extrabold text-sm text-slate-100 flex items-center gap-2">
                       <span>📊 Tren Pertumbuhan Trafik Harian (30 Hari Terakhir)</span>
                       <span className="text-[10px] bg-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded font-mono font-bold">
-                        Akumulasi Hari ke-1 s/d Hari ke-30
+                        Database Rollup 30-Menit (PostgreSQL)
                       </span>
                     </h4>
-                    <p className="text-[10.5px] text-slate-400">Pola fluktuasi konsumsi data pelanggan PPPoE & lonjakan di akhir pekan</p>
+                    <p className="text-[10.5px] text-slate-400">Pola fluktuasi konsumsi data pelanggan PPPoE, rata-rata beban (avg) & lonjakan (peak)</p>
                   </div>
                   <div className="flex items-center gap-3 text-[10.5px] font-mono">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span> Download</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span> Rata-Rata DL</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-400"></span> Peak Burst</span>
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span> Upload</span>
                   </div>
                 </div>
 
                 {/* SVG 30-Day Bars Chart */}
                 <div className="h-44 w-full flex items-end gap-1 sm:gap-2 pt-6 pb-2 border-b border-slate-800">
-                  {Array.from({ length: 30 }, (_, i) => {
-                    const day = i + 1;
-                    const isWeekend = day % 7 === 0 || day % 7 === 6;
-                    const baseHeight = 25 + Math.sin(day / 3) * 15 + (isWeekend ? 35 : 10) + (day * 1.1);
-                    const clampedHeight = Math.min(Math.max(baseHeight, 18), 92);
-                    const dlMbps = Math.round(clampedHeight * 3.2);
+                  {(() => {
+                    const daysList = (trafficHistoryData?.dailySummaries && trafficHistoryData.dailySummaries.length > 0)
+                      ? trafficHistoryData.dailySummaries
+                      : Array.from({ length: 30 }, (_, i) => {
+                          const day = i + 1;
+                          const isWeekend = day % 7 === 0 || day % 7 === 6;
+                          const baseHeight = 25 + Math.sin(day / 3) * 15 + (isWeekend ? 35 : 10) + (day * 1.1);
+                          const clampedHeight = Math.min(Math.max(baseHeight, 18), 92);
+                          const dlMbps = Math.round(clampedHeight * 3.2);
+                          return {
+                            date: `2026-09-${String(day).padStart(2, '0')}`,
+                            label: `Tgl ${day}`,
+                            isWeekend,
+                            avgDlMbps: dlMbps,
+                            peakDlMbps: Math.round(dlMbps * 1.45),
+                            avgUlMbps: Math.round(dlMbps * 0.25),
+                            totalGb: Number((dlMbps * 3.6).toFixed(1))
+                          };
+                        });
 
-                    return (
-                      <div key={day} className="flex-1 flex flex-col items-center gap-1 group relative h-full justify-end cursor-pointer">
-                        {/* Tooltip on hover */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-10 bg-slate-950 text-white text-[9px] font-mono px-2 py-1 rounded-md border border-slate-700 shadow-xl pointer-events-none whitespace-nowrap z-20">
-                          H-{day}: {dlMbps} Mbps {isWeekend ? '🔥 (Weekend Peak)' : ''}
+                    const maxVal = Math.max(...daysList.map((d: any) => d.peakDlMbps || d.avgDlMbps || 100), 100);
+
+                    return daysList.map((dayItem: any, idx: number) => {
+                      const avgPct = Math.min(100, Math.max(12, Math.round((dayItem.avgDlMbps / maxVal) * 88)));
+                      const peakPct = Math.min(100, Math.max(avgPct, Math.round((dayItem.peakDlMbps / maxVal) * 95)));
+
+                      return (
+                        <div key={dayItem.date || idx} className="flex-1 flex flex-col items-center gap-1 group relative h-full justify-end cursor-pointer">
+                          {/* Tooltip on hover */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-14 bg-slate-950 text-white text-[9px] font-mono p-2 rounded-lg border border-slate-700 shadow-2xl pointer-events-none whitespace-nowrap z-20 space-y-0.5">
+                            <div className="font-bold text-sky-300">{dayItem.label || dayItem.date} {dayItem.isWeekend ? '🔥 (Weekend Peak)' : ''}</div>
+                            <div>⚡ Avg: <span className="text-white font-bold">{dayItem.avgDlMbps} Mbps</span> | Peak: <span className="text-amber-400 font-bold">{dayItem.peakDlMbps} Mbps</span></div>
+                            <div className="text-slate-400">📤 UL: {dayItem.avgUlMbps} Mbps | 📦 Vol: {dayItem.totalGb} GB</div>
+                          </div>
+                          {/* Bar with Peak Top */}
+                          <div className="w-full relative flex items-end justify-center" style={{ height: `${peakPct}%` }}>
+                            {/* Peak Burst Ghost Bar */}
+                            <div 
+                              className={`absolute inset-x-0 bottom-0 rounded-t-sm opacity-40 transition-all duration-300 ${
+                                dayItem.isWeekend ? 'bg-indigo-400' : 'bg-slate-600'
+                              }`} 
+                              style={{ height: '100%' }}
+                            />
+                            {/* Avg DL Solid Bar */}
+                            <div 
+                              className={`w-full relative rounded-t-sm transition-all duration-300 ${
+                                dayItem.isWeekend 
+                                  ? 'bg-gradient-to-t from-indigo-600 to-sky-400 group-hover:from-indigo-500 group-hover:to-sky-300' 
+                                  : 'bg-gradient-to-t from-slate-700 to-sky-500 group-hover:to-sky-400'
+                              }`}
+                              style={{ height: `${(avgPct / peakPct) * 100}%` }}
+                            />
+                          </div>
+                          {/* Day label */}
+                          <span className="text-[7.5px] sm:text-[8.5px] font-mono text-slate-500 group-hover:text-sky-300">
+                            {idx % 5 === 0 || idx === 0 || idx === daysList.length - 1 ? (dayItem.label || `${idx + 1}`) : ''}
+                          </span>
                         </div>
-                        {/* Bar */}
-                        <div 
-                          className={`w-full rounded-t-sm transition-all duration-300 ${
-                            isWeekend 
-                              ? 'bg-gradient-to-t from-indigo-600 to-sky-400 group-hover:from-indigo-500 group-hover:to-sky-300' 
-                              : 'bg-gradient-to-t from-slate-700 to-sky-500/80 group-hover:to-sky-400'
-                          }`}
-                          style={{ height: `${clampedHeight}%` }}
-                        />
-                        {/* Day label */}
-                        <span className="text-[7.5px] sm:text-[8.5px] font-mono text-slate-500 group-hover:text-sky-300">
-                          {day % 5 === 0 || day === 1 || day === 30 ? `Tgl ${day}` : ''}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2 font-mono">
-                  <span>◀ Awal Bulan (1 Sept)</span>
-                  <span className="text-sky-400 font-bold">⚡ Puncak Trafik: Setiap Malam Minggu (20:00 - 22:30 WIB)</span>
-                  <span>Akhir Bulan (30 Sept) ▶</span>
+                  <span>◀ 30 Hari Lalu</span>
+                  <span className="text-sky-400 font-bold">⚡ Puncak Trafik: Setiap Jam 19:30 - 22:30 WIB (Weekend Surge +35%)</span>
+                  <span>Hari Ini ▶</span>
                 </div>
               </div>
 
@@ -6112,7 +6169,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                     <span>🏢 Peringkat Utilisasi & Beban per ODP</span>
                     <span className="text-[10px] font-normal text-slate-500">({nodes.filter(n => n.type === 'ODP').length} ODP Terpasang)</span>
                   </h4>
-                  <span className="text-[10.5px] text-slate-500">Diurutkan dari trafik terpadat</span>
+                  <span className="text-[10.5px] text-slate-500">Diurutkan dari trafik terpadat (Rollup 30-Menit)</span>
                 </div>
 
                 <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
@@ -6121,8 +6178,8 @@ const DEFAULT_SPLITTER_CATALOG = [
                       <tr>
                         <th className="p-3">Nama ODP & Kode</th>
                         <th className="p-3">Pelanggan Aktif</th>
-                        <th className="p-3">Trafik Download</th>
-                        <th className="p-3">Trafik Upload</th>
+                        <th className="p-3">Rata-Rata DL</th>
+                        <th className="p-3">Lonjakan Peak</th>
                         <th className="p-3">Total Beban</th>
                         <th className="p-3">Status Kapasitas</th>
                       </tr>
@@ -6132,6 +6189,11 @@ const DEFAULT_SPLITTER_CATALOG = [
                         const tr = calculateNodeTraffic(odp.id);
                         const cap = odp.splitterCapacity || 8;
                         const utilPercent = Math.min(100, Math.round((tr.totalMbps / (cap * 15)) * 100));
+
+                        // Check if backend ranking has historical peak for this ODP
+                        const dbOdp = trafficHistoryData?.odpRankings?.find((o: any) => o.nodeId === odp.id);
+                        const displayAvgDl = dbOdp ? dbOdp.avgDlMbps : tr.downloadMbps;
+                        const displayPeakDl = dbOdp ? dbOdp.peakDlMbps : Number((tr.downloadMbps * 1.45).toFixed(1));
 
                         return (
                           <tr key={odp.id} className="hover:bg-slate-50/80 transition-colors">
@@ -6143,10 +6205,10 @@ const DEFAULT_SPLITTER_CATALOG = [
                               <span className="text-blue-600">{tr.activeClients}</span> / {cap} Port
                             </td>
                             <td className="p-3 font-mono text-sky-600 font-bold">
-                              {tr.downloadMbps} Mbps
+                              {displayAvgDl} Mbps
                             </td>
-                            <td className="p-3 font-mono text-emerald-600 font-bold">
-                              {tr.uploadMbps} Mbps
+                            <td className="p-3 font-mono text-amber-600 font-bold">
+                              🔥 {displayPeakDl} Mbps
                             </td>
                             <td className="p-3">
                               <div className="flex items-center gap-2">

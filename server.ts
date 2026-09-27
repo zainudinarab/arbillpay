@@ -31,6 +31,14 @@ initDatabaseSchema().then(async () => {
   } catch (err: any) {
     console.warn('[INIT NOTICE]', err.message);
   }
+
+  // Start FTTH Traffic Rollup Worker (30-Minute Snapshot to PostgreSQL & 90-Day Auto-Purge)
+  try {
+    const { startFtthTrafficRollupJob } = await import('./server/services/ftthTrafficRollupService.js');
+    startFtthTrafficRollupJob();
+  } catch (err: any) {
+    console.warn('[FTTH ROLLUP INIT NOTICE]', err.message);
+  }
 });
 
 // Mount all API endpoints under /api

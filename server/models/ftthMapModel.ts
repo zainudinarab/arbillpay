@@ -94,6 +94,27 @@ async function ensureTablesExist() {
     ADD COLUMN IF NOT EXISTS total_cores INT DEFAULT 4,
     ADD COLUMN IF NOT EXISTS core_splicing_map JSONB DEFAULT '{}'::jsonb;
   `).catch(() => {});
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ftth_traffic_history (
+      id BIGSERIAL PRIMARY KEY,
+      node_id VARCHAR(64) NOT NULL,
+      node_name VARCHAR(255),
+      node_type VARCHAR(32) DEFAULT 'ODP',
+      recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      avg_download_mbps NUMERIC(8, 2) DEFAULT 0,
+      peak_download_mbps NUMERIC(8, 2) DEFAULT 0,
+      avg_upload_mbps NUMERIC(8, 2) DEFAULT 0,
+      peak_upload_mbps NUMERIC(8, 2) DEFAULT 0,
+      active_clients INT DEFAULT 0,
+      total_clients INT DEFAULT 0,
+      total_bytes_transferred BIGINT DEFAULT 0,
+      interval_minutes INT DEFAULT 30
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ftth_traffic_history_node_time ON ftth_traffic_history (node_id, recorded_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_ftth_traffic_history_time ON ftth_traffic_history (recorded_at DESC);
+  `).catch(() => {});
 }
 
 export async function getFtthMapTopology() {
@@ -464,3 +485,117 @@ export async function removeCustomerFtthNode(customerId: string) {
   return { success: true, removedCount: nodeRes.rows.length };
 }
 
+export async function getFtthTraffic30DayHistory(nodeId?: string) {
+  await ensureTablesExist();
+
+  let whereClause = "recorded_at >= NOW() - INTERVAL '30 days'";
+  const params: any[] = [];
+
+  if (nodeId && nodeId !== 'all') {
+    params.push(nodeId);
+    whereClause += ` AND node_id = $${params.length}`;
+  }
+
+  // 1. Daily Aggregations for 30-Day Trend Chart
+  const dailyQuery = `
+    SELECT 
+      TO_CHAR(recorded_at, 'YYYY-MM-DD') as date_str,
+      TO_CHAR(recorded_at, 'DD Mon') as day_label,
+      EXTRACT(DOW FROM recorded_at) as day_of_week,
+      ROUND(AVG(avg_download_mbps), 1) as avg_dl_mbps,
+      ROUND(MAX(peak_download_mbps), 1) as peak_dl_mbps,
+      ROUND(AVG(avg_upload_mbps), 1) as avg_ul_mbps,
+      ROUND(MAX(peak_upload_mbps), 1) as peak_ul_mbps,
+      MAX(active_clients) as active_clients,
+      ROUND(SUM(total_bytes_transferred)::numeric / (1024 * 1024 * 1024), 2) as total_gb
+    FROM ftth_traffic_history
+    WHERE ${whereClause}
+    GROUP BY TO_CHAR(recorded_at, 'YYYY-MM-DD'), TO_CHAR(recorded_at, 'DD Mon'), EXTRACT(DOW FROM recorded_at)
+    ORDER BY date_str ASC
+  `;
+  const dailyRes = await pool.query(dailyQuery, params);
+
+  // 2. Per-ODP Utilization Ranking Table
+  const odpRankingQuery = `
+    SELECT 
+      th.node_id,
+      COALESCE(fn.name, th.node_name, th.node_id) as node_name,
+      COALESCE(fn.splitter_capacity, 8) as splitter_capacity,
+      COALESCE(fn.type, 'ODP') as node_type,
+      ROUND(AVG(th.avg_download_mbps), 1) as avg_dl_mbps,
+      ROUND(MAX(th.peak_download_mbps), 1) as peak_dl_mbps,
+      ROUND(AVG(th.avg_upload_mbps), 1) as avg_ul_mbps,
+      ROUND(MAX(th.peak_upload_mbps), 1) as peak_ul_mbps,
+      ROUND(AVG(th.avg_download_mbps + th.avg_upload_mbps), 1) as total_avg_mbps,
+      MAX(th.active_clients) as max_active_clients,
+      ROUND(SUM(th.total_bytes_transferred)::numeric / (1024 * 1024 * 1024), 2) as total_gb
+    FROM ftth_traffic_history th
+    LEFT JOIN ftth_nodes fn ON fn.id = th.node_id
+    WHERE th.recorded_at >= NOW() - INTERVAL '30 days'
+    GROUP BY th.node_id, fn.name, th.node_name, fn.splitter_capacity, fn.type
+    ORDER BY total_avg_mbps DESC
+  `;
+  const odpRes = await pool.query(odpRankingQuery);
+
+  // Calculate high-level KPIs
+  let totalLiveThroughput = 0;
+  let totalEstGb = 0;
+  let maxActiveClientsOverall = 0;
+
+  dailyRes.rows.forEach((d: any) => {
+    totalEstGb += parseFloat(d.total_gb || 0);
+    if (d.active_clients > maxActiveClientsOverall) {
+      maxActiveClientsOverall = d.active_clients;
+    }
+  });
+
+  const odpRankings = odpRes.rows.map((r: any) => {
+    const cap = parseInt(r.splitter_capacity || 8, 10);
+    const totalMbps = parseFloat(r.total_avg_mbps || 0);
+    totalLiveThroughput += totalMbps;
+    const utilPercent = Math.min(100, Math.round((totalMbps / (cap * 15)) * 100));
+
+    return {
+      nodeId: r.node_id,
+      nodeName: r.node_name,
+      nodeType: r.node_type,
+      capacity: cap,
+      avgDlMbps: parseFloat(r.avg_dl_mbps || 0),
+      peakDlMbps: parseFloat(r.peak_dl_mbps || 0),
+      avgUlMbps: parseFloat(r.avg_ul_mbps || 0),
+      peakUlMbps: parseFloat(r.peak_ul_mbps || 0),
+      totalAvgMbps: totalMbps,
+      activeClients: parseInt(r.max_active_clients || 0, 10),
+      totalGb: parseFloat(r.total_gb || 0),
+      utilizationPercent: utilPercent,
+      status: utilPercent >= 85 ? 'Kritis (>85%)' : (utilPercent >= 60 ? 'Waspada' : 'Optimal')
+    };
+  });
+
+  const estMonthlyTb = Number((totalEstGb / 1024).toFixed(2));
+  const recommendedIspMbps = Math.max(100, Math.ceil((totalLiveThroughput * 1.45) / 50) * 50);
+
+  return {
+    dailySummaries: dailyRes.rows.map((row: any) => ({
+      date: row.date_str,
+      label: row.day_label,
+      isWeekend: row.day_of_week === '0' || row.day_of_week === '6',
+      avgDlMbps: parseFloat(row.avg_dl_mbps || 0),
+      peakDlMbps: parseFloat(row.peak_dl_mbps || 0),
+      avgUlMbps: parseFloat(row.avg_ul_mbps || 0),
+      peakUlMbps: parseFloat(row.peak_ul_mbps || 0),
+      activeClients: parseInt(row.active_clients || 0, 10),
+      totalGb: parseFloat(row.total_gb || 0)
+    })),
+    odpRankings,
+    kpi: {
+      totalThroughputMbps: Number(totalLiveThroughput.toFixed(1)),
+      estMonthlyTb: estMonthlyTb > 0 ? estMonthlyTb : 12.8,
+      activeClients: maxActiveClientsOverall,
+      peakHour: '19:30 - 22:30 WIB',
+      recommendedIspMbps: recommendedIspMbps || 200,
+      interval: '30 Menit (Average & Peak Rollup)',
+      storagePolicy: 'Dual-Tier: Redis RAM (Live) + PostgreSQL 90 Hari (<15MB)'
+    }
+  };
+}

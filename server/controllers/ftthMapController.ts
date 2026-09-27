@@ -61,3 +61,28 @@ export async function syncToFirebaseHandler(req: Request, res: Response) {
     res.status(500).json({ success: false, message: `Gagal sinkronisasi data ke Firebase: ${err.message}` });
   }
 }
+
+export async function getFtthTrafficHistory(req: Request, res: Response) {
+  try {
+    const { nodeId } = req.query;
+    const { getFtthTraffic30DayHistory } = await import('../models/ftthMapModel.js');
+    const historyData = await getFtthTraffic30DayHistory(nodeId ? String(nodeId) : undefined);
+    res.json({ success: true, data: historyData });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal mengambil riwayat trafik: ${err.message}` });
+  }
+}
+
+export async function triggerTrafficRollupManual(req: Request, res: Response) {
+  try {
+    const { recordTrafficRollupSnapshot } = await import('../services/ftthTrafficRollupService.js');
+    const snapshots = await recordTrafficRollupSnapshot();
+    res.json({
+      success: true,
+      message: `Snapshot rollup trafik 30-menit berhasil dieksekusi secara manual untuk ${snapshots.length} node!`,
+      data: snapshots
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal menjalankan rollup trafik: ${err.message}` });
+  }
+}
