@@ -19,7 +19,16 @@ import {
   ExternalLink,
   ShieldCheck,
   Edit,
-  Globe
+  Globe,
+  Lock,
+  User,
+  Sliders,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  Cpu,
+  Power,
+  Trash2
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 
@@ -30,12 +39,12 @@ interface GenieAcsManagementProps {
 }
 
 export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsManagementProps) {
-  const [activeTab, setActiveTab] = useState<'devices' | 'sync' | 'settings'>('devices');
+  const [activeTab, setActiveTab] = useState<'devices' | 'settings'>('devices');
   
   // GenieACS Server Settings State
-  const [serverUrl, setServerUrl] = useState<string>('http://localhost:7557');
-  const [nbiUsername, setNbiUsername] = useState<string>('');
-  const [nbiPassword, setNbiPassword] = useState<string>('');
+  const [serverUrl, setServerUrl] = useState<string>('http://192.168.201.238:7557');
+  const [nbiUsername, setNbiUsername] = useState<string>('admin');
+  const [nbiPassword, setNbiPassword] = useState<string>('admin');
   const [connStatus, setConnStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown');
 
   // Devices & Customers State
@@ -51,11 +60,32 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
 
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Wi-Fi Configuration Modal State
-  const [selectedDeviceForWifi, setSelectedDeviceForWifi] = useState<any | null>(null);
-  const [wifiSsid, setWifiSsid] = useState<string>('');
-  const [wifiPassword, setWifiPassword] = useState<string>('');
-  const [wifiSaving, setWifiSaving] = useState<boolean>(false);
+  // Device Management Modal State
+  const [selectedDeviceForManage, setSelectedDeviceForManage] = useState<any | null>(null);
+  const [manageTab, setManageTab] = useState<'info' | 'wifi' | 'wan' | 'customer' | 'danger'>('info');
+  const [deviceDetail, setDeviceDetail] = useState<any | null>(null);
+  const [isDetailLoading, setIsDetailLoading] = useState<boolean>(false);
+
+  // Form Fields for Manage Modal
+  const [modalWifiSsid, setModalWifiSsid] = useState<string>('');
+  const [modalWifiPassword, setModalWifiPassword] = useState<string>('');
+  const [modalWifiEnabled, setModalWifiEnabled] = useState<boolean>(true);
+  const [showWifiPassword, setShowWifiPassword] = useState<boolean>(false);
+  const [isWifiSaving, setIsWifiSaving] = useState<boolean>(false);
+
+  const [modalWanUsername, setModalWanUsername] = useState<string>('');
+  const [modalWanPassword, setModalWanPassword] = useState<string>('');
+  const [modalWanVlan, setModalWanVlan] = useState<string>('');
+  const [modalWanConnIndex, setModalWanConnIndex] = useState<string>('1');
+  const [modalPppIndex, setModalPppIndex] = useState<string>('1');
+  const [showWanPassword, setShowWanPassword] = useState<boolean>(false);
+  const [isWanSaving, setIsWanSaving] = useState<boolean>(false);
+
+  const [modalSelectedCustomerId, setModalSelectedCustomerId] = useState<string>('');
+  const [customerSearchTerm, setCustomerSearchTerm] = useState<string>('');
+  const [isCustomerSaving, setIsCustomerSaving] = useState<boolean>(false);
+
+  const [isActionRunning, setIsActionRunning] = useState<boolean>(false);
 
   const parseJsonResponse = async (res: Response) => {
     const text = await res.text();
@@ -80,9 +110,9 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       if (sRes) {
         const sData = await parseJsonResponse(sRes);
         if (sData.success && sData.settings) {
-          setServerUrl(sData.settings.url || 'http://localhost:7557');
-          setNbiUsername(sData.settings.username || '');
-          setNbiPassword(sData.settings.password || '');
+          setServerUrl(sData.settings.url || 'http://192.168.201.238:7557');
+          setNbiUsername(sData.settings.username || 'admin');
+          setNbiPassword(sData.settings.password || 'admin');
           setConnStatus(sData.settings.status || 'unknown');
         }
       }
@@ -172,11 +202,57 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     }
   };
 
+  // Open Device Management Modal
+  const openManageModal = async (device: any, initialTab: 'info' | 'wifi' | 'wan' | 'customer' | 'danger' = 'info') => {
+    setSelectedDeviceForManage(device);
+    setManageTab(initialTab);
+    setIsDetailLoading(true);
+    setDeviceDetail(null);
+
+    // Initial default values from basic list item
+    setModalWifiSsid(device.wifi_ssid || 'Wi-Fi');
+    setModalWifiPassword('');
+    setModalWifiEnabled(true);
+    setModalWanUsername('');
+    setModalWanPassword('');
+    setModalWanVlan('');
+    setModalWanConnIndex('1');
+    setModalPppIndex('1');
+    setShowWifiPassword(false);
+    setShowWanPassword(false);
+    setModalSelectedCustomerId('');
+    setCustomerSearchTerm('');
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(device.id)}/detail`);
+      const data = await parseJsonResponse(res);
+      if (data.success && data.device) {
+        const dev = data.device;
+        setDeviceDetail(dev);
+        setModalWifiSsid(dev.wlan?.ssid || device.wifi_ssid || '');
+        setModalWifiEnabled(dev.wlan?.enabled ?? true);
+        setModalWanUsername(dev.wan?.username || '');
+        setModalWanVlan(dev.wan?.vlan_id || '');
+        setModalWanConnIndex(dev.wan?.wan_conn_index || '1');
+        setModalPppIndex(dev.wan?.ppp_index || '1');
+        if (dev.customer?.id) {
+          setModalSelectedCustomerId(dev.customer.id);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to load device detail:', err);
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
   // Reboot ONU Device via TR-069
   const handleRebootDevice = async (deviceId: string, deviceName: string) => {
-    if (!window.confirm(`Apakah Anda yakin ingin me-reboot ONU / ONT "${deviceName}"?`)) return;
+    if (!window.confirm(`Apakah Anda yakin ingin me-reboot ONU / ONT "${deviceName}" via TR-069?`)) return;
 
     setActionLoadingId(deviceId);
+    setIsActionRunning(true);
     setToastMsg(null);
 
     try {
@@ -195,38 +271,94 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       setToastMsg({ type: 'error', text: `Gagal reboot: ${err.message}` });
     } finally {
       setActionLoadingId(null);
+      setIsActionRunning(false);
     }
   };
 
-  // Open Wi-Fi Modal
-  const openWifiModal = (dev: any) => {
-    setSelectedDeviceForWifi(dev);
-    setWifiSsid(dev.wifi_ssid || 'HOME-WIFI');
-    setWifiPassword(dev.wifi_password || '12345678');
-  };
+  // Factory Reset ONU via TR-069
+  const handleFactoryResetDevice = async (deviceId: string, deviceName: string) => {
+    const confirmPrompt = window.prompt(
+      `PERINGATAN KERAS: Factory Reset akan menghapus seluruh konfigurasi ONT "${deviceName}" ke setelan pabrik!\n\nKetik kata "RESET" untuk mengonfirmasi:`
+    );
+    if (confirmPrompt !== 'RESET') {
+      alert('Tindakan Factory Reset dibatalkan.');
+      return;
+    }
 
-  // Save Wi-Fi Config to ONU via TR-069
-  const handleSaveWifiConfig = async () => {
-    if (!selectedDeviceForWifi || !wifiSsid) return;
-
-    setWifiSaving(true);
+    setIsActionRunning(true);
     setToastMsg(null);
 
     try {
       const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForWifi.id)}/wifi`, {
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(deviceId)}/factory-reset`, {
+        method: 'POST'
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setSelectedDeviceForManage(null);
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal melakukan factory reset.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal factory reset: ${err.message}` });
+    } finally {
+      setIsActionRunning(false);
+    }
+  };
+
+  // Refresh Parameter Object (Inform) via TR-069
+  const handleRefreshDeviceObject = async (deviceId: string) => {
+    setIsActionRunning(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(deviceId)}/refresh`, {
+        method: 'POST'
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        // Re-fetch detail
+        if (selectedDeviceForManage) {
+          openManageModal(selectedDeviceForManage, manageTab);
+        }
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengirim task refresh.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal refresh: ${err.message}` });
+    } finally {
+      setIsActionRunning(false);
+    }
+  };
+
+  // Save Wi-Fi Config
+  const handleSaveWifiConfig = async () => {
+    if (!selectedDeviceForManage || !modalWifiSsid) return;
+
+    setIsWifiSaving(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/wifi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ssid: wifiSsid,
-          password: wifiPassword
+          ssid: modalWifiSsid,
+          password: modalWifiPassword,
+          enabled: modalWifiEnabled
         })
       });
 
       const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
-        setSelectedDeviceForWifi(null);
         fetchData();
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui Wi-Fi ONU.' });
@@ -234,7 +366,80 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     } catch (err: any) {
       setToastMsg({ type: 'error', text: `Gagal simpan Wi-Fi: ${err.message}` });
     } finally {
-      setWifiSaving(false);
+      setIsWifiSaving(false);
+    }
+  };
+
+  // Save WAN / PPPoE Config
+  const handleSaveWanConfig = async () => {
+    if (!selectedDeviceForManage || !modalWanUsername) {
+      alert('Username PPPoE wajib diisi.');
+      return;
+    }
+
+    setIsWanSaving(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/wan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: modalWanUsername,
+          password: modalWanPassword,
+          vlan_id: modalWanVlan,
+          wan_conn_index: modalWanConnIndex || '1',
+          ppp_index: modalPppIndex || '1'
+        })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui konfigurasi WAN.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal simpan WAN: ${err.message}` });
+    } finally {
+      setIsWanSaving(false);
+    }
+  };
+
+  // Link Customer to Device SN
+  const handleLinkCustomer = async (customerId: string | null) => {
+    if (!selectedDeviceForManage) return;
+
+    setIsCustomerSaving(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/link-customer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_id: customerId,
+          sn: selectedDeviceForManage.sn || selectedDeviceForManage.id
+        })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchData();
+        if (selectedDeviceForManage) {
+          openManageModal(selectedDeviceForManage, 'customer');
+        }
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengubah tautan pelanggan.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal menautkan: ${err.message}` });
+    } finally {
+      setIsCustomerSaving(false);
     }
   };
 
@@ -247,9 +452,22 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       const matchSn = d.sn?.toLowerCase().includes(q) || d.id?.toLowerCase().includes(q);
       const matchModel = d.product_class?.toLowerCase().includes(q);
       const matchCust = d.customer_name?.toLowerCase().includes(q);
-      if (!matchSn && !matchModel && !matchCust) return false;
+      const matchIp = d.external_ip?.toLowerCase().includes(q);
+      if (!matchSn && !matchModel && !matchCust && !matchIp) return false;
     }
     return true;
+  });
+
+  // Filtered customers for linking dropdown
+  const filteredCustomers = customers.filter((c) => {
+    if (!customerSearchTerm.trim()) return true;
+    const q = customerSearchTerm.toLowerCase();
+    return (
+      c.name?.toLowerCase().includes(q) ||
+      c.customer_code?.toLowerCase().includes(q) ||
+      c.pppoe_username?.toLowerCase().includes(q) ||
+      c.address?.toLowerCase().includes(q)
+    );
   });
 
   const totalDevices = devices.length;
@@ -366,7 +584,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                   <Search size={15} className="absolute left-3.5 top-3 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Cari Serial Number (SN ONU), Model, Nama Pelanggan..."
+                    placeholder="Cari Serial Number (SN ONU), Model, IP, Nama Pelanggan..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
@@ -386,11 +604,21 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                 </select>
 
                 <button
+                  onClick={fetchData}
+                  disabled={loading}
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                  title="Muat Ulang Data"
+                >
+                  <RefreshCw size={14} className={loading ? 'animate-spin text-sky-600' : ''} />
+                  <span>Refresh</span>
+                </button>
+
+                <button
                   onClick={handleSyncGenieAcsToCustomers}
                   disabled={syncLoading}
                   className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                 >
-                  <RefreshCw size={14} className={syncLoading ? 'animate-spin' : ''} />
+                  <Zap size={14} className={syncLoading ? 'animate-spin' : ''} />
                   <span>{syncLoading ? 'Menyingkronkan...' : '⚡ Singkron ke Pelanggan'}</span>
                 </button>
               </div>
@@ -407,13 +635,13 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                     <th className="py-3.5 px-4">SIGNAL POWER (RX)</th>
                     <th className="py-3.5 px-4">WI-FI SSID</th>
                     <th className="py-3.5 px-4 text-center">STATUS TR-069</th>
-                    <th className="py-3.5 px-4 text-right">AKSI</th>
+                    <th className="py-3.5 px-4 text-right">PENGATURAN & AKSI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400 font-bold">
+                      <td colSpan={7} className="py-12 text-center text-slate-400 font-bold">
                         <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-sky-500" />
                         <span>Memuat data ONU dari GenieACS Server...</span>
                       </td>
@@ -430,27 +658,39 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                       <tr key={d.id} className="hover:bg-slate-50/60 transition-all">
                         {/* SN / Device ID */}
                         <td className="py-3.5 px-4 space-y-0.5">
-                          <div className="font-mono font-black text-slate-900">{d.sn || d.id}</div>
-                          <div className="text-[10px] text-slate-400 font-medium">{d.manufacturer || 'ZTE / Huawei'}</div>
+                          <div className="font-mono font-black text-slate-900 flex items-center gap-1.5">
+                            <span>{d.sn || d.id}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                            <span>{d.manufacturer || 'ZTE'}</span>
+                            {d.external_ip && <span className="text-sky-600 font-mono">• {d.external_ip}</span>}
+                          </div>
                         </td>
 
                         {/* Customer Name */}
                         <td className="py-3.5 px-4">
                           {d.customer_name ? (
                             <div>
-                              <div className="font-extrabold text-slate-800">{d.customer_name}</div>
+                              <div className="font-extrabold text-slate-800 flex items-center gap-1">
+                                <span>{d.customer_name}</span>
+                              </div>
                               <div className="text-[10px] font-mono text-sky-600">{d.customer_code}</div>
                             </div>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                              ⚠️ Belum Terhubung
-                            </span>
+                            <button
+                              onClick={() => openManageModal(d, 'customer')}
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-all cursor-pointer flex items-center gap-1"
+                              title="Klik untuk menautkan ke Pelanggan Arbill"
+                            >
+                              <Link2 size={10} />
+                              <span>⚠️ Belum Ditautkan</span>
+                            </button>
                           )}
                         </td>
 
                         {/* Model */}
                         <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
-                          {d.product_class || 'F663NV3'}
+                          {d.product_class || 'ONT/ONU'}
                         </td>
 
                         {/* Signal Rx Power */}
@@ -483,23 +723,46 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                         </td>
 
                         {/* Actions */}
-                        <td className="py-3.5 px-4 text-right space-x-1.5">
-                          <button
-                            onClick={() => openWifiModal(d)}
-                            className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg transition-all cursor-pointer"
-                            title="Konfigurasi Wi-Fi Remote TR-069"
-                          >
-                            <Wifi size={14} />
-                          </button>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* Tombol Utama Atur Perangkat */}
+                            <button
+                              onClick={() => openManageModal(d, 'info')}
+                              className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                              title="Kelola & Atur Perangkat (TR-069)"
+                            >
+                              <Sliders size={13} />
+                              <span>Atur</span>
+                            </button>
 
-                          <button
-                            onClick={() => handleRebootDevice(d.id, d.sn || d.id)}
-                            disabled={actionLoadingId === d.id}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-all cursor-pointer disabled:opacity-50"
-                            title="Reboot ONU via TR-069"
-                          >
-                            <RotateCw size={14} className={actionLoadingId === d.id ? 'animate-spin' : ''} />
-                          </button>
+                            {/* Tombol Pintas Wi-Fi */}
+                            <button
+                              onClick={() => openManageModal(d, 'wifi')}
+                              className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl border border-sky-200 transition-all cursor-pointer"
+                              title="Konfigurasi Wi-Fi Remote TR-069"
+                            >
+                              <Wifi size={14} />
+                            </button>
+
+                            {/* Tombol Pintas WAN */}
+                            <button
+                              onClick={() => openManageModal(d, 'wan')}
+                              className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 transition-all cursor-pointer"
+                              title="Konfigurasi WAN / PPPoE"
+                            >
+                              <Globe size={14} />
+                            </button>
+
+                            {/* Tombol Pintas Reboot */}
+                            <button
+                              onClick={() => handleRebootDevice(d.id, d.sn || d.id)}
+                              disabled={actionLoadingId === d.id}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition-all cursor-pointer disabled:opacity-50"
+                              title="Reboot ONU via TR-069"
+                            >
+                              <RotateCw size={14} className={actionLoadingId === d.id ? 'animate-spin' : ''} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -529,7 +792,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: http://30.30.0.175:7557 atau http://localhost:7557"
+                  placeholder="Contoh: http://192.168.201.238:7557 atau http://localhost:7557"
                   value={serverUrl}
                   onChange={(e) => setServerUrl(e.target.value)}
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
@@ -541,10 +804,10 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">NBI Username (Opsional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">NBI Username</label>
                   <input
                     type="text"
-                    placeholder="Kosongkan jika tidak ada auth"
+                    placeholder="admin"
                     value={nbiUsername}
                     onChange={(e) => setNbiUsername(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
@@ -552,10 +815,10 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">NBI Password (Opsional)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">NBI Password</label>
                   <input
                     type="password"
-                    placeholder="Password API"
+                    placeholder="admin"
                     value={nbiPassword}
                     onChange={(e) => setNbiPassword(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
@@ -577,58 +840,598 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
           </div>
         )}
 
-        {/* Modal Remote Wi-Fi Config */}
-        {selectedDeviceForWifi && (
+        {/* MODAL: ATUR PERANGKAT (DEVICE MANAGEMENT TR-069) */}
+        {selectedDeviceForManage && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-            <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-md shadow-2xl overflow-hidden animate-slide-up">
+            <div className="bg-white rounded-3xl border border-slate-200 w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Modal Header */}
               <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-900 text-white">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-400/30">
-                    <Wifi size={20} />
+                    <Sliders size={20} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-base text-white">Remote Setting Wi-Fi ONU</h3>
-                    <p className="text-xs text-sky-200">{selectedDeviceForWifi.sn || selectedDeviceForWifi.id}</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-base text-white">Kelola Perangkat ONU / ONT</h3>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${
+                        selectedDeviceForManage.is_online
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-400/30'
+                      }`}>
+                        {selectedDeviceForManage.is_online ? '🟢 Online' : '🔴 Offline'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 font-mono mt-0.5">
+                      SN: <strong className="text-white">{selectedDeviceForManage.sn || selectedDeviceForManage.id}</strong>
+                      <span className="mx-2">•</span>
+                      {selectedDeviceForManage.product_class || 'ONT'} ({selectedDeviceForManage.manufacturer || 'ZTE'})
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedDeviceForWifi(null)} className="text-slate-400 hover:text-white font-bold text-xl cursor-pointer">&times;</button>
+                <button
+                  onClick={() => setSelectedDeviceForManage(null)}
+                  className="text-slate-400 hover:text-white font-bold text-2xl cursor-pointer p-1"
+                >
+                  &times;
+                </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Nama Wi-Fi SSID *</label>
-                  <input
-                    type="text"
-                    required
-                    value={wifiSsid}
-                    onChange={(e) => setWifiSsid(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
+              {/* Modal Tab Switcher */}
+              <div className="flex items-center gap-1 px-5 pt-3 border-b border-slate-200 bg-slate-50 overflow-x-auto">
+                <button
+                  onClick={() => setManageTab('info')}
+                  className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-b-2 ${
+                    manageTab === 'info'
+                      ? 'border-sky-600 text-sky-600 bg-white font-black'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Activity size={14} />
+                  <span>Informasi & Status</span>
+                </button>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Password Wi-Fi WPA2 *</label>
-                  <input
-                    type="text"
-                    required
-                    value={wifiPassword}
-                    onChange={(e) => setWifiPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
-                  />
-                </div>
+                <button
+                  onClick={() => setManageTab('wifi')}
+                  className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-b-2 ${
+                    manageTab === 'wifi'
+                      ? 'border-sky-600 text-sky-600 bg-white font-black'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Wifi size={14} />
+                  <span>Wi-Fi (WLAN)</span>
+                </button>
 
-                <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-                  <button type="button" onClick={() => setSelectedDeviceForWifi(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl">Batal</button>
-                  <button
-                    type="button"
-                    onClick={handleSaveWifiConfig}
-                    disabled={wifiSaving || !wifiSsid}
-                    className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl shadow-md flex items-center gap-2 disabled:opacity-50"
-                  >
-                    {wifiSaving && <RefreshCw size={14} className="animate-spin" />}
-                    <span>{wifiSaving ? 'Mengirim TR-069...' : '⚡ Kirim Perintah ke ONU'}</span>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setManageTab('wan')}
+                  className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-b-2 ${
+                    manageTab === 'wan'
+                      ? 'border-sky-600 text-sky-600 bg-white font-black'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Globe size={14} />
+                  <span>WAN / PPPoE</span>
+                </button>
+
+                <button
+                  onClick={() => setManageTab('customer')}
+                  className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-b-2 ${
+                    manageTab === 'customer'
+                      ? 'border-sky-600 text-sky-600 bg-white font-black'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Link2 size={14} />
+                  <span>Tautkan Pelanggan</span>
+                </button>
+
+                <button
+                  onClick={() => setManageTab('danger')}
+                  className={`px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border-b-2 ${
+                    manageTab === 'danger'
+                      ? 'border-rose-600 text-rose-600 bg-white font-black'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <AlertTriangle size={14} />
+                  <span>Zona Bahaya</span>
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                {isDetailLoading && !deviceDetail ? (
+                  <div className="py-12 text-center text-slate-400 font-bold">
+                    <RefreshCw size={28} className="animate-spin mx-auto mb-2 text-sky-500" />
+                    <span>Membaca parameter TR-069 dari ONT...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* TAB 1: INFORMASI & TELEMETRI */}
+                    {manageTab === 'info' && (
+                      <div className="space-y-5">
+                        {/* Status Cards */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Redaman Optik (RX)</span>
+                            <span className={`text-base font-black font-mono block mt-0.5 ${
+                              selectedDeviceForManage.rx_power_num >= -24 ? 'text-emerald-600' : 'text-rose-600'
+                            }`}>
+                              {deviceDetail?.optical?.rx_power || selectedDeviceForManage.rx_power || '-19.5 dBm'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">IP WAN PPPoE</span>
+                            <span className="text-sm font-black font-mono text-sky-700 block mt-0.5 truncate">
+                              {deviceDetail?.wan?.ip_address || selectedDeviceForManage.external_ip || '-'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Uptime ONT</span>
+                            <span className="text-sm font-black font-mono text-slate-800 block mt-0.5">
+                              {deviceDetail?.uptime_seconds ? `${Math.floor(deviceDetail.uptime_seconds / 3600)} jam` : '-'}
+                            </span>
+                          </div>
+
+                          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Status WAN</span>
+                            <span className="text-xs font-black uppercase text-emerald-700 block mt-0.5">
+                              {deviceDetail?.wan?.connection_status || 'Connected'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Parameter Details Table */}
+                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                          <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 text-xs font-extrabold text-slate-700 flex items-center justify-between">
+                            <span>Parameter TR-069 (CWMP)</span>
+                            <span className="text-[10px] text-slate-400">Diperbarui via GenieACS</span>
+                          </div>
+
+                          <div className="divide-y divide-slate-100 text-xs">
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Serial Number (SN):</span>
+                              <span className="col-span-2 font-mono font-bold text-slate-800">
+                                {deviceDetail?.sn || selectedDeviceForManage.sn || selectedDeviceForManage.id}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Model / Product Class:</span>
+                              <span className="col-span-2 font-mono font-bold text-slate-800">
+                                {deviceDetail?.product_class || selectedDeviceForManage.product_class || '-'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Pabrikan (Manufacturer):</span>
+                              <span className="col-span-2 font-bold text-slate-800">
+                                {deviceDetail?.manufacturer || selectedDeviceForManage.manufacturer || 'ZTE'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Versi Software / Firmware:</span>
+                              <span className="col-span-2 font-mono font-bold text-slate-800">
+                                {deviceDetail?.software_version || '-'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Versi Hardware:</span>
+                              <span className="col-span-2 font-mono font-bold text-slate-800">
+                                {deviceDetail?.hardware_version || '-'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">MAC Address WAN:</span>
+                              <span className="col-span-2 font-mono font-bold text-slate-800">
+                                {deviceDetail?.wan?.mac_address || '-'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Akun Pelanggan Terhubung:</span>
+                              <span className="col-span-2">
+                                {deviceDetail?.customer ? (
+                                  <span className="font-extrabold text-sky-700">
+                                    {deviceDetail.customer.name} ({deviceDetail.customer.customer_code})
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 font-bold">Belum ditautkan ke pelanggan</span>
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 px-4 py-2.5">
+                              <span className="text-slate-400 font-bold">Terakhir Inform (CWMP):</span>
+                              <span className="col-span-2 text-slate-600">
+                                {selectedDeviceForManage.last_inform || 'Baru saja'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quick Action Buttons */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                          <button
+                            onClick={() => handleRefreshDeviceObject(selectedDeviceForManage.id)}
+                            disabled={isActionRunning}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw size={14} className={isActionRunning ? 'animate-spin' : ''} />
+                            <span>Kirim Request Refresh Parameter (Inform)</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleRebootDevice(selectedDeviceForManage.id, selectedDeviceForManage.sn || selectedDeviceForManage.id)}
+                            disabled={isActionRunning}
+                            className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCw size={14} className={isActionRunning ? 'animate-spin' : ''} />
+                            <span>⚡ Reboot ONT</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 2: WI-FI / WLAN */}
+                    {manageTab === 'wifi' && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-sky-50 border border-sky-100 rounded-2xl flex items-start gap-3">
+                          <Wifi size={20} className="text-sky-600 mt-0.5 shrink-0" />
+                          <div className="text-xs text-sky-900 leading-relaxed">
+                            <strong className="block font-bold">Konfigurasi Wi-Fi Jarak Jauh (CWMP TR-069)</strong>
+                            Anda dapat mengubah nama SSID dan sandi Wi-Fi pelanggan secara remote tanpa harus datang ke rumah pelanggan atau masuk ke IP gateway modem.
+                          </div>
+                        </div>
+
+                        {/* Radio Switch */}
+                        <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                          <div>
+                            <span className="font-extrabold text-xs text-slate-800 block">Status Radio Wi-Fi (WLAN)</span>
+                            <span className="text-[11px] text-slate-500">Aktifkan atau nonaktifkan pemancar sinyal Wi-Fi di ONT</span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={modalWifiEnabled}
+                              onChange={(e) => setModalWifiEnabled(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                          </label>
+                        </div>
+
+                        {/* SSID Input */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Nama Wi-Fi (SSID) *</label>
+                          <input
+                            type="text"
+                            required
+                            value={modalWifiSsid}
+                            onChange={(e) => setModalWifiSsid(e.target.value)}
+                            placeholder="Contoh: HOTSPOT_ARABPAY atau NAMA_WIFI"
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                          />
+                        </div>
+
+                        {/* Password Input */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Password Wi-Fi (WPA2-PSK) *</label>
+                          <div className="relative">
+                            <input
+                              type={showWifiPassword ? 'text' : 'password'}
+                              required
+                              value={modalWifiPassword}
+                              onChange={(e) => setModalWifiPassword(e.target.value)}
+                              placeholder="Masukkan password baru (minimal 8 karakter)"
+                              className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowWifiPassword(!showWifiPassword)}
+                              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showWifiPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            Biarkan kosong jika tidak ingin mengubah kata sandi Wi-Fi saat ini.
+                          </p>
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="pt-3 border-t border-slate-100 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSaveWifiConfig}
+                            disabled={isWifiSaving || !modalWifiSsid}
+                            className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                          >
+                            {isWifiSaving && <RefreshCw size={14} className="animate-spin" />}
+                            <span>{isWifiSaving ? 'Menerapkan TR-069...' : '💾 Terapkan Konfigurasi Wi-Fi'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 3: WAN / PPPOE */}
+                    {manageTab === 'wan' && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
+                          <Globe size={20} className="text-indigo-600 mt-0.5 shrink-0" />
+                          <div className="text-xs text-indigo-900 leading-relaxed">
+                            <strong className="block font-bold">Konfigurasi WAN / Akun PPPoE via TR-069</strong>
+                            Suntikkan akun PPPoE dan VLAN ID langsung ke profil WAN ONT. Sangat berguna untuk aktivasi pelanggan baru tanpa perlu menyentuh antarmuka web ONT.
+                          </div>
+                        </div>
+
+                        {/* Current Status Box */}
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">IP WAN Saat Ini</span>
+                            <span className="font-mono font-bold text-slate-800">{deviceDetail?.wan?.ip_address || '-'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Status Sambungan</span>
+                            <span className="font-bold text-emerald-600">{deviceDetail?.wan?.connection_status || 'Connected'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block uppercase">MAC Address</span>
+                            <span className="font-mono text-slate-600">{deviceDetail?.wan?.mac_address || '-'}</span>
+                          </div>
+                        </div>
+
+                        {/* PPPoE Username */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Username PPPoE *</label>
+                          <input
+                            type="text"
+                            required
+                            value={modalWanUsername}
+                            onChange={(e) => setModalWanUsername(e.target.value)}
+                            placeholder="Contoh: ppp_ahmad@speednet"
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        {/* PPPoE Password */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Password PPPoE</label>
+                          <div className="relative">
+                            <input
+                              type={showWanPassword ? 'text' : 'password'}
+                              value={modalWanPassword}
+                              onChange={(e) => setModalWanPassword(e.target.value)}
+                              placeholder="Ketik password baru (biarkan kosong jika tidak diubah)"
+                              className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowWanPassword(!showWanPassword)}
+                              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showWanPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* VLAN ID & Connection Index */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID (Opsional)</label>
+                            <input
+                              type="number"
+                              value={modalWanVlan}
+                              onChange={(e) => setModalWanVlan(e.target.value)}
+                              placeholder="Contoh: 100"
+                              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Indeks Profil WAN</label>
+                            <input
+                              type="text"
+                              disabled
+                              value={`Device.1 / PPP.${modalPppIndex}`}
+                              className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="pt-3 border-t border-slate-100 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSaveWanConfig}
+                            disabled={isWanSaving || !modalWanUsername}
+                            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                          >
+                            {isWanSaving && <RefreshCw size={14} className="animate-spin" />}
+                            <span>{isWanSaving ? 'Menerapkan TR-069...' : '💾 Terapkan Konfigurasi WAN PPPoE'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 4: TAUTKAN PELANGGAN */}
+                    {manageTab === 'customer' && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-start gap-3">
+                          <Link2 size={20} className="text-emerald-600 mt-0.5 shrink-0" />
+                          <div className="text-xs text-emerald-900 leading-relaxed">
+                            <strong className="block font-bold">Sinkronisasi Kepemilikan Modem ONT</strong>
+                            Hubungkan SN ONT ini dengan pelanggan di Arbill Billing. Pelanggan dapat melihat status redaman dan me-reboot ONT langsung dari Portal Pelanggan.
+                          </div>
+                        </div>
+
+                        {/* Current Linked Status */}
+                        {deviceDetail?.customer ? (
+                          <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase block">Pelanggan Saat Ini:</span>
+                              <div className="font-extrabold text-sm text-slate-800">{deviceDetail.customer.name}</div>
+                              <div className="text-xs text-sky-600 font-mono">
+                                Kode: {deviceDetail.customer.customer_code} • PPPoE: {deviceDetail.customer.pppoe_username || '-'}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleLinkCustomer(null)}
+                              disabled={isCustomerSaving}
+                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 size={13} />
+                              <span>Lepas Tautan</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-bold flex items-center gap-2">
+                            <AlertCircle size={15} />
+                            <span>Perangkat ini belum ditautkan ke akun pelanggan Arbill manapun.</span>
+                          </div>
+                        )}
+
+                        {/* Search and Select Customer */}
+                        <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-700">Pilih Pelanggan dari Database Arbill:</label>
+                          <div className="relative">
+                            <Search size={14} className="absolute left-3 top-3 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Cari nama, kode pelanggan, atau username PPPoE..."
+                              value={customerSearchTerm}
+                              onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+
+                          <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-white">
+                            {filteredCustomers.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-slate-400 font-bold">
+                                Tidak ada pelanggan yang cocok dengan pencarian.
+                              </div>
+                            ) : (
+                              filteredCustomers.slice(0, 10).map((c) => (
+                                <div
+                                  key={c.id}
+                                  onClick={() => setModalSelectedCustomerId(c.id)}
+                                  className={`p-3 flex items-center justify-between hover:bg-sky-50 cursor-pointer transition-all ${
+                                    modalSelectedCustomerId === c.id ? 'bg-sky-50 border-l-4 border-sky-600' : ''
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="font-extrabold text-xs text-slate-800">{c.name}</div>
+                                    <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                                      <span className="font-mono text-sky-600">{c.customer_code}</span>
+                                      {c.pppoe_username && <span>• {c.pppoe_username}</span>}
+                                      {c.sn_onu && (
+                                        <span className="text-amber-600 font-mono text-[10px]">
+                                          (SN saat ini: {c.sn_onu})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <input
+                                    type="radio"
+                                    name="selectedCustomer"
+                                    checked={modalSelectedCustomerId === c.id}
+                                    onChange={() => setModalSelectedCustomerId(c.id)}
+                                    className="w-4 h-4 text-sky-600"
+                                  />
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Submit Button */}
+                        <div className="pt-3 border-t border-slate-100 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleLinkCustomer(modalSelectedCustomerId)}
+                            disabled={isCustomerSaving || !modalSelectedCustomerId}
+                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                          >
+                            {isCustomerSaving && <RefreshCw size={14} className="animate-spin" />}
+                            <span>{isCustomerSaving ? 'Menyimpan...' : '🔗 Tautkan SN ke Pelanggan Terpilih'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TAB 5: ZONA BAHAYA (MAINTENANCE) */}
+                    {manageTab === 'danger' && (
+                      <div className="space-y-4">
+                        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-2">
+                          <div className="flex items-center gap-2 text-rose-800 font-extrabold text-sm">
+                            <AlertTriangle size={18} />
+                            <span>Perhatian Khusus Operasi TR-069</span>
+                          </div>
+                          <p className="text-xs text-rose-700 leading-relaxed">
+                            Perintah di tab ini akan langsung dieksekusi oleh ONT pelanggan begitu ONT terhubung ke GenieACS ACS. Harap gunakan dengan hati-hati.
+                          </p>
+                        </div>
+
+                        {/* Reboot Card */}
+                        <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between">
+                          <div>
+                            <h4 className="font-extrabold text-xs text-slate-800">Reboot Perangkat ONT</h4>
+                            <p className="text-[11px] text-slate-500">Mulai ulang perangkat ONU pelanggan dari jarak jauh via TR-069 CWMP.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRebootDevice(selectedDeviceForManage.id, selectedDeviceForManage.sn || selectedDeviceForManage.id)}
+                            disabled={isActionRunning}
+                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCw size={14} className={isActionRunning ? 'animate-spin' : ''} />
+                            <span>Reboot ONT</span>
+                          </button>
+                        </div>
+
+                        {/* Factory Reset Card */}
+                        <div className="p-4 bg-rose-50/50 border border-rose-200 rounded-2xl flex items-center justify-between">
+                          <div>
+                            <h4 className="font-extrabold text-xs text-rose-900">Kembalikan ke Setelan Pabrik (Factory Reset)</h4>
+                            <p className="text-[11px] text-rose-600">
+                              Hapus semua konfigurasi Wi-Fi, WAN, dan password modem kembali ke default bawaan pabrik.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleFactoryResetDevice(selectedDeviceForManage.id, selectedDeviceForManage.sn || selectedDeviceForManage.id)}
+                            disabled={isActionRunning}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                            <span>Factory Reset</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-100 flex justify-between items-center bg-slate-50">
+                <span className="text-[11px] font-mono text-slate-400">
+                  GenieACS NBI API • Port 7557
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceForManage(null)}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 cursor-pointer"
+                >
+                  Tutup
+                </button>
               </div>
             </div>
           </div>

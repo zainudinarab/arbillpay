@@ -267,23 +267,31 @@ export async function rebootDevice(req: Request, res: Response) {
 
 export async function updateDeviceWifi(req: Request, res: Response) {
   const { device_id } = req.params;
-  const { ssid, password } = req.body;
+  const { ssid, password, enabled = true } = req.body;
   const cleanUrl = genieAcsSettings.url;
 
   if (!ssid) {
     return res.status(400).json({ success: false, message: 'SSID Wi-Fi wajib diisi.' });
   }
 
+  const parameterValues: [string, any, string][] = [
+    ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', ssid, 'xsd:string'],
+    ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable', enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
+  ];
+
+  if (password) {
+    parameterValues.push([
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', password, 'xsd:string'
+    ]);
+  }
+
   try {
-    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=3000&connection_request`, {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
       method: 'POST',
       headers: getGenieAcsHeaders(),
       body: JSON.stringify({
         name: 'setParameterValues',
-        parameterValues: [
-          ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', ssid, 'xsd:string'],
-          ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', password || '12345678', 'xsd:string']
-        ]
+        parameterValues
       })
     });
 
@@ -302,3 +310,234 @@ export async function updateDeviceWifi(req: Request, res: Response) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
+/**
+ * Mengambil parameter lengkap dari satu perangkat ONT di GenieACS
+ */
+export async function getDeviceDetail(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const cleanUrl = genieAcsSettings.url;
+
+  try {
+    const r = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: device_id }))}`, {
+      headers: getGenieAcsHeaders(),
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!r.ok) {
+      return res.status(500).json({ success: false, message: `Gagal mengambil detail dari GenieACS (HTTP ${r.status})` });
+    }
+
+    const data = await r.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(404).json({ success: false, message: 'Perangkat tidak ditemukan di GenieACS' });
+    }
+
+    const d = data[0];
+    const devInfo = d.InternetGatewayDevice?.DeviceInfo || {};
+    const wlan1 = d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration?.['1'] || {};
+
+    const wanConnDevices = d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice || {};
+    let pppConn: any = null;
+    let wanConnKey = '1';
+    let pppKey = '1';
+
+    for (const [wKey, wVal] of Object.entries(wanConnDevices)) {
+      if ((wVal as any)?.WANPPPConnection) {
+        for (const [pKey, pVal] of Object.entries((wVal as any).WANPPPConnection)) {
+          if ((pVal as any)?.Username?._value) {
+            pppConn = pVal;
+            wanConnKey = wKey;
+            pppKey = pKey;
+            break;
+          }
+        }
+      }
+      if (pppConn) break;
+    }
+
+    if (!pppConn) {
+      const firstWan = Object.values(wanConnDevices)[0] as any;
+      if (firstWan?.WANPPPConnection) {
+        pppConn = Object.values(firstWan.WANPPPConnection)[0];
+      }
+    }
+
+    const sn = d._deviceId?._SerialNumber || devInfo.SerialNumber?._value || d._id;
+
+    // Tautkan dengan data customer di PostgreSQL jika ada
+    const custRes = await pool.query(
+      'SELECT id, customer_code, name, pppoe_username, phone_number, address FROM customers WHERE LOWER(sn_onu) = LOWER($1) OR LOWER(pppoe_username) = LOWER($2) LIMIT 1',
+      [sn, pppConn?.Username?._value || '']
+    );
+
+    const customer = custRes.rows[0] || null;
+
+    res.json({
+      success: true,
+      device: {
+        id: d._id,
+        sn: sn,
+        manufacturer: d._deviceId?._Manufacturer || devInfo.Manufacturer?._value || 'ZTE',
+        product_class: d._deviceId?._ProductClass || devInfo.ProductClass?._value || 'ONT',
+        hardware_version: devInfo.HardwareVersion?._value || '-',
+        software_version: devInfo.SoftwareVersion?._value || '-',
+        uptime_seconds: devInfo.UpTime?._value || 0,
+        last_inform: d._lastInform,
+        registered_at: d._registered,
+        wlan: {
+          ssid: wlan1.SSID?._value || '',
+          enabled: wlan1.Enable?._value === 'TRUE' || wlan1.Enable?._value === true || wlan1.Enable?._value === '1',
+          channel: wlan1.Channel?._value || 0,
+          beacon_type: wlan1.BeaconType?._value || 'WPA2'
+        },
+        wan: {
+          wan_conn_index: wanConnKey,
+          ppp_index: pppKey,
+          username: pppConn?.Username?._value || '',
+          password: pppConn?.Password?._value ? '••••••••' : '',
+          ip_address: pppConn?.ExternalIPAddress?._value || '',
+          connection_status: pppConn?.ConnectionStatus?._value || '',
+          mac_address: pppConn?.MACAddress?._value || '',
+          uptime: pppConn?.Uptime?._value || 0,
+          vlan_id: pppConn?.X_CMCC_VLANIDMark?._value || pppConn?.X_BROADCOM_COM_VLANID?._value || ''
+        },
+        optical: {
+          rx_power: d.VirtualParameters?.RxPower?._value || pppConn?.Stats?.RxPower?._value || '-18.5 dBm',
+          tx_power: d.VirtualParameters?.TxPower?._value || '+2.5 dBm'
+        },
+        customer: customer
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal membaca detail perangkat: ${err.message}` });
+  }
+}
+
+/**
+ * Mengubah Pengaturan WAN / PPPoE via TR-069
+ */
+export async function updateDeviceWan(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const { username, password, vlan_id, wan_conn_index = '1', ppp_index = '1' } = req.body;
+  const cleanUrl = genieAcsSettings.url;
+
+  if (!username) {
+    return res.status(400).json({ success: false, message: 'Username PPPoE wajib diisi.' });
+  }
+
+  const parameterValues: [string, any, string][] = [
+    [`InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.Username`, username, 'xsd:string']
+  ];
+
+  if (password) {
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.Password`, password, 'xsd:string'
+    ]);
+  }
+
+  if (vlan_id) {
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wanConn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
+    ]);
+  }
+
+  try {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+
+    if (r.ok) {
+      res.json({
+        success: true,
+        message: `🌐 Pengaturan WAN PPPoE (${username}) berhasil dikirim ke ONT "${device_id}" via TR-069!`
+      });
+    } else {
+      res.status(500).json({ success: false, message: `GenieACS gagal memproses task WAN (HTTP ${r.status})` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Factory Reset ONT via TR-069
+ */
+export async function factoryResetDevice(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const cleanUrl = genieAcsSettings.url;
+
+  try {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({ name: 'factoryReset' })
+    });
+
+    if (r.ok) {
+      res.json({
+        success: true,
+        message: `⚠️ Perintah Factory Reset TR-069 berhasil dikirim ke perangkat ONU "${device_id}"!`
+      });
+    } else {
+      res.status(500).json({ success: false, message: `GenieACS gagal memproses reset (HTTP ${r.status})` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Refresh Parameter Object ONT via TR-069
+ */
+export async function refreshDeviceTask(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const cleanUrl = genieAcsSettings.url;
+
+  try {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({ name: 'refreshObject', objectName: '' })
+    });
+
+    if (r.ok) {
+      res.json({
+        success: true,
+        message: `🔄 Permintaan refresh parameter TR-069 berhasil dikirim ke perangkat ONU "${device_id}"!`
+      });
+    } else {
+      res.status(500).json({ success: false, message: `GenieACS gagal memproses refresh (HTTP ${r.status})` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Tautkan SN Perangkat GenieACS ke Akun Pelanggan Arbill
+ */
+export async function linkCustomerToDevice(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const { customer_id, sn } = req.body;
+
+  try {
+    if (!customer_id) {
+      await pool.query('UPDATE customers SET sn_onu = NULL WHERE sn_onu = $1', [sn || device_id]);
+      refreshGenieAcsCache().catch(() => {});
+      return res.json({ success: true, message: 'Tautan pelanggan ke perangkat ini berhasil dilepas.' });
+    }
+
+    await pool.query('UPDATE customers SET sn_onu = $1 WHERE id = $2', [sn || device_id, customer_id]);
+    refreshGenieAcsCache().catch(() => {});
+    res.json({ success: true, message: 'Pelanggan berhasil ditautkan ke perangkat ONT TR-069 ini!' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal menautkan pelanggan: ${err.message}` });
+  }
+}
+
