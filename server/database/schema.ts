@@ -539,6 +539,73 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_ftth_traffic_history_time ON ftth_traffic_history (recorded_at DESC);
     `).catch(() => {});
 
+    // 10.6 MikroTik Interfaces Master & 30-Minute Traffic Logs
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS router_interfaces (
+        id VARCHAR(128) PRIMARY KEY,
+        router_id VARCHAR(64) REFERENCES routers(id) ON DELETE CASCADE,
+        name VARCHAR(128) NOT NULL,
+        comment VARCHAR(255),
+        interface_type VARCHAR(32) NOT NULL DEFAULT 'ether',
+        linked_node_id VARCHAR(64),
+        customer_id VARCHAR(64),
+        is_monitored BOOLEAN DEFAULT true,
+        last_rx_bytes BIGINT DEFAULT 0,
+        last_tx_bytes BIGINT DEFAULT 0,
+        last_polled_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_router_interfaces_router ON router_interfaces (router_id);
+
+      CREATE TABLE IF NOT EXISTS interface_traffic_logs (
+        id BIGSERIAL PRIMARY KEY,
+        interface_id VARCHAR(128) NOT NULL,
+        router_id VARCHAR(64) NOT NULL,
+        interface_name VARCHAR(128) NOT NULL,
+        interface_type VARCHAR(32) NOT NULL DEFAULT 'ether',
+        linked_node_id VARCHAR(64),
+        recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        delta_rx_bytes BIGINT NOT NULL DEFAULT 0,
+        delta_tx_bytes BIGINT NOT NULL DEFAULT 0,
+        avg_rx_mbps NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        avg_tx_mbps NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        peak_rx_mbps NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        peak_tx_mbps NUMERIC(8, 2) NOT NULL DEFAULT 0,
+        interval_seconds INT NOT NULL DEFAULT 1800
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_traffic_log_interface_time ON interface_traffic_logs (interface_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_traffic_log_node_time ON interface_traffic_logs (linked_node_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_traffic_log_time ON interface_traffic_logs (recorded_at DESC);
+    `).catch(() => {});
+
+    // 10.7 PPPoE / Hotspot Customer Connection & Disconnection Event Logs
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pppoe_connection_logs (
+        id BIGSERIAL PRIMARY KEY,
+        router_id VARCHAR(64) NOT NULL,
+        customer_id VARCHAR(64),
+        pppoe_username VARCHAR(128) NOT NULL,
+        ip_address VARCHAR(64),
+        mac_address VARCHAR(64),
+        service VARCHAR(32) DEFAULT 'pppoe',
+        event_type VARCHAR(32) NOT NULL, -- 'connected' | 'disconnected'
+        uptime_seconds INT DEFAULT 0,
+        uptime_str VARCHAR(64),
+        bytes_in BIGINT DEFAULT 0,
+        bytes_out BIGINT DEFAULT 0,
+        terminate_cause VARCHAR(255),
+        recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pppoe_logs_username ON pppoe_connection_logs (pppoe_username, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_pppoe_logs_customer ON pppoe_connection_logs (customer_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_pppoe_logs_router ON pppoe_connection_logs (router_id, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_pppoe_logs_event ON pppoe_connection_logs (event_type, recorded_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_pppoe_logs_time ON pppoe_connection_logs (recorded_at DESC);
+    `).catch(() => {});
+
     // 11. Smart Migration for Flash Sales
     try {
       const fsCheck = await pool.query('SELECT COUNT(*)::int as total FROM flash_sales');

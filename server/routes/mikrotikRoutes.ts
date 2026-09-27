@@ -3,7 +3,7 @@ import {
   listRouters, testConnection, addRouter, editRouter, deleteRouter,
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
-  getPppActiveUsers, importPppSecrets, importHotspotUsers,
+  getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
   getIsolirStatus, setupIsolirOnMikrotik, syncIsolirComponent, getIsolirScript, getIsolatedCustomers,
   getWalledGardenStatus, setupWalledGarden, removeWalledGarden
 } from '../controllers/mikrotikController.js';
@@ -36,8 +36,9 @@ router.delete('/ip-pools/:id', deleteIpPool);
 router.post('/routers/:id/sync-ip-pools', syncIpPoolsFromMikrotik);
 router.post('/ip-pools/:id/push-to-mikrotik', pushIpPoolToMikrotik);
 
-// Live Active Sessions & Imports
+// Live Active Sessions, Event Logs & Imports
 router.get('/routers/ppp-active-users', getPppActiveUsers);
+router.get('/routers/pppoe-connection-logs', getPppoeConnectionLogs);
 router.post('/routers/:id/import-ppp-secrets', importPppSecrets);
 router.post('/routers/:id/import-hotspot-users', importHotspotUsers);
 

@@ -1541,7 +1541,8 @@ export async function refreshActiveUsersCache() {
                 }
                 activeConnections.push({
                   username: act.name || act.user,
-                  address: act.address || act['caller-id'] || '',
+                  address: act.address || '',
+                  caller_id: act['caller-id'] || '',
                   uptime: act.uptime || '',
                   service: act.service || 'pppoe',
                   router_id: r.id,
@@ -1563,7 +1564,8 @@ export async function refreshActiveUsersCache() {
                 }
                 activeConnections.push({
                   username: act.user || act.name,
-                  address: act.address || act['mac-address'] || '',
+                  address: act.address || '',
+                  caller_id: act['mac-address'] || '',
                   uptime: act.uptime || '',
                   service: 'hotspot',
                   router_id: r.id,
@@ -1577,6 +1579,37 @@ export async function refreshActiveUsersCache() {
         conn.close();
       } catch (e: any) {
         // Silently handle router unreachable
+      }
+    }
+
+    // Compare with previous active sessions to log PPPoE connected & disconnected events
+    if (activeCache.activeConnections && activeCache.activeConnections.length > 0) {
+      const prevMap = new Map<string, any>();
+      activeCache.activeConnections.forEach((c: any) => prevMap.set(`${c.router_id}:${String(c.username).toLowerCase()}`, c));
+      
+      const currMap = new Map<string, any>();
+      activeConnections.forEach((c: any) => currMap.set(`${c.router_id}:${String(c.username).toLowerCase()}`, c));
+
+      // 1. Detect New Connections (User just came online)
+      for (const [key, curr] of currMap.entries()) {
+        if (!prevMap.has(key)) {
+          pool.query(`
+            INSERT INTO pppoe_connection_logs (
+              router_id, pppoe_username, ip_address, mac_address, service, event_type, recorded_at
+            ) VALUES ($1, $2, $3, $4, $5, 'connected', NOW())
+          `, [curr.router_id, curr.username, curr.address || null, curr.caller_id || null, curr.service || 'pppoe']).catch(() => {});
+        }
+      }
+
+      // 2. Detect Disconnections (User just went offline / putus)
+      for (const [key, prev] of prevMap.entries()) {
+        if (!currMap.has(key)) {
+          pool.query(`
+            INSERT INTO pppoe_connection_logs (
+              router_id, pppoe_username, ip_address, mac_address, service, event_type, uptime_str, recorded_at
+            ) VALUES ($1, $2, $3, $4, $5, 'disconnected', $6, NOW())
+          `, [prev.router_id, prev.username, prev.address || null, prev.caller_id || null, prev.service || 'pppoe', prev.uptime || null]).catch(() => {});
+        }
       }
     }
 
@@ -1646,6 +1679,46 @@ export async function getPppActiveUsers(req: Request, res: Response) {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// Controller Endpoint: Returns PPPoE Connection & Disconnection Event Logs
+export async function getPppoeConnectionLogs(req: Request, res: Response) {
+  try {
+    const { username, routerId, event, limit = 50, offset = 0 } = req.query;
+    let query = `
+      SELECT pcl.*, c.name as customer_name, r.name as router_name
+      FROM pppoe_connection_logs pcl
+      LEFT JOIN customers c ON (c.pppoe_username = pcl.pppoe_username OR c.id = pcl.customer_id)
+      LEFT JOIN routers r ON r.id = pcl.router_id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (username) {
+      params.push(`%${String(username).toLowerCase()}%`);
+      query += ` AND LOWER(pcl.pppoe_username) LIKE $${params.length}`;
+    }
+    if (routerId) {
+      params.push(String(routerId));
+      query += ` AND pcl.router_id = $${params.length}`;
+    }
+    if (event) {
+      params.push(String(event));
+      query += ` AND pcl.event_type = $${params.length}`;
+    }
+
+    query += ` ORDER BY pcl.recorded_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(parseInt(String(limit), 10) || 50, parseInt(String(offset), 10) || 0);
+
+    const result = await pool.query(query, params);
+    res.json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal mengambil log koneksi PPPoE: ${err.message}` });
   }
 }
 
