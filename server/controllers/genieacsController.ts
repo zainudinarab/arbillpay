@@ -267,7 +267,7 @@ export async function rebootDevice(req: Request, res: Response) {
 
 export async function updateDeviceWifi(req: Request, res: Response) {
   const { device_id } = req.params;
-  const { ssid, password, enabled = true } = req.body;
+  const { ssid, password, enabled = true, ssid_index = '1' } = req.body;
   const cleanUrl = genieAcsSettings.url;
 
   if (!ssid) {
@@ -275,13 +275,13 @@ export async function updateDeviceWifi(req: Request, res: Response) {
   }
 
   const parameterValues: [string, any, string][] = [
-    ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', ssid, 'xsd:string'],
-    ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable', enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
+    [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.SSID`, ssid, 'xsd:string'],
+    [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.Enable`, enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
   ];
 
   if (password) {
     parameterValues.push([
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', password, 'xsd:string'
+      `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'
     ]);
   }
 
@@ -298,7 +298,7 @@ export async function updateDeviceWifi(req: Request, res: Response) {
     if (r.ok) {
       res.json({
         success: true,
-        message: `📶 Perintah penyesuaian Wi-Fi SSID "${ssid}" berhasil terkirim ke ONU "${device_id}" via TR-069!`
+        message: `📶 Perintah penyesuaian Wi-Fi SSID #${ssid_index} ("${ssid}") berhasil terkirim ke ONU "${device_id}" via TR-069!`
       });
     } else {
       res.status(500).json({
@@ -335,25 +335,101 @@ export async function getDeviceDetail(req: Request, res: Response) {
 
     const d = data[0];
     const devInfo = d.InternetGatewayDevice?.DeviceInfo || {};
-    const wlan1 = d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration?.['1'] || {};
 
+    // Multi-SSID (WLAN Configuration 1, 2, 3, 4)
+    const rawWlan = d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
+    const wlans: any[] = [];
+    for (const [k, v] of Object.entries(rawWlan)) {
+      if (k.startsWith('_') || !v) continue;
+      const vObj = v as any;
+      const assocMap = vObj.AssociatedDevice || {};
+      const assocList = Object.entries(assocMap)
+        .filter(([ak]) => !ak.startsWith('_'))
+        .map(([_, av]: any) => ({
+          mac: av.AssociatedDeviceMACAddress?._value,
+          ip: av.AssociatedDeviceIPAddress?._value
+        }));
+
+      wlans.push({
+        index: k,
+        ssid: vObj.SSID?._value || `SSID-${k}`,
+        enabled: vObj.Enable?._value === 'TRUE' || vObj.Enable?._value === true || vObj.Enable?._value === '1',
+        beacon_type: vObj.BeaconType?._value || 'WPA/WPA2',
+        channel: vObj.Channel?._value || 0,
+        total_associations: vObj.TotalAssociations?._value || assocList.length || 0,
+        associated_devices: assocList
+      });
+    }
+
+    const wlan1 = wlans[0] || { index: '1', ssid: 'Wi-Fi', enabled: true, beacon_type: 'WPA2', channel: 0, total_associations: 0, associated_devices: [] };
+
+    // Daftar Host / Perangkat terhubung ke ONT (LAN & Wi-Fi)
+    const rawHosts = d.InternetGatewayDevice?.LANDevice?.['1']?.Hosts?.Host || {};
+    const connectedHosts: any[] = [];
+    for (const [hk, hv] of Object.entries(rawHosts)) {
+      if (hk.startsWith('_') || !hv) continue;
+      const h = hv as any;
+      connectedHosts.push({
+        ip: h.IPAddress?._value,
+        mac: h.MACAddress?._value,
+        hostname: h.HostName?._value || 'Perangkat Client',
+        interface_type: h.InterfaceType?._value || 'Wi-Fi / LAN'
+      });
+    }
+
+    // Daftar Koneksi WAN (Internet PPPoE & TR-069 IPoE)
     const wanConnDevices = d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice || {};
+    const wanConnections: any[] = [];
     let pppConn: any = null;
     let wanConnKey = '1';
     let pppKey = '1';
 
     for (const [wKey, wVal] of Object.entries(wanConnDevices)) {
-      if ((wVal as any)?.WANPPPConnection) {
-        for (const [pKey, pVal] of Object.entries((wVal as any).WANPPPConnection)) {
-          if ((pVal as any)?.Username?._value) {
-            pppConn = pVal;
+      if (wKey.startsWith('_') || !wVal) continue;
+      const wObj = wVal as any;
+
+      if (wObj.WANPPPConnection) {
+        for (const [pKey, pVal] of Object.entries(wObj.WANPPPConnection)) {
+          if (pKey.startsWith('_') || !pVal) continue;
+          const pObj = pVal as any;
+          if (pObj.Username?._value && !pppConn) {
+            pppConn = pObj;
             wanConnKey = wKey;
             pppKey = pKey;
-            break;
           }
+          wanConnections.push({
+            type: 'PPPoE',
+            wan_index: wKey,
+            sub_index: pKey,
+            name: pObj.Name?._value || `PPP-${wKey}.${pKey}`,
+            username: pObj.Username?._value || '',
+            ip: pObj.ExternalIPAddress?._value || '',
+            status: pObj.ConnectionStatus?._value || 'Connected',
+            mac: pObj.MACAddress?._value || '',
+            uptime: pObj.Uptime?._value || 0,
+            vlan_id: pObj.X_CMCC_VLANIDMark?._value || pObj.X_BROADCOM_COM_VLANID?._value || ''
+          });
         }
       }
-      if (pppConn) break;
+
+      if (wObj.WANIPConnection) {
+        for (const [iKey, iVal] of Object.entries(wObj.WANIPConnection)) {
+          if (iKey.startsWith('_') || !iVal) continue;
+          const iObj = iVal as any;
+          wanConnections.push({
+            type: 'IPoE / DHCP (TR-069)',
+            wan_index: wKey,
+            sub_index: iKey,
+            name: iObj.Name?._value || `IP-${wKey}.${iKey}`,
+            username: '',
+            ip: iObj.ExternalIPAddress?._value || '',
+            status: 'Connected',
+            mac: iObj.MACAddress?._value || '',
+            uptime: 0,
+            vlan_id: iObj.X_CMCC_VLANIDMark?._value || iObj.X_CT_COM_VLANID?._value || ''
+          });
+        }
+      }
     }
 
     if (!pppConn) {
@@ -385,12 +461,10 @@ export async function getDeviceDetail(req: Request, res: Response) {
         uptime_seconds: devInfo.UpTime?._value || 0,
         last_inform: d._lastInform,
         registered_at: d._registered,
-        wlan: {
-          ssid: wlan1.SSID?._value || '',
-          enabled: wlan1.Enable?._value === 'TRUE' || wlan1.Enable?._value === true || wlan1.Enable?._value === '1',
-          channel: wlan1.Channel?._value || 0,
-          beacon_type: wlan1.BeaconType?._value || 'WPA2'
-        },
+        wlans: wlans,
+        wlan: wlan1,
+        connected_hosts: connectedHosts,
+        wan_connections: wanConnections,
         wan: {
           wan_conn_index: wanConnKey,
           ppp_index: pppKey,

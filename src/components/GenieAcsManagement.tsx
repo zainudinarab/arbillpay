@@ -67,6 +67,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   const [isDetailLoading, setIsDetailLoading] = useState<boolean>(false);
 
   // Form Fields for Manage Modal
+  const [selectedSsidIndex, setSelectedSsidIndex] = useState<string>('1');
   const [modalWifiSsid, setModalWifiSsid] = useState<string>('');
   const [modalWifiPassword, setModalWifiPassword] = useState<string>('');
   const [modalWifiEnabled, setModalWifiEnabled] = useState<boolean>(true);
@@ -230,8 +231,16 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       if (data.success && data.device) {
         const dev = data.device;
         setDeviceDetail(dev);
-        setModalWifiSsid(dev.wlan?.ssid || device.wifi_ssid || '');
-        setModalWifiEnabled(dev.wlan?.enabled ?? true);
+        if (dev.wlans && dev.wlans.length > 0) {
+          const first = dev.wlans[0];
+          setSelectedSsidIndex(first.index || '1');
+          setModalWifiSsid(first.ssid || '');
+          setModalWifiEnabled(first.enabled ?? true);
+        } else {
+          setSelectedSsidIndex('1');
+          setModalWifiSsid(dev.wlan?.ssid || device.wifi_ssid || '');
+          setModalWifiEnabled(dev.wlan?.enabled ?? true);
+        }
         setModalWanUsername(dev.wan?.username || '');
         setModalWanVlan(dev.wan?.vlan_id || '');
         setModalWanConnIndex(dev.wan?.wan_conn_index || '1');
@@ -352,7 +361,8 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
         body: JSON.stringify({
           ssid: modalWifiSsid,
           password: modalWifiPassword,
-          enabled: modalWifiEnabled
+          enabled: modalWifiEnabled,
+          ssid_index: selectedSsidIndex
         })
       });
 
@@ -1056,6 +1066,36 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                           </div>
                         </div>
 
+                        {/* Connected Devices (LAN / Wi-Fi Hosts) */}
+                        {deviceDetail?.connected_hosts && deviceDetail.connected_hosts.length > 0 && (
+                          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                            <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 text-xs font-extrabold text-slate-700 flex items-center justify-between">
+                              <span className="flex items-center gap-2">
+                                <Radio size={14} className="text-sky-600" />
+                                <span>Perangkat Client Terhubung (Wi-Fi & LAN)</span>
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-mono">
+                                {deviceDetail.connected_hosts.length} Perangkat
+                              </span>
+                            </div>
+                            <div className="divide-y divide-slate-100 text-xs max-h-48 overflow-y-auto">
+                              {deviceDetail.connected_hosts.map((h: any, idx: number) => (
+                                <div key={idx} className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50">
+                                  <div>
+                                    <div className="font-bold text-slate-800">{h.hostname || 'Perangkat Tanpa Nama'}</div>
+                                    <div className="text-[10px] font-mono text-slate-400">
+                                      MAC: <span className="text-slate-600">{h.mac || '-'}</span> • Jalur: {h.interface_type || 'Wi-Fi'}
+                                    </div>
+                                  </div>
+                                  <span className="font-mono font-bold text-sky-700 text-xs bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100">
+                                    {h.ip}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Quick Action Buttons */}
                         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                           <button
@@ -1085,16 +1125,56 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                         <div className="p-4 bg-sky-50 border border-sky-100 rounded-2xl flex items-start gap-3">
                           <Wifi size={20} className="text-sky-600 mt-0.5 shrink-0" />
                           <div className="text-xs text-sky-900 leading-relaxed">
-                            <strong className="block font-bold">Konfigurasi Wi-Fi Jarak Jauh (CWMP TR-069)</strong>
-                            Anda dapat mengubah nama SSID dan sandi Wi-Fi pelanggan secara remote tanpa harus datang ke rumah pelanggan atau masuk ke IP gateway modem.
+                            <strong className="block font-bold">Konfigurasi Wi-Fi Multi-SSID Jarak Jauh (CWMP TR-069)</strong>
+                            Modem ini mendukung Multi-SSID. Anda dapat memilih SSID mana yang ingin diatur (SSID #1, #2, dll), mengubah nama, password, atau mengaktifkan/menonaktifkan radio.
                           </div>
                         </div>
+
+                        {/* Multi-SSID Selector Chips */}
+                        {deviceDetail?.wlans && deviceDetail.wlans.length > 0 && (
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase block tracking-wider">
+                              Pilih Profil SSID (Multi-SSID Terdeteksi: {deviceDetail.wlans.length})
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {deviceDetail.wlans.map((w: any) => (
+                                <button
+                                  key={w.index}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSsidIndex(w.index);
+                                    setModalWifiSsid(w.ssid || '');
+                                    setModalWifiEnabled(w.enabled ?? true);
+                                    setModalWifiPassword('');
+                                  }}
+                                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                                    selectedSsidIndex === w.index
+                                      ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
+                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <Wifi size={13} />
+                                  <span>SSID #{w.index}: <strong className="font-mono">{w.ssid || `SSID-${w.index}`}</strong></span>
+                                  {w.total_associations > 0 && (
+                                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
+                                      selectedSsidIndex === w.index ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                                    }`}>
+                                      {w.total_associations} Klien
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Radio Switch */}
                         <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">
                           <div>
-                            <span className="font-extrabold text-xs text-slate-800 block">Status Radio Wi-Fi (WLAN)</span>
-                            <span className="text-[11px] text-slate-500">Aktifkan atau nonaktifkan pemancar sinyal Wi-Fi di ONT</span>
+                            <span className="font-extrabold text-xs text-slate-800 block">
+                              Status Radio Wi-Fi (SSID #{selectedSsidIndex})
+                            </span>
+                            <span className="text-[11px] text-slate-500">Aktifkan atau nonaktifkan pemancar sinyal pada SSID #{selectedSsidIndex}</span>
                           </div>
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
@@ -1109,7 +1189,9 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
 
                         {/* SSID Input */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Nama Wi-Fi (SSID) *</label>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Nama Wi-Fi (SSID #{selectedSsidIndex}) *
+                          </label>
                           <input
                             type="text"
                             required
@@ -1122,14 +1204,15 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
 
                         {/* Password Input */}
                         <div>
-                          <label className="block text-xs font-bold text-slate-700 mb-1">Password Wi-Fi (WPA2-PSK) *</label>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            Password Wi-Fi WPA2-PSK (SSID #{selectedSsidIndex}) *
+                          </label>
                           <div className="relative">
                             <input
                               type={showWifiPassword ? 'text' : 'password'}
-                              required
                               value={modalWifiPassword}
                               onChange={(e) => setModalWifiPassword(e.target.value)}
-                              placeholder="Masukkan password baru (minimal 8 karakter)"
+                              placeholder="Masukkan password baru (minimal 8 karakter, kosongkan jika tidak diubah)"
                               className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
                             />
                             <button
@@ -1141,7 +1224,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                             </button>
                           </div>
                           <p className="text-[11px] text-slate-400 mt-1">
-                            Biarkan kosong jika tidak ingin mengubah kata sandi Wi-Fi saat ini.
+                            Biarkan kosong jika tidak ingin mengubah kata sandi Wi-Fi SSID ini.
                           </p>
                         </div>
 
@@ -1154,7 +1237,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                             className="px-6 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                           >
                             {isWifiSaving && <RefreshCw size={14} className="animate-spin" />}
-                            <span>{isWifiSaving ? 'Menerapkan TR-069...' : '💾 Terapkan Konfigurasi Wi-Fi'}</span>
+                            <span>{isWifiSaving ? 'Menerapkan TR-069...' : `💾 Terapkan Wi-Fi SSID #${selectedSsidIndex}`}</span>
                           </button>
                         </div>
                       </div>
@@ -1170,6 +1253,33 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                             Suntikkan akun PPPoE dan VLAN ID langsung ke profil WAN ONT. Sangat berguna untuk aktivasi pelanggan baru tanpa perlu menyentuh antarmuka web ONT.
                           </div>
                         </div>
+
+                        {/* Daftar Semua Koneksi WAN (Multi-WAN) */}
+                        {deviceDetail?.wan_connections && deviceDetail.wan_connections.length > 0 && (
+                          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
+                            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                              Daftar Profil WAN Aktif di ONT ({deviceDetail.wan_connections.length} Profil)
+                            </div>
+                            <div className="divide-y divide-slate-200 text-xs">
+                              {deviceDetail.wan_connections.map((wc: any, idx: number) => (
+                                <div key={idx} className="py-2.5 flex items-center justify-between">
+                                  <div>
+                                    <div className="font-bold text-slate-800 flex items-center gap-2">
+                                      <span className="font-mono text-sky-700">{wc.name}</span>
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 text-slate-700 font-bold">{wc.type}</span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                                      IP: <strong className="text-slate-800">{wc.ip || '0.0.0.0'}</strong> {wc.username ? `• Akun: ${wc.username}` : ''} {wc.vlan_id ? `• VLAN: ${wc.vlan_id}` : ''}
+                                    </div>
+                                  </div>
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    {wc.status || 'Connected'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Current Status Box */}
                         <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
