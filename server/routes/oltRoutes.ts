@@ -15,6 +15,7 @@ import {
   rebootOnuAction,
   testOltSnmpAction,
   enableOltSnmpAction,
+  syncOltSnmpTelemetryAction,
   getUnconfiguredOnusAction
 } from '../controllers/oltController.js';
 
@@ -33,6 +34,7 @@ router.post('/olts/:id/link-node', linkOltToNode);
 // OLT Port PON & ONU Control & Database Cache
 router.get('/olts/:id/onus', getOltOnus);
 router.post('/olts/:id/sync', syncOltOnusAction);
+router.post('/olts/:id/sync-snmp', syncOltSnmpTelemetryAction);
 router.post('/olts/:id/register-onu', registerOltOnuAction);
 router.post('/olts/:id/delete-onu', deleteOltOnuAction);
 router.post('/olts/:id/link-customer', linkCustomerToOnuAction);

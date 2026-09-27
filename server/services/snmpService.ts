@@ -326,3 +326,120 @@ export async function fetchRouterInterfacesSnmp(
     );
   });
 }
+
+export interface SnmpOnuTelemetry {
+  onu_id: number;
+  pon_port: string;
+  status: 'online' | 'offline';
+  rx_power_dbm: number | null;
+  tx_power_dbm: number | null;
+  voltage_v: number | null;
+  temperature_c: number | null;
+  bias_current_ma: number | null;
+  rx_bytes?: number;
+  tx_bytes?: number;
+  in_errors?: number;
+}
+
+/**
+ * Tarik seluruh telemetri optik, suhu, tegangan, dan trafik ONU dari OLT via SNMP
+ */
+export async function fetchOltOnuTelemetryViaSnmp(
+  host: string,
+  port = 161,
+  community = 'public',
+  ponPort = '1'
+): Promise<SnmpOnuTelemetry[]> {
+  const session = snmp.createSession(host, community, {
+    port: Number(port) || 161,
+    version: snmp.Version2c,
+    timeout: 3500,
+    retries: 1
+  });
+
+  const onuMap: Record<number, SnmpOnuTelemetry> = {};
+
+  const walkTree = (oid: string): Promise<any[]> => {
+    return new Promise((resolve) => {
+      const list: any[] = [];
+      session.subtree(oid, 10, (vbs: any[]) => {
+        for (const vb of vbs) list.push(vb);
+      }, () => resolve(list));
+    });
+  };
+
+  try {
+    // 1. Walk Optical Table in VSOL/C-Data MIB (1.3.6.1.4.1.37950.1.1.6.1.1.3.1)
+    const optVarbinds = await walkTree('1.3.6.1.4.1.37950.1.1.6.1.1.3.1');
+    for (const vb of optVarbinds) {
+      // OID format: ...3.1.{col}.{port}.{onuId}
+      const parts = vb.oid.split('.');
+      const onuId = parseInt(parts.pop() || '0');
+      const pPort = parts.pop() || '1';
+      const col = parseInt(parts.pop() || '0');
+
+      if (!onuId) continue;
+      if (!onuMap[onuId]) {
+        onuMap[onuId] = {
+          onu_id: onuId,
+          pon_port: pPort,
+          status: 'offline',
+          rx_power_dbm: null,
+          tx_power_dbm: null,
+          voltage_v: null,
+          temperature_c: null,
+          bias_current_ma: null
+        };
+      }
+
+      const val = parseFloat(vb.value?.toString() || '0');
+      if (col === 3) onuMap[onuId].temperature_c = val > 0 ? val : null;
+      else if (col === 4) onuMap[onuId].voltage_v = val > 0 ? val : null;
+      else if (col === 5) onuMap[onuId].bias_current_ma = val > 0 ? val : null;
+      else if (col === 6) onuMap[onuId].tx_power_dbm = val > 0 ? val : null;
+      else if (col === 7) {
+        onuMap[onuId].rx_power_dbm = val < 0 ? val : null;
+        if (val < 0) onuMap[onuId].status = 'online';
+      }
+    }
+
+    // 2. Walk ifDescr & traffic counters to attach live bytes
+    const ifDescrList = await walkTree('1.3.6.1.2.1.2.2.1.2');
+    const ifToOnuMap: Record<number, number> = {};
+    for (const vb of ifDescrList) {
+      const ifIdx = parseInt(vb.oid.split('.').pop() || '0');
+      const name = vb.value.toString();
+      const m = name.match(/ONU(\d+)/i);
+      if (m) {
+        ifToOnuMap[ifIdx] = parseInt(m[1]);
+      }
+    }
+
+    const [inOctList, outOctList, errList] = await Promise.all([
+      walkTree('1.3.6.1.2.1.2.2.1.10'),
+      walkTree('1.3.6.1.2.1.2.2.1.16'),
+      walkTree('1.3.6.1.2.1.2.2.1.14')
+    ]);
+
+    for (const vb of inOctList) {
+      const ifIdx = parseInt(vb.oid.split('.').pop() || '0');
+      const onuId = ifToOnuMap[ifIdx];
+      if (onuId && onuMap[onuId]) onuMap[onuId].rx_bytes = Number(vb.value || 0);
+    }
+    for (const vb of outOctList) {
+      const ifIdx = parseInt(vb.oid.split('.').pop() || '0');
+      const onuId = ifToOnuMap[ifIdx];
+      if (onuId && onuMap[onuId]) onuMap[onuId].tx_bytes = Number(vb.value || 0);
+    }
+    for (const vb of errList) {
+      const ifIdx = parseInt(vb.oid.split('.').pop() || '0');
+      const onuId = ifToOnuMap[ifIdx];
+      if (onuId && onuMap[onuId]) onuMap[onuId].in_errors = Number(vb.value || 0);
+    }
+  } finally {
+    session.close();
+  }
+
+  return Object.values(onuMap).sort((a, b) => a.onu_id - b.onu_id);
+}
+

@@ -11,7 +11,7 @@ import {
   enableOltSnmpCLI,
   OltRecord
 } from '../services/oltService.js';
-import { testSnmpConnection } from '../services/snmpService.js';
+import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp } from '../services/snmpService.js';
 
 export async function listOlts(req: Request, res: Response) {
   try {
@@ -309,6 +309,7 @@ export async function getOltOnus(req: Request, res: Response) {
       SELECT 
         o.id, o.olt_id, o.pon_port, o.onu_id, o.sn, o.name, o.customer_id,
         o.status, o.distance_m, o.rx_power, o.tx_power, o.voltage, o.temp, o.bias_current,
+        o.rx_bytes, o.tx_bytes,
         o.line_profile, o.srv_profile, o.last_sync_at,
         c.name as customer_name, c.customer_code, c.pppoe_username, c.phone_number,
         c.status as customer_status, c.address as customer_address
@@ -326,6 +327,7 @@ export async function getOltOnus(req: Request, res: Response) {
           SELECT 
             o.id, o.olt_id, o.pon_port, o.onu_id, o.sn, o.name, o.customer_id,
             o.status, o.distance_m, o.rx_power, o.tx_power, o.voltage, o.temp, o.bias_current,
+            o.rx_bytes, o.tx_bytes,
             o.line_profile, o.srv_profile, o.last_sync_at,
             c.name as customer_name, c.customer_code, c.pppoe_username, c.phone_number,
             c.status as customer_status, c.address as customer_address
@@ -344,6 +346,8 @@ export async function getOltOnus(req: Request, res: Response) {
       voltage: row.voltage !== null && row.voltage !== undefined ? parseFloat(row.voltage) : null,
       temp: row.temp !== null && row.temp !== undefined ? parseFloat(row.temp) : null,
       bias_current: row.bias_current !== null && row.bias_current !== undefined ? parseFloat(row.bias_current) : null,
+      rx_bytes: row.rx_bytes !== null && row.rx_bytes !== undefined ? Number(row.rx_bytes) : null,
+      tx_bytes: row.tx_bytes !== null && row.tx_bytes !== undefined ? Number(row.tx_bytes) : null,
     }));
 
     res.json({
@@ -689,4 +693,75 @@ export async function enableOltSnmpAction(req: Request, res: Response) {
     res.status(500).json({ success: false, message: `Gagal mengaktifkan SNMP: ${err.message}` });
   }
 }
+
+export async function syncOltSnmpTelemetryAction(req: Request, res: Response) {
+  const { id } = req.params;
+  const ponPort = String(req.body.pon_port || req.query.pon_port || '1');
+
+  try {
+    const r = await pool.query('SELECT * FROM olts WHERE id = $1', [id]);
+    if (r.rows.length === 0) return res.status(404).json({ success: false, message: 'OLT tidak ditemukan.' });
+    const olt: OltRecord = r.rows[0];
+
+    const telemetryList = await fetchOltOnuTelemetryViaSnmp(
+      olt.ip_address,
+      olt.snmp_port || 161,
+      olt.snmp_community || 'public',
+      ponPort
+    );
+
+    let updatedCount = 0;
+    for (const item of telemetryList) {
+      const dbRes = await pool.query(`
+        UPDATE olt_onus
+        SET rx_power = COALESCE($1, rx_power),
+            tx_power = COALESCE($2, tx_power),
+            voltage = COALESCE($3, voltage),
+            temp = COALESCE($4, temp),
+            bias_current = COALESCE($5, bias_current),
+            rx_bytes = COALESCE($6, rx_bytes),
+            tx_bytes = COALESCE($7, tx_bytes),
+            status = CASE WHEN $8 = 'online' THEN 'online' ELSE status END,
+            last_sync_at = NOW(),
+            updated_at = NOW()
+        WHERE olt_id = $9 AND pon_port = $10 AND onu_id = $11
+        RETURNING customer_id
+      `, [
+        item.rx_power_dbm,
+        item.tx_power_dbm,
+        item.voltage_v,
+        item.temperature_c,
+        item.bias_current_ma,
+        item.rx_bytes ?? null,
+        item.tx_bytes ?? null,
+        item.status,
+        id,
+        ponPort,
+        item.onu_id
+      ]);
+
+      if (dbRes.rows.length > 0) {
+        updatedCount++;
+        const custId = dbRes.rows[0].customer_id;
+        if (custId && item.rx_power_dbm !== null) {
+          await pool.query('UPDATE customers SET power_laser = $1 WHERE id = $2', [
+            `${item.rx_power_dbm} dBm`,
+            custId
+          ]);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Berhasil menyinkronkan telemetri optik & suhu untuk ${updatedCount} ONU via SNMP!`,
+      total: telemetryList.length,
+      updated: updatedCount,
+      telemetry: telemetryList
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal membaca telemetri SNMP: ${err.message}` });
+  }
+}
+
 
