@@ -12,18 +12,6 @@ if (!document.getElementById(styleId)) {
   styleEl.id = styleId;
   styleEl.innerHTML = `
     /* Animasi Garis 100% Persis Laravel Arbill map-ftth */
-    .animated-line-laravel {
-      stroke-dasharray: 10, 10;
-      animation: dashLaravel 1s linear infinite;
-      shape-rendering: geometricPrecision;
-    }
-
-    .leaflet-overlay-pane path {
-      transform: translateZ(0);
-      backface-visibility: hidden;
-      cursor: pointer !important;
-    }
-
     @keyframes dashLaravel {
       from {
         stroke-dashoffset: 20;
@@ -31,6 +19,30 @@ if (!document.getElementById(styleId)) {
       to {
         stroke-dashoffset: 0;
       }
+    }
+
+    .animated-line-laravel {
+      stroke-dasharray: 10, 10 !important;
+      animation: dashLaravel 1s linear infinite !important;
+      shape-rendering: geometricPrecision;
+    }
+
+    .animated-line-laravel-fast {
+      stroke-dasharray: 10, 10 !important;
+      animation: dashLaravel 0.6s linear infinite !important;
+      shape-rendering: geometricPrecision;
+    }
+
+    .animated-line-laravel-ultra {
+      stroke-dasharray: 10, 10 !important;
+      animation: dashLaravel 0.35s linear infinite !important;
+      shape-rendering: geometricPrecision;
+    }
+
+    .leaflet-overlay-pane path {
+      transform: translateZ(0);
+      backface-visibility: hidden;
+      cursor: pointer !important;
     }
 
     /* Custom Modern Squircle Icon Nodes */
@@ -2555,28 +2567,39 @@ const DEFAULT_SPLITTER_CATALOG = [
 
         const lineTraffic = getLineTraffic(l);
 
-        if (isUpstreamCutCable) {
+        // ALWAYS keep the marching ants running animation on every cable!
+        cableClassName = 'animated-line-laravel';
+
+        if (isLineHighlighted) {
+          cableColor = '#d946ef';
+          cableClassName = 'animated-line-laravel-ultra';
+        } else if (isUpstreamCutCable) {
           cableColor = '#dc2626';
           cableClassName = 'upstream-cut-animated';
+        } else if (isCableOffline) {
+          cableColor = '#ef4444';
+          cableClassName = 'offline-cable-animated';
         } else if (isTrafficMode) {
           // Dynamic Heatmap based on Traffic Load
           if (lineTraffic.totalMbps === 0) {
             cableColor = '#64748b'; // Idle / Offline
-            cableClassName = '';
+            cableClassName = 'animated-line-laravel';
           } else if (lineTraffic.totalMbps < 15) {
             cableColor = '#10b981'; // Green: Lancar (< 15 Mbps)
-            cableClassName = 'traffic-flow-light';
+            cableClassName = 'animated-line-laravel';
           } else if (lineTraffic.totalMbps < 50) {
             cableColor = '#0284c7'; // Blue: Normal (15 - 50 Mbps)
-            cableClassName = 'traffic-flow-medium';
+            cableClassName = 'animated-line-laravel';
           } else if (lineTraffic.totalMbps < 100) {
             cableColor = '#f59e0b'; // Amber: Ramai (50 - 100 Mbps)
-            cableClassName = 'traffic-flow-busy';
+            cableClassName = 'animated-line-laravel-fast';
           } else {
             cableColor = '#ef4444'; // Red: Padat / Peak (> 100 Mbps)
-            cableClassName = 'traffic-flow-heavy';
+            cableClassName = 'animated-line-laravel-ultra';
           }
           cableWeight = 5.5;
+        } else {
+          cableClassName = 'animated-line-laravel';
         }
 
         // 1. Visual Cable Polyline (Minimum thickness 5.5px for crisp visibility)
@@ -2588,6 +2611,7 @@ const DEFAULT_SPLITTER_CATALOG = [
             color: cableColor,
             weight: visibleWeight,
             className: cableClassName,
+            dashArray: '10, 10',
             opacity: 0.95
           }
         ).addTo(layerGroup);
