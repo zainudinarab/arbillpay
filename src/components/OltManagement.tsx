@@ -158,7 +158,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [enablePassword, setEnablePassword] = useState('');
-  const [totalPonPorts, setTotalPonPorts] = useState(8);
+  const [totalPonPorts, setTotalPonPorts] = useState(1);
   const [linkedNodeId, setLinkedNodeId] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -272,7 +272,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
     setUsername('admin');
     setPassword('');
     setEnablePassword('');
-    setTotalPonPorts(8);
+    setTotalPonPorts(1);
     setLinkedNodeId('');
     setShowPassword(false);
   };
@@ -293,7 +293,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
     setUsername(item.username);
     setPassword(item.password || '');
     setEnablePassword(item.enable_password || '');
-    setTotalPonPorts(item.total_pon_ports || 8);
+    setTotalPonPorts(item.total_pon_ports || 1);
     setLinkedNodeId(item.linked_node_id || '');
     setShowPassword(false);
     setShowEditModal(true);
@@ -862,7 +862,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
             <div>
               <span className="text-xs font-bold text-slate-400 block mb-1">Total Port PON</span>
               <span className="text-2xl font-black text-indigo-600">
-                {olts.reduce((acc, cur) => acc + (cur.total_pon_ports || 8), 0)}
+                {olts.reduce((acc, cur) => acc + (cur.total_pon_ports || 1), 0)}
               </span>
               <span className="text-[11px] text-indigo-600 block mt-0.5">Kanal Fiber Laser</span>
             </div>
@@ -1017,7 +1017,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         <div className="flex items-center justify-between text-slate-500">
                           <span>Kapasitas PON</span>
                           <span className="font-bold text-slate-700">
-                            {olt.total_pon_ports || 8} Port PON
+                            {olt.total_pon_ports || 1} Port PON
                           </span>
                         </div>
 
@@ -1150,7 +1150,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                     onChange={(e) => setSelectedPonPort(e.target.value)}
                     className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer min-w-[130px]"
                   >
-                    {Array.from({ length: selectedOltItem?.total_pon_ports || 8 }, (_, i) => i + 1).map(portNum => (
+                    {Array.from({ length: selectedOltItem?.total_pon_ports || 1 }, (_, i) => i + 1).map(portNum => (
                       <option key={portNum} value={String(portNum)}>
                         Port PON {portNum}
                       </option>
@@ -1618,11 +1618,11 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                     onChange={(e) => {
                       const b = e.target.value as any;
                       setBrand(b);
-                      if (b === 'zte') setModel('C320');
-                      else if (b === 'huawei') setModel('MA5608T');
-                      else if (b === 'vsol') setModel('V1600G1');
-                      else if (b === 'hsairpo') setModel('V1600GS');
-                      else if (b === 'cdata') setModel('FD1208S');
+                      if (b === 'zte') { setModel('C320'); setTotalPonPorts(8); }
+                      else if (b === 'huawei') { setModel('MA5608T'); setTotalPonPorts(8); }
+                      else if (b === 'vsol') { setModel('V1600G1'); setTotalPonPorts(1); }
+                      else if (b === 'hsairpo') { setModel('V1600GS'); setTotalPonPorts(1); }
+                      else if (b === 'cdata') { setModel('FD1104S'); setTotalPonPorts(4); }
                     }}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                   >
@@ -1665,9 +1665,11 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Jumlah Port PON</label>
                     <select
                       value={totalPonPorts}
-                      onChange={(e) => setTotalPonPorts(parseInt(e.target.value) || 8)}
+                      onChange={(e) => setTotalPonPorts(parseInt(e.target.value) || 1)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                     >
+                      <option value="1">1 Port PON (Mini GPON / EPON Box)</option>
+                      <option value="2">2 Port PON</option>
                       <option value="4">4 Port PON</option>
                       <option value="8">8 Port PON</option>
                       <option value="16">16 Port PON</option>
@@ -1854,7 +1856,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                     onChange={(e) => setRegPonPort(e.target.value)}
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                   >
-                    {Array.from({ length: selectedOltItem?.total_pon_ports || 8 }, (_, i) => i + 1).map(p => (
+                    {Array.from({ length: selectedOltItem?.total_pon_ports || 1 }, (_, i) => i + 1).map(p => (
                       <option key={p} value={String(p)}>Port PON {p}</option>
                     ))}
                   </select>
