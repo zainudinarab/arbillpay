@@ -9,6 +9,7 @@ import {
   registerOltOnuCLI,
   deleteOltOnuCLI,
   enableOltSnmpCLI,
+  getOltDriver,
   OltRecord
 } from '../services/oltService.js';
 import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp } from '../services/snmpService.js';
@@ -34,9 +35,14 @@ export async function listOlts(req: Request, res: Response) {
       ORDER BY name ASC
     `).catch(() => ({ rows: [] }));
 
+    const oltsWithCapabilities = result.rows.map((o: any) => ({
+      ...o,
+      capabilities: getOltDriver(o.brand).getCapabilities()
+    }));
+
     res.json({
       success: true,
-      olts: result.rows,
+      olts: oltsWithCapabilities,
       available_map_nodes: mapNodesRes.rows
     });
   } catch (err: any) {
