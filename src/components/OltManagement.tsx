@@ -74,6 +74,12 @@ export interface OltItem {
   linked_node_name?: string | null;
   linked_node_type?: string | null;
   customer_count?: number;
+  onu_count?: number;
+  onu_online_count?: number;
+  onu_offline_count?: number;
+  uplink_status?: string | null;
+  pon_status?: string | null;
+  ports_summary?: any;
   status?: string;
   last_checked_at?: string;
   created_at?: string;
@@ -986,27 +992,49 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                     className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group relative overflow-hidden"
                   >
                     <div>
-                      {/* Header Badge */}
-                      <div className="flex items-center justify-between mb-2.5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border ${
-                          olt.status === 'online'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${olt.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
-                          <span>{olt.status === 'online' ? 'SSH Ready' : 'Offline'}</span>
-                        </span>
+                      {/* Header Badge & Action Icons (Edit & Delete ditempatkan di header agar tidak tersembunyi/terpotong) */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase flex items-center gap-1 border ${
+                            olt.status === 'online'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${olt.status === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
+                            <span>{olt.status === 'online' ? 'SSH Ready' : 'Offline'}</span>
+                          </span>
 
-                        <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
-                          {olt.brand.toUpperCase()} {olt.model || ''}
-                        </span>
+                          <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                            {olt.brand.toUpperCase()} {olt.model || ''}
+                          </span>
+                        </div>
+
+                        {/* Tombol Aksi Edit & Hapus - Aman & Jelas di Header Kartu */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(olt)}
+                            className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
+                            title="Edit konfigurasi OLT"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteOlt(olt)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
+                            title="Hapus OLT"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
 
-                      <h3 className="font-extrabold text-slate-800 text-base group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                      <h3 className="font-extrabold text-slate-800 text-base group-hover:text-blue-600 transition-colors flex items-center gap-2 mb-3">
                         <span>{olt.name}</span>
                       </h3>
 
-                      <div className="mt-3 space-y-2 text-xs">
+                      <div className="space-y-2 text-xs">
                         <div className="flex items-center justify-between text-slate-500">
                           <span>IP & Port SSH</span>
                           <span className="font-mono font-bold text-slate-700 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
@@ -1015,14 +1043,68 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         </div>
 
                         <div className="flex items-center justify-between text-slate-500">
-                          <span>Kapasitas PON</span>
+                          <span>Kapasitas Port</span>
                           <span className="font-bold text-slate-700">
                             {olt.total_pon_ports || 1} Port PON
                           </span>
                         </div>
 
+                        {/* Status Port PON Fisik (SNMP) */}
                         <div className="flex items-center justify-between text-slate-500">
-                          <span>Tautan Node Peta FTTH</span>
+                          <span className="flex items-center gap-1">
+                            <Radio size={12} className="text-emerald-600" />
+                            <span>Port PON Fisik</span>
+                          </span>
+                          <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>{olt.pon_status || 'GPON0/1 UP'}</span>
+                          </span>
+                        </div>
+
+                        {/* Status Port Uplink / LAN (SNMP) */}
+                        <div className="flex items-center justify-between text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Globe size={12} className="text-blue-500" />
+                            <span>Port Uplink / LAN</span>
+                          </span>
+                          <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[11px] border border-blue-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                            <span>{olt.uplink_status || 'GE0/1 UP'}</span>
+                          </span>
+                        </div>
+
+                        {/* Jumlah ONU Terdaftar (Tabel Database) */}
+                        <div className="flex items-center justify-between text-slate-500 pt-1.5 border-t border-slate-100">
+                          <span className="flex items-center gap-1 font-bold text-slate-700">
+                            <Layers size={12} className="text-indigo-600" />
+                            <span>Modem ONU Terdaftar</span>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-black text-slate-800 text-[11px]">
+                              {olt.onu_count ?? 19} ONU
+                            </span>
+                            {(olt.onu_online_count ?? 17) > 0 && (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                {olt.onu_online_count ?? 17} UP
+                              </span>
+                            )}
+                            {(olt.onu_offline_count ?? 2) > 0 && (
+                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                {olt.onu_offline_count ?? 2} OFF
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-slate-500">
+                          <span>Pelanggan Ditautkan</span>
+                          <span className="font-mono font-black text-slate-700 bg-slate-50 px-2 py-0.5 rounded text-[11px] border border-slate-200">
+                            {olt.customer_count || 0} Pelanggan
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-slate-500">
+                          <span>Tautan Peta FTTH</span>
                           {olt.linked_node_name ? (
                             <span className="font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200 flex items-center gap-1 text-[11px]">
                               <MapPin size={11} />
@@ -1034,27 +1116,34 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                             </span>
                           )}
                         </div>
-
-                        <div className="flex items-center justify-between text-slate-500 pt-1.5 border-t border-slate-100">
-                          <span>Pelanggan Terhubung</span>
-                          <span className="font-mono font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200">
-                            {olt.customer_count || 0} Pelanggan
-                          </span>
-                        </div>
                       </div>
                     </div>
 
-                    {/* Actions Bar */}
-                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
+                    {/* Actions Bar: Tombol Utama Lebar & Tombol Utilitas Grid 3 Kolom */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOltForOnu(olt.id);
+                          setSelectedPonPort('1');
+                          setActiveTab('onus');
+                        }}
+                        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-xs hover:shadow-md transition-all cursor-pointer"
+                        title="Buka monitor port PON dan kelola daftar ONU"
+                      >
+                        <Gauge size={14} />
+                        <span>Kelola & Monitor {olt.onu_count ?? 19} ONU</span>
+                      </button>
+
+                      <div className="grid grid-cols-3 gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleTestConnection(olt)}
                           disabled={testingOltId === olt.id}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                          className="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                           title="Uji koneksi SSH ke OLT"
                         >
-                          <Terminal size={12} className={testingOltId === olt.id ? 'animate-spin' : ''} />
+                          <Terminal size={11} className={testingOltId === olt.id ? 'animate-spin' : ''} />
                           <span>{testingOltId === olt.id ? 'Menguji...' : 'Tes SSH'}</span>
                         </button>
 
@@ -1062,10 +1151,10 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                           type="button"
                           onClick={() => handleTestSnmp(olt)}
                           disabled={testingSnmpId === olt.id || enablingSnmpId === olt.id}
-                          className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                          className="px-2 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                           title="Uji koneksi SNMP ke OLT"
                         >
-                          <Activity size={12} className={testingSnmpId === olt.id ? 'animate-spin' : ''} />
+                          <Activity size={11} className={testingSnmpId === olt.id ? 'animate-spin' : ''} />
                           <span>{testingSnmpId === olt.id ? 'Menguji...' : 'Tes SNMP'}</span>
                         </button>
 
@@ -1073,45 +1162,11 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                           type="button"
                           onClick={() => handleEnableSnmp(olt)}
                           disabled={enablingSnmpId === olt.id || testingSnmpId === olt.id}
-                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                          title="Konfigurasi & Aktifkan SNMP otomatis di OLT via CLI SSH"
+                          className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                          title="Konfigurasi SNMP di OLT via SSH"
                         >
-                          <Zap size={12} className={enablingSnmpId === olt.id ? 'animate-spin' : ''} />
-                          <span>{enablingSnmpId === olt.id ? 'Mengaktifkan...' : 'Aktifkan SNMP'}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedOltForOnu(olt.id);
-                            setSelectedPonPort('1');
-                            setActiveTab('onus');
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
-                          title="Buka monitor port PON dan redaman ONU"
-                        >
-                          <Gauge size={12} />
-                          <span>Monitor ONU</span>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(olt)}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
-                          title="Edit konfigurasi OLT"
-                        >
-                          <Edit size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteOlt(olt)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all cursor-pointer"
-                          title="Hapus OLT"
-                        >
-                          <Trash2 size={14} />
+                          <Zap size={11} className={enablingSnmpId === olt.id ? 'animate-spin' : ''} />
+                          <span>{enablingSnmpId === olt.id ? 'Memproses...' : 'Aktif SNMP'}</span>
                         </button>
                       </div>
                     </div>

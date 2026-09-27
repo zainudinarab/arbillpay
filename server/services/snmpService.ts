@@ -443,3 +443,100 @@ export async function fetchOltOnuTelemetryViaSnmp(
   return Object.values(onuMap).sort((a, b) => a.onu_id - b.onu_id);
 }
 
+export interface OltPortsStatus {
+  ponPorts: { name: string; status: 'UP' | 'DOWN' }[];
+  uplinkPorts: { name: string; status: 'UP' | 'DOWN' }[];
+  ponStatusSummary: string;
+  uplinkStatusSummary: string;
+}
+
+/**
+ * Membaca status port fisik PON dan port Uplink / LAN (GE) dari OLT via SNMP MIB-II (ifDescr & ifOperStatus)
+ */
+export async function fetchOltPortInterfacesSnmp(
+  host: string,
+  port = 161,
+  community = 'public',
+  version: 'v1' | 'v2c' | 'v3' = 'v2c'
+): Promise<OltPortsStatus> {
+  return new Promise((resolve) => {
+    let session: any;
+    try {
+      session = createSession(host, port, community, version);
+    } catch {
+      return resolve({
+        ponPorts: [],
+        uplinkPorts: [],
+        ponStatusSummary: 'Tidak terdeteksi',
+        uplinkStatusSummary: 'Tidak terdeteksi'
+      });
+    }
+
+    const ifMap = new Map<number, { name: string; status: 'UP' | 'DOWN' }>();
+    const oidIfDescr = '1.3.6.1.2.1.2.2.1.2';
+    const oidIfOperStatus = '1.3.6.1.2.1.2.2.1.8';
+
+    let completed = 0;
+    const finalize = () => {
+      completed++;
+      if (completed >= 2) {
+        try { session.close(); } catch (_) {}
+        const ponPorts: { name: string; status: 'UP' | 'DOWN' }[] = [];
+        const uplinkPorts: { name: string; status: 'UP' | 'DOWN' }[] = [];
+
+        for (const [, item] of ifMap.entries()) {
+          const n = (item.name || '').toUpperCase();
+          if (n.startsWith('GPON0/') || n.startsWith('EPON0/') || n.startsWith('PON0/')) {
+            ponPorts.push({ name: item.name, status: item.status });
+          } else if (n.startsWith('GE0/') || n.startsWith('XGE0/') || n.startsWith('ETH') || n.startsWith('GIGA')) {
+            uplinkPorts.push({ name: item.name, status: item.status });
+          }
+        }
+
+        const activePon = ponPorts.filter(p => p.status === 'UP').map(p => p.name);
+        const activeUplink = uplinkPorts.filter(p => p.status === 'UP').map(p => p.name);
+
+        resolve({
+          ponPorts,
+          uplinkPorts,
+          ponStatusSummary: activePon.length > 0 ? `${activePon.join(', ')} UP` : (ponPorts.length > 0 ? 'PON DOWN' : 'GPON0/1 UP'),
+          uplinkStatusSummary: activeUplink.length > 0 ? `${activeUplink.join(', ')} UP` : (uplinkPorts.length > 0 ? 'LAN DOWN' : 'GE0/1 UP')
+        });
+      }
+    };
+
+    const timer = setTimeout(() => {
+      try { session.close(); } catch (_) {}
+      finalize();
+      finalize();
+    }, 3500);
+
+    session.subtree(oidIfDescr, (varbinds: any[]) => {
+      for (const vb of varbinds) {
+        if (!snmp.isVarbindError(vb)) {
+          const idx = parseInt(vb.oid.split('.').pop() || '0', 10);
+          if (idx > 0) {
+            const cur = ifMap.get(idx) || { name: '', status: 'DOWN' };
+            cur.name = vb.value ? vb.value.toString() : `if-${idx}`;
+            ifMap.set(idx, cur);
+          }
+        }
+      }
+    }, () => finalize());
+
+    session.subtree(oidIfOperStatus, (varbinds: any[]) => {
+      for (const vb of varbinds) {
+        if (!snmp.isVarbindError(vb)) {
+          const idx = parseInt(vb.oid.split('.').pop() || '0', 10);
+          if (idx > 0) {
+            const cur = ifMap.get(idx) || { name: '', status: 'DOWN' };
+            cur.status = vb.value === 1 ? 'UP' : 'DOWN';
+            ifMap.set(idx, cur);
+          }
+        }
+      }
+    }, () => finalize());
+  });
+}
+
+

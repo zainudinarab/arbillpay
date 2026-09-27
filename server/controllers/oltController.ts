@@ -13,7 +13,7 @@ import {
   fetchOltSnmpTelemetry,
   type OltRecord
 } from '../services/oltService.js';
-import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp } from '../services/snmpService.js';
+import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp, fetchOltPortInterfacesSnmp } from '../services/snmpService.js';
 
 export async function listOlts(req: Request, res: Response) {
   try {
@@ -21,8 +21,12 @@ export async function listOlts(req: Request, res: Response) {
       SELECT o.id, o.name, o.brand, o.model, o.ip_address, o.ssh_port, o.telnet_port,
              o.protocol, o.username, o.snmp_port, o.snmp_community, o.total_pon_ports,
              o.linked_node_id, o.status, o.last_checked_at, o.created_at,
+             o.uplink_status, o.pon_status, o.ports_summary,
              fn.name as linked_node_name, fn.type as linked_node_type,
-             (SELECT COUNT(*) FROM customers c WHERE c.olt_id = o.id)::int as customer_count
+             (SELECT COUNT(*) FROM customers c WHERE c.olt_id = o.id)::int as customer_count,
+             (SELECT COUNT(*) FROM olt_onus u WHERE u.olt_id = o.id)::int as onu_count,
+             (SELECT COUNT(*) FROM olt_onus u WHERE u.olt_id = o.id AND u.status = 'online')::int as onu_online_count,
+             (SELECT COUNT(*) FROM olt_onus u WHERE u.olt_id = o.id AND u.status != 'online')::int as onu_offline_count
       FROM olts o
       LEFT JOIN ftth_nodes fn ON o.linked_node_id = fn.id
       ORDER BY o.created_at ASC
@@ -636,14 +640,32 @@ export async function testOltSnmpAction(req: Request, res: Response) {
     if (r.rows.length === 0) return res.status(404).json({ success: false, message: 'OLT tidak ditemukan.' });
     const olt = r.rows[0];
 
-    const result = await testSnmpConnection(
-      olt.ip_address,
-      olt.snmp_port || 161,
-      olt.snmp_community || 'public',
-      olt.snmp_version || 'v2c'
-    );
+    const [result, portStatus] = await Promise.all([
+      testSnmpConnection(
+        olt.ip_address,
+        olt.snmp_port || 161,
+        olt.snmp_community || 'public',
+        olt.snmp_version || 'v2c'
+      ),
+      fetchOltPortInterfacesSnmp(
+        olt.ip_address,
+        olt.snmp_port || 161,
+        olt.snmp_community || 'public',
+        olt.snmp_version || 'v2c'
+      )
+    ]);
 
-    res.json(result);
+    if (result.success && portStatus) {
+      await pool.query(
+        'UPDATE olts SET uplink_status = $1, pon_status = $2, ports_summary = $3 WHERE id = $4',
+        [portStatus.uplinkStatusSummary, portStatus.ponStatusSummary, JSON.stringify(portStatus), id]
+      );
+    }
+
+    res.json({
+      ...result,
+      port_status: portStatus
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal uji SNMP: ${err.message}` });
   }
@@ -761,6 +783,22 @@ export async function syncOltSnmpTelemetryAction(req: Request, res: Response) {
         }
       }
     }
+
+    // Sinkronisasi status port fisik PON & Uplink via SNMP
+    try {
+      const portStatus = await fetchOltPortInterfacesSnmp(
+        olt.ip_address,
+        olt.snmp_port || 161,
+        olt.snmp_community || 'public',
+        olt.snmp_version || 'v2c'
+      );
+      if (portStatus) {
+        await pool.query(
+          'UPDATE olts SET uplink_status = $1, pon_status = $2, ports_summary = $3 WHERE id = $4',
+          [portStatus.uplinkStatusSummary, portStatus.ponStatusSummary, JSON.stringify(portStatus), id]
+        );
+      }
+    } catch (_) {}
 
     res.json({
       success: true,

@@ -487,7 +487,10 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS snmp_enabled BOOLEAN DEFAULT true,
       ADD COLUMN IF NOT EXISTS snmp_version VARCHAR(16) DEFAULT 'v2c',
       ADD COLUMN IF NOT EXISTS snmp_port INT DEFAULT 161,
-      ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(128) DEFAULT 'public';
+      ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(128) DEFAULT 'public',
+      ADD COLUMN IF NOT EXISTS uplink_status VARCHAR(128),
+      ADD COLUMN IF NOT EXISTS pon_status VARCHAR(128),
+      ADD COLUMN IF NOT EXISTS ports_summary JSONB;
 
       CREATE TABLE IF NOT EXISTS olt_onus (
         id VARCHAR(64) PRIMARY KEY,
