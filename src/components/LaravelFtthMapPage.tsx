@@ -870,43 +870,99 @@ const DEFAULT_SPLITTER_CATALOG = [
     return null;
   };
 
-  // Helper: Trace parent ODP / Splitter for any node
-  const getConnectedOdpInfo = (nodeId: string, visited = new Set<string>()): { odpName: string; odpId: string; port: number } | null => {
-    if (visited.has(nodeId)) return null;
-    visited.add(nodeId);
+  // Real-Time Network Upstream Tree & Parent Resolution (Graph BFS from OLT Core down to ONUs)
+  const networkHierarchyMap = useMemo(() => {
+    const typeRank: Record<string, number> = {
+      'OLT': 0, 'ROUTER': 0, 'ODC': 1, 'SPLITTER': 2, 'ODP': 2, 'HTB': 2, 'SWITCH': 2,
+      'ONU': 3, 'ROUTER_WIFI': 3, 'ACCESS_POINT': 3, 'CLIENT_RJ45': 4
+    };
 
-    const connectedCable = lines.find(l => l.toId === nodeId || l.fromId === nodeId);
-    if (!connectedCable) return null;
+    const adj = new Map<string, Array<{ neighborId: string; line: LineRecord }>>();
+    nodes.forEach(n => adj.set(n.id, []));
+    lines.forEach(l => {
+      if (adj.has(l.fromId)) adj.get(l.fromId)!.push({ neighborId: l.toId, line: l });
+      if (adj.has(l.toId)) adj.get(l.toId)!.push({ neighborId: l.fromId, line: l });
+    });
 
-    const otherNodeId = connectedCable.fromId === nodeId ? connectedCable.toId : connectedCable.fromId;
-    const otherNode = nodes.find(n => n.id === otherNodeId);
-    if (!otherNode) return null;
+    const parentMap = new Map<string, {
+      parentId: string;
+      parentNode: NodeRecord;
+      incomingLine: LineRecord;
+      parentPort: number;
+      depth: number;
+    }>();
 
-    if (otherNode.type === 'ODP' || otherNode.type === 'ODC' || otherNode.type === 'OLT' || otherNode.type === 'SPLITTER') {
-      const portNum = connectedCable.fromId === otherNode.id ? (connectedCable.fromPort || 1) : (connectedCable.toPort || 1);
-      return { odpName: otherNode.name || `${otherNode.type} #${otherNode.id.slice(-4)}`, odpId: otherNode.id, port: portNum };
+    const visited = new Set<string>();
+    const depthMap = new Map<string, number>();
+
+    // Start BFS from Highest Level Root Nodes (OLT, then ROUTER, then ODC, etc.)
+    const rootCandidates = [...nodes].sort((a, b) => (typeRank[a.type] ?? 9) - (typeRank[b.type] ?? 9));
+
+    for (const root of rootCandidates) {
+      if (visited.has(root.id)) continue;
+      const queue: string[] = [root.id];
+      visited.add(root.id);
+      depthMap.set(root.id, 0);
+
+      while (queue.length > 0) {
+        const currId = queue.shift()!;
+        const currDepth = depthMap.get(currId) || 0;
+        const neighbors = adj.get(currId) || [];
+
+        for (const edge of neighbors) {
+          const nextId = edge.neighborId;
+          if (!visited.has(nextId)) {
+            visited.add(nextId);
+            depthMap.set(nextId, currDepth + 1);
+            const currNode = nodes.find(n => n.id === currId);
+            if (currNode) {
+              const parentPort = edge.line.fromId === currId ? (edge.line.fromPort || 1) : (edge.line.toPort || 1);
+              parentMap.set(nextId, {
+                parentId: currId,
+                parentNode: currNode,
+                incomingLine: edge.line,
+                parentPort,
+                depth: currDepth + 1
+              });
+            }
+            queue.push(nextId);
+          }
+        }
+      }
     }
 
-    return getConnectedOdpInfo(otherNode.id, visited);
+    return parentMap;
+  }, [nodes, lines]);
+
+  // Helper: Trace true parent ODP / ODC / OLT for any node
+  const getConnectedOdpInfo = (nodeId: string): { odpName: string; odpId: string; port: number } | null => {
+    const parentInfo = networkHierarchyMap.get(nodeId);
+    if (!parentInfo) return null;
+    const parentNode = parentInfo.parentNode;
+    return {
+      odpName: parentNode.name || `${parentNode.type} #${parentNode.id.slice(-4)}`,
+      odpId: parentNode.id,
+      port: parentInfo.parentPort
+    };
   };
 
   // Helper: Trace full upstream tree from target node back to Root OLT
-  const getUpstreamHierarchyTree = (nodeId: string, visited = new Set<string>()): NodeRecord[] => {
-    if (visited.has(nodeId)) return [];
-    visited.add(nodeId);
+  const getUpstreamHierarchyTree = (nodeId: string): NodeRecord[] => {
+    const tree: NodeRecord[] = [];
+    let currId: string | null = nodeId;
+    const visited = new Set<string>();
 
-    const currentNode = nodes.find(n => n.id === nodeId);
-    if (!currentNode) return [];
+    while (currId && !visited.has(currId)) {
+      visited.add(currId);
+      const currNode = nodes.find(n => n.id === currId);
+      if (currNode) {
+        tree.unshift(currNode); // prepend so Root OLT is at index 0
+      }
+      const parentInfo = networkHierarchyMap.get(currId);
+      currId = parentInfo ? parentInfo.parentId : null;
+    }
 
-    const connectedCable = lines.find(l => l.toId === nodeId || l.fromId === nodeId);
-    if (!connectedCable) return [currentNode];
-
-    const parentId = connectedCable.fromId === nodeId ? connectedCable.toId : connectedCable.fromId;
-    const parentNode = nodes.find(n => n.id === parentId);
-    if (!parentNode) return [currentNode];
-
-    const parentTree = getUpstreamHierarchyTree(parentId, visited);
-    return [...parentTree, currentNode];
+    return tree;
   };
 
   // Helper: Build Full Hierarchical Path String (e.g. OLT1012-ODC01-ODP01)
@@ -977,9 +1033,9 @@ const DEFAULT_SPLITTER_CATALOG = [
       return `A${seq}`;
     }
 
-    // Find upstream connected parent line
-    const connLine = lines.find(l => l.toId === targetNode.id || l.fromId === targetNode.id);
-    if (!connLine) {
+    // Find upstream connected parent line via network hierarchy BFS
+    const parentInfo = networkHierarchyMap.get(targetNode.id);
+    if (!parentInfo) {
       const sames = nodes.filter(n => n.type === type);
       const idx = sames.findIndex(n => n.id === targetNode.id);
       const seq = String(idx >= 0 ? idx + 1 : sames.length + 1).padStart(2, '0');
@@ -987,8 +1043,8 @@ const DEFAULT_SPLITTER_CATALOG = [
       return `${pfx}${seq}`;
     }
 
-    const pId = connLine.fromId === targetNode.id ? connLine.toId : connLine.fromId;
-    const pNode = nodes.find(n => n.id === pId);
+    const pNode = parentInfo.parentNode;
+    const pId = pNode.id;
     
     // Extract Parent Block (e.g. "A01", "B02", "C01") from parent's code
     let parentBlock = 'A01';
@@ -1004,9 +1060,12 @@ const DEFAULT_SPLITTER_CATALOG = [
     }
 
     // Count siblings of same type connected to same parent
-    const sibLines = lines.filter(l => l.fromId === pId || l.toId === pId);
-    const sibIds = sibLines.map(l => l.fromId === pId ? l.toId : l.fromId).filter(id => id !== targetNode.id);
-    const sameSibs = nodes.filter(n => sibIds.includes(n.id) && n.type === type);
+    const sameSibs = [...networkHierarchyMap.entries()].filter(([childId, info]) => {
+      if (childId === targetNode.id) return false;
+      if (info.parentId !== pId) return false;
+      const childNode = nodes.find(n => n.id === childId);
+      return childNode?.type === type;
+    });
     const seqNum = sameSibs.length + 1;
     const seqStr = String(seqNum).padStart(2, '0');
 
@@ -1399,18 +1458,17 @@ const DEFAULT_SPLITTER_CATALOG = [
       return { inputPower: defaultPower, outputPower: defaultPower, lossDb: 0, cableLengthM: 0, upstreamName: targetNode.name || 'OLT' };
     }
 
-    // Find line coming into this node
-    const incomingLine = lines.find(l => l.toId === nodeId || l.fromId === nodeId);
-    if (!incomingLine) {
+    // Find upstream connected parent via network hierarchy BFS
+    const parentInfo = networkHierarchyMap.get(nodeId);
+    if (!parentInfo) {
       return { inputPower: 0, outputPower: 0, lossDb: 0, cableLengthM: 0, upstreamName: '-' };
     }
 
-    const parentId = incomingLine.toId === nodeId ? incomingLine.fromId : incomingLine.toId;
-    const parentNode = nodes.find(n => n.id === parentId);
-    if (!parentNode) return { inputPower: 0, outputPower: 0, lossDb: 0, cableLengthM: 0, upstreamName: '-' };
+    const parentNode = parentInfo.parentNode;
+    const incomingLine = parentInfo.incomingLine;
+    const parentPort = parentInfo.parentPort;
 
     const parentRes = calculateNodeOpticalPower(parentNode.id, visited);
-    const parentPort = incomingLine.toId === nodeId ? (incomingLine.fromPort || 1) : (incomingLine.toPort || 1);
 
     // Check if incoming line is mapped as a Pass-Through / Bypass core from parent node
     const parentCableSplicing = incomingLine.coreSplicingMap || {};
@@ -3125,21 +3183,24 @@ const DEFAULT_SPLITTER_CATALOG = [
                           if (type === 'OLT') {
                             generated = `OLT-${seqStr}`;
                           } else {
-                            const connLine = lines.find(l => l.toId === editingNode.id || l.fromId === editingNode.id);
-                            if (!connLine) {
+                            const parentInfo = networkHierarchyMap.get(editingNode.id);
+                            if (!parentInfo) {
                               generated = `${type}-${seqStr}`;
                             } else {
-                              const pId = connLine.fromId === editingNode.id ? connLine.toId : connLine.fromId;
-                              const pNode = nodes.find(n => n.id === pId);
+                              const pNode = parentInfo.parentNode;
+                              const pId = pNode.id;
                               const pRaw = pNode?.code || pNode?.name || '';
                               const parentNums = pRaw.match(/\d+/g);
                               const parentTag = parentNums && parentNums.length > 0
                                 ? parentNums[parentNums.length - 1].padStart(2, '0')
                                 : (pNode?.id.slice(-2) || '01');
 
-                              const sibLines = lines.filter(l => l.fromId === pId || l.toId === pId);
-                              const sibIds = sibLines.map(l => l.fromId === pId ? l.toId : l.fromId).filter(id => id !== editingNode.id);
-                              const sameSibs = nodes.filter(n => sibIds.includes(n.id) && n.type === type);
+                              const sameSibs = [...networkHierarchyMap.entries()].filter(([childId, info]) => {
+                                if (childId === editingNode.id) return false;
+                                if (info.parentId !== pId) return false;
+                                const childNode = nodes.find(n => n.id === childId);
+                                return childNode?.type === type;
+                              });
                               const childSeq = sameSibs.length + 1;
                               const childSeqStr = String(childSeq).padStart(2, '0');
 
@@ -3147,7 +3208,7 @@ const DEFAULT_SPLITTER_CATALOG = [
                               else if (type === 'ODP') generated = `ODP-${parentTag}-${childSeqStr}`;
                               else if (type === 'SPLITTER') generated = `SP-${parentTag}-${childSeqStr}`;
                               else if (type === 'ONU' || type === 'ROUTER_WIFI') {
-                                const pPort = connLine.fromId === pId ? (connLine.fromPort || 1) : (connLine.toPort || 1);
+                                const pPort = parentInfo.parentPort;
                                 generated = `ONU-ODP${parentTag}-P${String(pPort).padStart(2, '0')}`;
                               } else generated = `${type}-${parentTag}-${childSeqStr}`;
                             }
