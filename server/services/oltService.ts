@@ -37,6 +37,10 @@ export interface OnuInfo {
   status: 'online' | 'offline' | 'los' | 'dying-gasp' | 'unknown';
   distance_m?: number | null;
   rx_power_dbm?: number | null;
+  tx_power_dbm?: number | null;
+  voltage_v?: number | null;
+  bias_current_ma?: number | null;
+  temperature_c?: number | null;
   last_down_cause?: string | null;
   profile_name?: string | null;
   customer_name?: string | null;
@@ -350,7 +354,8 @@ export async function fetchOltOnuList(
     const targetIface = String(ponPort).includes('/') ? ponPort : `1/1/${ponPort}`;
     commands = [
       `show gpon onu state gpon-olt_${targetIface}`,
-      `show gpon onu baseinfo gpon-olt_${targetIface}`
+      `show gpon onu baseinfo gpon-olt_${targetIface}`,
+      `show gpon onu pon-optical-info gpon-olt_${targetIface}`
     ];
   } else if (brand === 'huawei') {
     let slot = 1;
@@ -361,7 +366,8 @@ export async function fetchOltOnuList(
       p = Number(parts[2]) || 1;
     }
     commands = [
-      `display ont info 0/${slot} ${p} all`
+      `display ont info 0/${slot} ${p} all`,
+      `display ont optical-info 0/${slot} ${p} all`
     ];
   } else if (brand === 'vsol' || brand === 'hsgq') {
     const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
@@ -370,6 +376,7 @@ export async function fetchOltOnuList(
       `interface gpon 0/${p}`,
       'show onu state',
       'show onu distance',
+      'show onu optical-info',
       'end'
     ];
   } else {
@@ -387,6 +394,56 @@ export async function fetchOltOnuList(
   const distMatches = cleanRaw.matchAll(/onu\s+(\d+)\s+Distance:\s*(\d+)m/gi);
   for (const dm of distMatches) {
     distanceMap[parseInt(dm[1])] = parseInt(dm[2]);
+  }
+
+  // Parse bulk optical telemetry map
+  interface OpticalInfoParsed {
+    rx_power: number | null;
+    tx_power: number | null;
+    voltage: number | null;
+    bias_current: number | null;
+    temp: number | null;
+  }
+  const opticalMap: Record<number, OpticalInfoParsed> = {};
+
+  // 1. VSOL / HSGQ block format: "ONU ID: 1 ... Rx optical level: -20.92 ... Tx optical level: 2.38"
+  const onuBlocks = cleanRaw.split(/ONU ID:\s*/i);
+  for (let i = 1; i < onuBlocks.length; i++) {
+    const block = onuBlocks[i];
+    const idMatch = block.match(/^(\d+)/);
+    if (!idMatch) continue;
+    const onuId = parseInt(idMatch[1]);
+
+    const rxM = block.match(/Rx optical level:\s*([-\d\.]+)/i);
+    const txM = block.match(/Tx optical level:\s*([-\d\.]+)/i);
+    const voltM = block.match(/Power feed voltage:\s*([-\d\.]+)/i);
+    const biasM = block.match(/Laser bias current:\s*([-\d\.]+)/i);
+    const tempM = block.match(/Temperature:\s*([-\d\.]+)/i);
+
+    opticalMap[onuId] = {
+      rx_power: rxM && !isNaN(parseFloat(rxM[1])) ? parseFloat(rxM[1]) : null,
+      tx_power: txM && !isNaN(parseFloat(txM[1])) ? parseFloat(txM[1]) : null,
+      voltage: voltM && !isNaN(parseFloat(voltM[1])) ? parseFloat(voltM[1]) : null,
+      bias_current: biasM && !isNaN(parseFloat(biasM[1])) ? parseFloat(biasM[1]) : null,
+      temp: tempM && !isNaN(parseFloat(tempM[1])) ? parseFloat(tempM[1]) : null,
+    };
+  }
+
+  // 2. ZTE / Huawei tabular optical format fallback (e.g. gpon-onu_1/1/1:1 ... -20.5 ... 2.1)
+  const optLineMatches = cleanRaw.matchAll(/(?:gpon-onu_\d+\/\d+\/\d+:|ont\s+optical-info\s+\d+\s+)(\d+)\s+([-\d\.]+)\s+([-\d\.]+)/gi);
+  for (const om of optLineMatches) {
+    const onuId = parseInt(om[1]);
+    const rx = parseFloat(om[2]);
+    const tx = parseFloat(om[3]);
+    if (!opticalMap[onuId]) {
+      opticalMap[onuId] = {
+        rx_power: !isNaN(rx) ? rx : null,
+        tx_power: !isNaN(tx) ? tx : null,
+        voltage: null,
+        bias_current: null,
+        temp: null
+      };
+    }
   }
 
   const lines = cleanRaw.split('\n');
@@ -410,12 +467,18 @@ export async function fetchOltOnuList(
       else if (phaseState.includes('dying')) status = 'dying-gasp';
       else if (phaseState.includes('los')) status = 'los';
 
+      const opt = opticalMap[onuId];
       onuList.push({
         pon_port: port,
         onu_id: onuId,
         sn,
         status,
-        distance_m: distanceMap[onuId] ?? null
+        distance_m: distanceMap[onuId] ?? null,
+        rx_power_dbm: opt?.rx_power ?? null,
+        tx_power_dbm: opt?.tx_power ?? null,
+        voltage_v: opt?.voltage ?? null,
+        bias_current_ma: opt?.bias_current ?? null,
+        temperature_c: opt?.temp ?? null
       });
       continue;
     }
@@ -432,11 +495,17 @@ export async function fetchOltOnuList(
       else if (phaseState === 'dyinggasp' || phaseState === 'dying-gasp') status = 'dying-gasp';
       else if (phaseState === 'los' || phaseState === 'offline') status = 'los';
 
+      const opt = opticalMap[onuId];
       onuList.push({
         pon_port: port,
         onu_id: onuId,
         sn: `ZTE-ONU-${port}:${onuId}`,
-        status
+        status,
+        rx_power_dbm: opt?.rx_power ?? null,
+        tx_power_dbm: opt?.tx_power ?? null,
+        voltage_v: opt?.voltage ?? null,
+        bias_current_ma: opt?.bias_current ?? null,
+        temperature_c: opt?.temp ?? null
       });
       continue;
     }
@@ -454,11 +523,17 @@ export async function fetchOltOnuList(
       else if (state.includes('los')) status = 'los';
       else if (state.includes('dying')) status = 'dying-gasp';
 
+      const opt = opticalMap[onuId];
       onuList.push({
         pon_port: port,
         onu_id: onuId,
         sn,
-        status
+        status,
+        rx_power_dbm: opt?.rx_power ?? null,
+        tx_power_dbm: opt?.tx_power ?? null,
+        voltage_v: opt?.voltage ?? null,
+        bias_current_ma: opt?.bias_current ?? null,
+        temperature_c: opt?.temp ?? null
       });
       continue;
     }
@@ -570,4 +645,137 @@ export async function scanUnconfiguredOnus(
   }
 
   return uncfgList;
+}
+
+/**
+ * 6. Registrasi ONU Baru via CLI OLT
+ */
+export async function registerOltOnuCLI(
+  olt: OltRecord,
+  ponPort: string | number,
+  onuId: number,
+  sn: string,
+  descName?: string,
+  lineProfile = 'default',
+  srvProfile = 'default'
+): Promise<{ success: boolean; message: string; output: string }> {
+  const brand = olt.brand || 'vsol';
+  let commands: string[] = [];
+  const safeName = (descName || `ONU_${onuId}`).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 32);
+
+  if (brand === 'zte') {
+    const targetIface = String(ponPort).includes('/') ? ponPort : `1/1/${ponPort}`;
+    commands = [
+      'configure terminal',
+      `interface gpon-olt_${targetIface}`,
+      `onu ${onuId} type ${lineProfile} sn ${sn}`,
+      'exit',
+      `interface gpon-onu_${targetIface}:${onuId}`,
+      `name ${safeName}`,
+      'end'
+    ];
+  } else if (brand === 'huawei') {
+    let slot = 1;
+    let p = Number(ponPort) || 1;
+    if (String(ponPort).includes('/')) {
+      const parts = String(ponPort).split('/');
+      slot = Number(parts[1]) || 1;
+      p = Number(parts[2]) || 1;
+    }
+    commands = [
+      `interface gpon 0/${slot}`,
+      `ont add ${p} ${onuId} sn-auth ${sn} omci ont-lineprofile-name ${lineProfile} ont-srvprofile-name ${srvProfile} desc "${safeName}"`,
+      'quit'
+    ];
+  } else if (brand === 'vsol' || brand === 'hsgq') {
+    const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
+    commands = [
+      'configure terminal',
+      `interface gpon 0/${p}`,
+      `onu add ${onuId} sn-auth ${sn} line-profile ${lineProfile} srv-profile ${srvProfile}`,
+      `onu ${onuId} desc ${safeName}`,
+      'end'
+    ];
+  } else {
+    commands = [
+      `onu add ${ponPort} ${onuId} sn ${sn}`
+    ];
+  }
+
+  try {
+    const output = await executeOltSshCommands(olt, commands, 12000);
+    return {
+      success: true,
+      message: `Perintah registrasi ONU ID ${onuId} (SN: ${sn}) berhasil dikirim ke OLT!`,
+      output
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Gagal mengirim konfigurasi registrasi ONU via SSH: ${err.message}`,
+      output: ''
+    };
+  }
+}
+
+/**
+ * 7. Hapus / Deregister ONU dari OLT via CLI
+ */
+export async function deleteOltOnuCLI(
+  olt: OltRecord,
+  ponPort: string | number,
+  onuId: number
+): Promise<{ success: boolean; message: string; output: string }> {
+  const brand = olt.brand || 'vsol';
+  let commands: string[] = [];
+
+  if (brand === 'zte') {
+    const targetIface = String(ponPort).includes('/') ? ponPort : `1/1/${ponPort}`;
+    commands = [
+      'configure terminal',
+      `interface gpon-olt_${targetIface}`,
+      `no onu ${onuId}`,
+      'end'
+    ];
+  } else if (brand === 'huawei') {
+    let slot = 1;
+    let p = Number(ponPort) || 1;
+    if (String(ponPort).includes('/')) {
+      const parts = String(ponPort).split('/');
+      slot = Number(parts[1]) || 1;
+      p = Number(parts[2]) || 1;
+    }
+    commands = [
+      `interface gpon 0/${slot}`,
+      `ont delete ${p} ${onuId}`,
+      'quit'
+    ];
+  } else if (brand === 'vsol' || brand === 'hsgq') {
+    const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
+    commands = [
+      'configure terminal',
+      `interface gpon 0/${p}`,
+      `no onu ${onuId}`,
+      'end'
+    ];
+  } else {
+    commands = [
+      `no onu ${ponPort}:${onuId}`
+    ];
+  }
+
+  try {
+    const output = await executeOltSshCommands(olt, commands, 10000);
+    return {
+      success: true,
+      message: `ONU ${ponPort}:${onuId} berhasil dihapus dari OLT!`,
+      output
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Gagal menghapus ONU via SSH: ${err.message}`,
+      output: ''
+    };
+  }
 }

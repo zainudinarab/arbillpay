@@ -268,6 +268,8 @@ export async function initDatabaseSchema() {
         username VARCHAR(128) NOT NULL,
         password VARCHAR(255) NOT NULL,
         enable_password VARCHAR(255),
+        snmp_enabled BOOLEAN DEFAULT true,
+        snmp_version VARCHAR(16) DEFAULT 'v2c',
         snmp_port INT DEFAULT 161,
         snmp_community VARCHAR(128) DEFAULT 'public',
         total_pon_ports INT DEFAULT 8,
@@ -275,6 +277,30 @@ export async function initDatabaseSchema() {
         status VARCHAR(32) DEFAULT 'online',
         last_checked_at TIMESTAMP WITH TIME ZONE,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS olt_onus (
+        id VARCHAR(64) PRIMARY KEY,
+        olt_id VARCHAR(64) REFERENCES olts(id) ON DELETE CASCADE,
+        pon_port VARCHAR(32) NOT NULL DEFAULT '1',
+        onu_id INT NOT NULL,
+        sn VARCHAR(64) NOT NULL,
+        name VARCHAR(255),
+        customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE SET NULL,
+        status VARCHAR(32) DEFAULT 'online',
+        distance_m INT,
+        rx_power NUMERIC(6, 2),
+        tx_power NUMERIC(6, 2),
+        voltage NUMERIC(6, 2),
+        temp NUMERIC(6, 2),
+        bias_current NUMERIC(6, 2),
+        line_profile VARCHAR(64) DEFAULT 'default',
+        srv_profile VARCHAR(64) DEFAULT 'default',
+        snmp_index VARCHAR(64),
+        last_sync_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT unique_olt_pon_onu UNIQUE (olt_id, pon_port, onu_id)
       );
     `).catch((err) => console.warn('Base table init notice:', err.message));
 
@@ -455,7 +481,43 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS total_cores INT DEFAULT 4,
       ADD COLUMN IF NOT EXISTS core_splicing_map JSONB DEFAULT '{}'::jsonb;
     `).catch((err) => console.warn('Patch FTTH notice:', err.message));
-    console.log('✅ FTTH nodes & cables schema patched successfully!');
+    // 7.5 Alter & Patch OLT & OLT ONUs tables
+    await pool.query(`
+      ALTER TABLE olts
+      ADD COLUMN IF NOT EXISTS snmp_enabled BOOLEAN DEFAULT true,
+      ADD COLUMN IF NOT EXISTS snmp_version VARCHAR(16) DEFAULT 'v2c',
+      ADD COLUMN IF NOT EXISTS snmp_port INT DEFAULT 161,
+      ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(128) DEFAULT 'public';
+
+      CREATE TABLE IF NOT EXISTS olt_onus (
+        id VARCHAR(64) PRIMARY KEY,
+        olt_id VARCHAR(64) REFERENCES olts(id) ON DELETE CASCADE,
+        pon_port VARCHAR(32) NOT NULL DEFAULT '1',
+        onu_id INT NOT NULL,
+        sn VARCHAR(64) NOT NULL,
+        name VARCHAR(255),
+        customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE SET NULL,
+        status VARCHAR(32) DEFAULT 'online',
+        distance_m INT,
+        rx_power NUMERIC(6, 2),
+        tx_power NUMERIC(6, 2),
+        voltage NUMERIC(6, 2),
+        temp NUMERIC(6, 2),
+        bias_current NUMERIC(6, 2),
+        line_profile VARCHAR(64) DEFAULT 'default',
+        srv_profile VARCHAR(64) DEFAULT 'default',
+        snmp_index VARCHAR(64),
+        last_sync_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT unique_olt_pon_onu UNIQUE (olt_id, pon_port, onu_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_olt_onus_olt_id ON olt_onus(olt_id);
+      CREATE INDEX IF NOT EXISTS idx_olt_onus_sn ON olt_onus(sn);
+      CREATE INDEX IF NOT EXISTS idx_olt_onus_customer_id ON olt_onus(customer_id);
+    `).catch((err) => console.warn('Patch OLT / OLT ONUs notice:', err.message));
+    console.log('✅ OLT and OLT ONUs table verified & patched successfully!');
 
     // 8. HIGH PERFORMANCE INDEXES (TANGGUH & CEPAT)
     await pool.query(`

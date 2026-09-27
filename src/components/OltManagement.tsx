@@ -65,18 +65,33 @@ export interface MapNodeItem {
 }
 
 export interface OnuListItem {
+  id?: string;
+  olt_id?: string;
   pon_port: string | number;
   onu_id: number;
   sn: string;
+  name?: string | null;
+  customer_id?: string | null;
   status: 'online' | 'offline' | 'los' | 'dying-gasp' | 'unknown';
   distance_m?: number | null;
+  rx_power?: number | null;
+  tx_power?: number | null;
   rx_power_dbm?: number | null;
   tx_power_dbm?: number | null;
   olt_rx_power_dbm?: number | null;
+  voltage?: number | null;
+  temp?: number | null;
+  bias_current?: number | null;
+  line_profile?: string | null;
+  srv_profile?: string | null;
+  last_sync_at?: string | null;
   last_down_cause?: string | null;
   customer_name?: string | null;
   customer_code?: string | null;
   pppoe_username?: string | null;
+  phone_number?: string | null;
+  customer_status?: string | null;
+  customer_address?: string | null;
 }
 
 interface OltManagementProps {
@@ -124,16 +139,39 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
   } | null>(null);
   const [showConsoleModal, setShowConsoleModal] = useState(false);
 
-  // ONU Monitor State
+  // ONU Monitor & Local Database Cache State
   const [selectedOltForOnu, setSelectedOltForOnu] = useState<string>('');
   const [selectedPonPort, setSelectedPonPort] = useState<string>('1');
   const [onus, setOnus] = useState<OnuListItem[]>([]);
   const [loadingOnus, setLoadingOnus] = useState(false);
+  const [syncingOlt, setSyncingOlt] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [fromCache, setFromCache] = useState(true);
   const [readingOpticalId, setReadingOpticalId] = useState<string | null>(null);
   const [opticalResults, setOpticalResults] = useState<{ [onuKey: string]: { rx: number | null; tx: number | null; olt_rx: number | null; raw?: string } }>({});
   const [rebootingId, setRebootingId] = useState<string | null>(null);
   const [uncfgList, setUncfgList] = useState<any[]>([]);
   const [scanningUncfg, setScanningUncfg] = useState(false);
+
+  // Customers for link / registration
+  const [customers, setCustomers] = useState<any[]>([]);
+
+  // Manual Register ONU Modal State
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [regPonPort, setRegPonPort] = useState('1');
+  const [regOnuId, setRegOnuId] = useState('');
+  const [regSn, setRegSn] = useState('');
+  const [regName, setRegName] = useState('');
+  const [regCustomerId, setRegCustomerId] = useState('');
+  const [regLineProfile, setRegLineProfile] = useState('default');
+  const [regSrvProfile, setRegSrvProfile] = useState('default');
+  const [registering, setRegistering] = useState(false);
+
+  // Link Customer Modal State
+  const [linkingOnu, setLinkingOnu] = useState<OnuListItem | null>(null);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [selectedCustomerForLink, setSelectedCustomerForLink] = useState('');
+  const [savingLink, setSavingLink] = useState(false);
 
   // Fetch OLTs list
   const fetchOlts = async () => {
@@ -158,8 +196,19 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/customers`);
+      const data = await res.json();
+      if (Array.isArray(data)) setCustomers(data);
+      else if (data.customers && Array.isArray(data.customers)) setCustomers(data.customers);
+    } catch (_) {}
+  };
+
   useEffect(() => {
     fetchOlts();
+    fetchCustomers();
   }, []);
 
   const resetForm = () => {
@@ -322,16 +371,18 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
     }
   };
 
-  // Fetch ONU list for selected OLT and PON Port
-  const fetchOnus = async () => {
+  // Fetch ONU list for selected OLT and PON Port (Mendukung Cache Database Lokal)
+  const fetchOnus = async (forceLive = false) => {
     if (!selectedOltForOnu) return;
     setLoadingOnus(true);
     try {
       const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/onus?pon_port=${selectedPonPort}`);
+      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/onus?pon_port=${selectedPonPort}${forceLive ? '&live=true' : ''}`);
       const data = await res.json();
       if (data.success) {
         setOnus(data.onus || []);
+        setLastSyncAt(data.last_sync || null);
+        setFromCache(Boolean(data.from_cache));
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal membaca ONU dari OLT' });
       }
@@ -344,9 +395,155 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
 
   useEffect(() => {
     if (activeTab === 'onus' && selectedOltForOnu) {
-      fetchOnus();
+      fetchOnus(false);
     }
   }, [activeTab, selectedOltForOnu, selectedPonPort]);
+
+  // Tarik Data dari OLT via SSH (Sync Database Cache)
+  const handleSyncOlt = async () => {
+    if (!selectedOltForOnu) return;
+    setSyncingOlt(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pon_port: selectedPonPort })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message || 'Sinkronisasi berhasil!' });
+        fetchOnus(false);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal sinkronisasi data OLT' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal sync OLT: ${err.message}` });
+    } finally {
+      setSyncingOlt(false);
+    }
+  };
+
+  // Registrasi ONU Baru Manual ke OLT & Database
+  const handleRegisterOnu = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOltForOnu) return;
+    if (!regSn.trim()) {
+      setToastMsg({ type: 'error', text: 'Nomor Serial (SN) ONU wajib diisi!' });
+      return;
+    }
+
+    setRegistering(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/register-onu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pon_port: regPonPort || selectedPonPort,
+          onu_id: regOnuId ? parseInt(regOnuId) : undefined,
+          sn: regSn.trim(),
+          name: regName.trim(),
+          customer_id: regCustomerId || undefined,
+          line_profile: regLineProfile || 'default',
+          srv_profile: regSrvProfile || 'default'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setShowRegisterModal(false);
+        setRegSn('');
+        setRegName('');
+        setRegOnuId('');
+        setRegCustomerId('');
+        fetchOnus(false);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mendaftarkan ONU' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err.message });
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  // Hapus / Deregister ONU dari OLT
+  const handleDeleteOnu = async (onu: OnuListItem) => {
+    if (!selectedOltForOnu) return;
+    if (!window.confirm(`Yakin ingin menghapus ONU ${onu.pon_port}:${onu.onu_id} (${onu.sn}) dari OLT dan database? Perangkat akan di-deregister!`)) return;
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/delete-onu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pon_port: onu.pon_port, onu_id: onu.onu_id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setOnus(prev => prev.filter(o => !(String(o.pon_port) === String(onu.pon_port) && o.onu_id === onu.onu_id)));
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus ONU' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err.message });
+    }
+  };
+
+  // Simpan tautan pelanggan ke ONU
+  const handleSaveLinkCustomer = async () => {
+    if (!selectedOltForOnu || !linkingOnu) return;
+    setSavingLink(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${selectedOltForOnu}/link-customer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          onu_db_id: linkingOnu.id || `${selectedOltForOnu}_${linkingOnu.pon_port}_${linkingOnu.onu_id}`,
+          customer_id: selectedCustomerForLink || null
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setShowLinkModal(false);
+        setLinkingOnu(null);
+        fetchOnus(false);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menautkan pelanggan' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: err.message });
+    } finally {
+      setSavingLink(false);
+    }
+  };
+
+  // Uji koneksi SNMP ke OLT
+  const handleTestSnmp = async (olt: OltItem) => {
+    try {
+      setToastMsg({ type: 'success', text: `Menguji SNMP ke ${olt.ip_address}:${olt.snmp_port || 161}...` });
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${olt.id}/test-snmp`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: `SNMP OK (${data.sysName || olt.name}) - Uptime: ${data.uptime || '-'}`
+        });
+      } else {
+        setToastMsg({
+          type: 'error',
+          text: data.message || 'SNMP Timeout / Gagal terhubung'
+        });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Uji SNMP gagal: ${err.message}` });
+    }
+  };
 
   // Read optical power for an ONU
   const handleCheckOpticalPower = async (onu: OnuListItem) => {
@@ -366,6 +563,8 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
             raw: data.reading.raw_output
           }
         }));
+        // Update di state onus agar langsung tampil di kolom Redaman
+        setOnus(prev => prev.map(o => (String(o.pon_port) === String(onu.pon_port) && o.onu_id === onu.onu_id) ? { ...o, rx_power: data.reading.rx_power_dbm } : o));
         setToastMsg({
           type: 'success',
           text: `Redaman ONU ${onu.pon_port}:${onu.onu_id}: Rx ${data.reading.rx_power_dbm ?? '-'} dBm | OLT Rx ${data.reading.olt_rx_power_dbm ?? '-'} dBm`
@@ -438,8 +637,11 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
   const selectedOltItem = olts.find(o => o.id === selectedOltForOnu);
 
   // Helper formatting attenuation color
-  const getRxPowerBadge = (rx: number | null | undefined) => {
-    if (rx === null || rx === undefined) return <span className="text-slate-400 font-mono">-</span>;
+  const getRxPowerBadge = (rxInput: number | string | null | undefined) => {
+    if (rxInput === null || rxInput === undefined || rxInput === '') return <span className="text-slate-400 font-mono">-</span>;
+    const rx = typeof rxInput === 'number' ? rxInput : parseFloat(String(rxInput));
+    if (isNaN(rx)) return <span className="text-slate-400 font-mono">-</span>;
+
     if (rx >= -23.0 && rx <= -15.0) {
       return (
         <span className="px-2 py-0.5 rounded-full font-mono font-black text-xs bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -713,6 +915,16 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
 
                         <button
                           type="button"
+                          onClick={() => handleTestSnmp(olt)}
+                          className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Uji koneksi SNMP ke OLT"
+                        >
+                          <Activity size={12} />
+                          <span>Tes SNMP</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => {
                             setSelectedOltForOnu(olt.id);
                             setSelectedPonPort('1');
@@ -800,7 +1012,44 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                  <Zap size={13} className="text-amber-500 fill-amber-500" />
+                  <span className="font-bold text-slate-700">Cache DB Lokal</span>
+                  {lastSyncAt && (
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      ({new Date(lastSyncAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })})
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSyncOlt}
+                  disabled={syncingOlt}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+                  title="Tarik data ONU live dari OLT via SSH dan simpan ke database"
+                >
+                  <RefreshCw size={14} className={syncingOlt ? 'animate-spin' : ''} />
+                  <span>{syncingOlt ? 'Menyinkronkan...' : 'Tarik Data OLT (Sync SSH)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegPonPort(selectedPonPort);
+                    setRegOnuId('');
+                    setRegSn('');
+                    setRegName('');
+                    setRegCustomerId('');
+                    setShowRegisterModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Plus size={14} />
+                  <span>+ Daftarkan ONU Manual</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleScanUnconfigured}
@@ -810,16 +1059,6 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 >
                   <Sparkles size={14} className={scanningUncfg ? 'animate-spin' : ''} />
                   <span>{scanningUncfg ? 'Memindai...' : 'Scan Modem Baru'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={fetchOnus}
-                  disabled={loadingOnus}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-                >
-                  <RefreshCw size={14} className={loadingOnus ? 'animate-spin' : ''} />
-                  <span>Refresh ONU</span>
                 </button>
               </div>
             </div>
@@ -844,9 +1083,18 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         <span className="text-[10px] text-slate-400 block">Port: {u.pon_port}</span>
                         <strong className="text-slate-800 text-xs">{u.sn}</strong>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
-                        New Modem
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegPonPort(String(u.pon_port).replace(/[^0-9]/g, '') || selectedPonPort);
+                          setRegSn(u.sn);
+                          setRegName(`ONU_${u.sn.substring(0, 6)}`);
+                          setShowRegisterModal(true);
+                        }}
+                        className="px-2 py-1 rounded text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer transition-all"
+                      >
+                        + Daftarkan
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -858,15 +1106,24 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
               {loadingOnus ? (
                 <div className="p-16 text-center text-slate-400 flex flex-col items-center gap-3">
                   <RefreshCw size={24} className="animate-spin text-blue-600" />
-                  <span className="text-xs font-bold">Membaca daftar ONU dari OLT via SSH (Port PON {selectedPonPort})...</span>
+                  <span className="text-xs font-bold">Memuat data ONU dari database lokal (Port PON {selectedPonPort})...</span>
                 </div>
               ) : onus.length === 0 ? (
                 <div className="p-16 text-center text-slate-400 space-y-3">
                   <Radio size={36} className="mx-auto text-slate-300" />
-                  <h4 className="font-extrabold text-slate-700 text-sm">Tidak Ada ONU Terdeteksi di Port PON {selectedPonPort}</h4>
+                  <h4 className="font-extrabold text-slate-700 text-sm">Tidak Ada ONU di Port PON {selectedPonPort}</h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Pastikan kabel optik terhubung dan OLT dapat dijangkau via SSH. Anda juga dapat mencoba klik "Refresh ONU" atau "Scan Modem Baru".
+                    Klik tombol "Tarik Data OLT (Sync SSH)" untuk menarik data live dari OLT, atau klik "+ Daftarkan ONU Manual" untuk mendaftarkan modem baru.
                   </p>
+                  <button
+                    type="button"
+                    onClick={handleSyncOlt}
+                    disabled={syncingOlt}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={syncingOlt ? 'animate-spin' : ''} />
+                    <span>Tarik Data OLT (Sync SSH)</span>
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -875,8 +1132,10 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                       <tr>
                         <th className="py-3 px-4">Port:ONU ID</th>
                         <th className="py-3 px-4">Serial Number (SN)</th>
+                        <th className="py-3 px-4">Nama / Deskripsi</th>
                         <th className="py-3 px-4">Pelanggan Terkait</th>
                         <th className="py-3 px-4">Status Laser</th>
+                        <th className="py-3 px-4">Jarak Kabel</th>
                         <th className="py-3 px-4">Redaman Optik (Rx dBm)</th>
                         <th className="py-3 px-4 text-right">Aksi Kontrol</th>
                       </tr>
@@ -887,6 +1146,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         const opt = opticalResults[onuKey];
                         const isReadingOpt = readingOpticalId === onuKey;
                         const isRebooting = rebootingId === onuKey;
+                        const rxVal = opt ? opt.rx : (onu.rx_power ?? onu.rx_power_dbm);
 
                         return (
                           <tr key={onuKey} className="hover:bg-slate-50/70 transition-colors">
@@ -898,16 +1158,45 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                               {onu.sn}
                             </td>
 
+                            <td className="py-3 px-4 text-slate-700 font-bold">
+                              {onu.name || `ONU_${onu.onu_id}`}
+                            </td>
+
                             <td className="py-3 px-4">
                               {onu.customer_name ? (
-                                <div>
-                                  <strong className="text-slate-800 font-extrabold block text-xs">{onu.customer_name}</strong>
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {onu.pppoe_username ? `PPP: ${onu.pppoe_username}` : onu.customer_code}
-                                  </span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <strong className="text-slate-800 font-extrabold block text-xs">{onu.customer_name}</strong>
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {onu.pppoe_username ? `PPP: ${onu.pppoe_username}` : onu.customer_code}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setLinkingOnu(onu);
+                                      setSelectedCustomerForLink(onu.customer_id || '');
+                                      setShowLinkModal(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-blue-600 rounded hover:bg-blue-50 transition-all cursor-pointer"
+                                    title="Ubah relasi pelanggan"
+                                  >
+                                    <Edit size={12} />
+                                  </button>
                                 </div>
                               ) : (
-                                <span className="text-slate-400 italic text-[11px]">Belum ditautkan</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setLinkingOnu(onu);
+                                    setSelectedCustomerForLink('');
+                                    setShowLinkModal(true);
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-extrabold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-all border border-blue-200"
+                                >
+                                  <Link2 size={11} />
+                                  <span>+ Hubungkan</span>
+                                </button>
                               )}
                             </td>
 
@@ -926,13 +1215,17 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                               </span>
                             </td>
 
+                            <td className="py-3 px-4 font-mono text-slate-600">
+                              {onu.distance_m ? `${onu.distance_m} m` : '-'}
+                            </td>
+
                             <td className="py-3 px-4">
-                              {opt ? (
+                              {rxVal !== null && rxVal !== undefined ? (
                                 <div className="space-y-0.5">
-                                  {getRxPowerBadge(opt.rx)}
-                                  {opt.olt_rx !== null && opt.olt_rx !== undefined && (
+                                  {getRxPowerBadge(rxVal)}
+                                  {opt && opt.olt_rx !== null && opt.olt_rx !== undefined && (
                                     <span className="block text-[10px] text-slate-400 font-mono">
-                                      OLT Rx: {opt.olt_rx.toFixed(2)} dBm
+                                      OLT Rx: {Number(opt.olt_rx).toFixed(2)} dBm
                                     </span>
                                   )}
                                 </div>
@@ -956,7 +1249,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                                   onClick={() => handleCheckOpticalPower(onu)}
                                   disabled={isReadingOpt}
                                   className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold transition-all cursor-pointer disabled:opacity-50"
-                                  title="Cek redaman optik realtime"
+                                  title="Cek redaman optik live realtime dari OLT"
                                 >
                                   <Radio size={13} className={isReadingOpt ? 'animate-spin' : ''} />
                                 </button>
@@ -965,11 +1258,20 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                                   type="button"
                                   onClick={() => handleRebootOnu(onu)}
                                   disabled={isRebooting}
-                                  className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50"
+                                  className="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 font-extrabold text-[11px] inline-flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50"
                                   title="Kirim perintah restart ONU ke OLT"
                                 >
                                   <RotateCcw size={11} className={isRebooting ? 'animate-spin' : ''} />
-                                  <span>{isRebooting ? 'Me-reboot...' : 'Reboot'}</span>
+                                  <span>{isRebooting ? 'Rebooting...' : 'Reboot'}</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOnu(onu)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
+                                  title="Hapus / Deregister ONU dari OLT & Database"
+                                >
+                                  <Trash2 size={13} />
                                 </button>
                               </div>
                             </td>
@@ -1226,6 +1528,224 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
               >
                 Tutup
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL REGISTRASI ONU MANUAL ================= */}
+      {showRegisterModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg border border-slate-100 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <Plus size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">Daftarkan ONU Baru Manual</h3>
+                  <p className="text-xs text-slate-400">Registrasi modem langsung ke OLT {selectedOltItem?.name || ''}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRegisterModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterOnu} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Port PON *</label>
+                  <select
+                    value={regPonPort}
+                    onChange={(e) => setRegPonPort(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    {Array.from({ length: selectedOltItem?.total_pon_ports || 8 }, (_, i) => i + 1).map(p => (
+                      <option key={p} value={String(p)}>Port PON {p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Nomor ONU ID (1-128)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="128"
+                    value={regOnuId}
+                    onChange={(e) => setRegOnuId(e.target.value)}
+                    placeholder="Auto (ID Kosong Terkecil)"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Biarkan kosong untuk otomatis</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Serial Number (SN) ONU *</label>
+                <input
+                  type="text"
+                  value={regSn}
+                  onChange={(e) => setRegSn(e.target.value)}
+                  placeholder="Contoh: ZTEGc4a3583c atau HWTCb3b2e1a0"
+                  required
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Nama / Deskripsi ONU</label>
+                <input
+                  type="text"
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
+                  placeholder="Contoh: Budi_Santoso atau Rumah_Pak_RT"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Hubungkan ke Pelanggan Arbill</label>
+                <select
+                  value={regCustomerId}
+                  onChange={(e) => {
+                    setRegCustomerId(e.target.value);
+                    const selected = customers.find(c => c.id === e.target.value);
+                    if (selected && !regName) {
+                      setRegName(selected.name.replace(/[^a-zA-Z0-9_-]/g, '_'));
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="">-- Pilih Pelanggan (Opsional) --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.pppoe_username ? `PPP: ${c.pppoe_username}` : c.customer_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Line Profile</label>
+                  <input
+                    type="text"
+                    value={regLineProfile}
+                    onChange={(e) => setRegLineProfile(e.target.value)}
+                    placeholder="default"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Srv Profile</label>
+                  <input
+                    type="text"
+                    value={regSrvProfile}
+                    onChange={(e) => setRegSrvProfile(e.target.value)}
+                    placeholder="default"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                <strong>Catatan Pendaftaran:</strong>
+                <p>
+                  Sistem Arbill akan mengirim perintah CLI ke OLT via SSH dan menyimpan nomor ONU ID & SN ini ke tabel database lokal, sehingga OLT tidak perlu di-polling terus-menerus.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowRegisterModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={registering}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <Plus size={14} className={registering ? 'animate-spin' : ''} />
+                  <span>{registering ? 'Mendaftarkan...' : 'Daftarkan ke OLT'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL HUBUNGKAN PELANGGAN ================= */}
+      {showLinkModal && linkingOnu && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md border border-slate-100 shadow-2xl overflow-hidden flex flex-col">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <Link2 size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">Hubungkan ONU ke Pelanggan</h3>
+                  <p className="text-xs text-slate-400 font-mono">PON {linkingOnu.pon_port} : #{linkingOnu.onu_id} ({linkingOnu.sn})</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowLinkModal(false); setLinkingOnu(null); }}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">Pilih Pelanggan Arbill</label>
+                <select
+                  value={selectedCustomerForLink}
+                  onChange={(e) => setSelectedCustomerForLink(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="">-- [ Lepaskan Tautan / Belum Terhubung ] --</option>
+                  {customers.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.pppoe_username ? `PPP: ${c.pppoe_username}` : c.customer_code}) {c.phone_number ? `- ${c.phone_number}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-100 text-blue-900 text-[11px]">
+                Dengan menautkan pelanggan, status laser ONU ({linkingOnu.status}) dan redaman optik live akan langsung tampil di kartu detail pelanggan dan titik peta FTTH.
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => { setShowLinkModal(false); setLinkingOnu(null); }}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveLinkCustomer}
+                  disabled={savingLink}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <CheckCircle2 size={14} className={savingLink ? 'animate-spin' : ''} />
+                  <span>{savingLink ? 'Menyimpan...' : 'Simpan Tautan'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
