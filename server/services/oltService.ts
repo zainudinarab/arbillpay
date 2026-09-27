@@ -82,48 +82,61 @@ export async function executeOltSshCommands(
           }
         });
 
+        let commandsSent = false;
+        let enableSent = false;
+        let loggedIn = false;
+
+        const sendCommands = () => {
+          if (commandsSent) return;
+          commandsSent = true;
+
+          let initPagingCmd = '';
+          if (olt.brand === 'zte') initPagingCmd = 'terminal length 0\n';
+          else if (olt.brand === 'huawei') initPagingCmd = 'screen-length 0 temporary\n';
+          else if (olt.brand === 'vsol' || olt.brand === 'hsgq') initPagingCmd = 'terminal length 0\n';
+
+          const fullPayload = (initPagingCmd ? initPagingCmd : '') + commands.join('\n') + '\nexit\n';
+          stream.write(fullPayload);
+
+          setTimeout(() => {
+            if (!isFinished) {
+              isFinished = true;
+              conn.end();
+              resolve(output);
+            }
+          }, 3500);
+        };
+
         stream.on('data', (data: Buffer) => {
           const chunk = data.toString('utf-8');
           output += chunk;
 
           // Handle prompt pagination (--More--, Press any key to continue, etc.)
           if (chunk.includes('--More--') || chunk.includes("More ( Press 'Q' to break )") || chunk.includes('---- More ----')) {
-            stream.write(' '); // kirim spasi untuk melanjutkan output
+            stream.write(' ');
           }
 
-          // Handle enable / privilege mode prompt
-          if (olt.enable_password && chunk.includes('Password:') && !chunk.includes('Login:')) {
-            stream.write(`${olt.enable_password}\n`);
+          // Handle inner login prompt (HSAirPo / VSOL / C-Data console wrap)
+          if (chunk.includes('Login:')) {
+            stream.write(`${olt.username}\n`);
+          } else if (chunk.includes('Password:')) {
+            stream.write(`${olt.password || olt.enable_password || ''}\n`);
+            loggedIn = true;
+          } else if (loggedIn && chunk.includes('>') && !enableSent && !commandsSent) {
+            enableSent = true;
+            setTimeout(() => stream.write('enable\n'), 300);
+          } else if (loggedIn && (chunk.includes('GPT1000V#') || chunk.includes('OLT#') || (chunk.includes('#') && !chunk.includes('####'))) && !commandsSent) {
+            // Kita sudah berada di Privileged mode (#)! Kirim commands
+            setTimeout(sendCommands, 400);
           }
         });
 
-        // Kirim disable paging dan command list
-        let initPagingCmd = '';
-        if (olt.brand === 'zte') initPagingCmd = 'terminal length 0\n';
-        else if (olt.brand === 'huawei') initPagingCmd = 'screen-length 0 temporary\n';
-        else if (olt.brand === 'vsol' || olt.brand === 'hsgq') initPagingCmd = 'terminal length 0\n';
-
+        // Fallback timer jika prompt tidak tertangkap regex
         setTimeout(() => {
-          if (initPagingCmd) stream.write(initPagingCmd);
-
-          commands.forEach((cmd, idx) => {
-            setTimeout(() => {
-              stream.write(`${cmd}\n`);
-            }, 300 * (idx + 1));
-          });
-
-          // Kirim exit setelah semua command selesai
-          setTimeout(() => {
-            stream.write('exit\n');
-            setTimeout(() => {
-              if (!isFinished) {
-                isFinished = true;
-                conn.end();
-                resolve(output);
-              }
-            }, 1000);
-          }, 300 * (commands.length + 1) + 800);
-        }, 500);
+          if (!commandsSent) {
+            sendCommands();
+          }
+        }, 5000);
       });
     });
 
@@ -254,9 +267,13 @@ export async function fetchOnuOpticalPower(
       `display ont optical-info 0/${slot} ${p} ${onuId}`
     ];
   } else if (brand === 'vsol' || brand === 'hsgq' || brand === 'bdcom') {
+    const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
     commands = [
-      `show pon onu ${ponPort} ${onuId} optical-info`,
-      `show onu ${ponPort}:${onuId} optical-power`
+      'configure terminal',
+      `interface gpon 0/${p}`,
+      `show onu optical-info ${onuId}`,
+      `show onu distance`,
+      'end'
     ];
   } else {
     commands = [
@@ -279,13 +296,17 @@ export async function fetchOnuOpticalPower(
   let rxPower: number | null = null;
   let txPower: number | null = null;
   let oltRxPower: number | null = null;
+  let volt: number | null = null;
+  let bias: number | null = null;
+  let temp: number | null = null;
 
-  const rxMatch = raw.match(/(?:rx\s*(?:optical)?\s*power|rx\s*power)\s*[:=]?\s*([-\d\.]+)/i);
+  // Generic / ZTE / Huawei match
+  const rxMatch = raw.match(/(?:rx\s*(?:optical)?\s*power|rx\s*power|rx\s*optical\s*level)\s*[:=]?\s*([-\d\.]+)/i);
   if (rxMatch && !isNaN(parseFloat(rxMatch[1]))) {
     rxPower = parseFloat(rxMatch[1]);
   }
 
-  const txMatch = raw.match(/(?:tx\s*(?:optical)?\s*power|tx\s*power)\s*[:=]?\s*([-\d\.]+)/i);
+  const txMatch = raw.match(/(?:tx\s*(?:optical)?\s*power|tx\s*power|tx\s*optical\s*level)\s*[:=]?\s*([-\d\.]+)/i);
   if (txMatch && !isNaN(parseFloat(txMatch[1]))) {
     txPower = parseFloat(txMatch[1]);
   }
@@ -295,10 +316,22 @@ export async function fetchOnuOpticalPower(
     oltRxPower = parseFloat(oltRxMatch[1]);
   }
 
+  const voltMatch = raw.match(/(?:voltage|power\s*feed\s*voltage)\s*[:=]?\s*([-\d\.]+)/i);
+  if (voltMatch && !isNaN(parseFloat(voltMatch[1]))) volt = parseFloat(voltMatch[1]);
+
+  const biasMatch = raw.match(/(?:bias|laser\s*bias\s*current|txbias)\s*[:=]?\s*([-\d\.]+)/i);
+  if (biasMatch && !isNaN(parseFloat(biasMatch[1]))) bias = parseFloat(biasMatch[1]);
+
+  const tempMatch = raw.match(/temperature\s*[:=]?\s*([-\d\.]+)/i);
+  if (tempMatch && !isNaN(parseFloat(tempMatch[1]))) temp = parseFloat(tempMatch[1]);
+
   return {
     rx_power_dbm: rxPower,
     tx_power_dbm: txPower,
     olt_rx_power_dbm: oltRxPower,
+    voltage_v: volt,
+    bias_current_ma: bias,
+    temperature_c: temp,
     raw_output: raw.trim()
   };
 }
@@ -330,6 +363,15 @@ export async function fetchOltOnuList(
     commands = [
       `display ont info 0/${slot} ${p} all`
     ];
+  } else if (brand === 'vsol' || brand === 'hsgq') {
+    const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
+    commands = [
+      'configure terminal',
+      `interface gpon 0/${p}`,
+      'show onu state',
+      'show onu distance',
+      'end'
+    ];
   } else {
     commands = [
       `show onu status ${ponPort}`
@@ -337,13 +379,44 @@ export async function fetchOltOnuList(
   }
 
   const raw = await executeOltSshCommands(olt, commands, 15000);
+  const cleanRaw = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, ' ').replace(/\r/g, '');
   const onuList: OnuInfo[] = [];
 
-  const lines = raw.split('\n');
+  // Parse distance map (e.g. onu 1 Distance: 138m)
+  const distanceMap: Record<number, number> = {};
+  const distMatches = cleanRaw.matchAll(/onu\s+(\d+)\s+Distance:\s*(\d+)m/gi);
+  for (const dm of distMatches) {
+    distanceMap[parseInt(dm[1])] = parseInt(dm[2]);
+  }
+
+  const lines = cleanRaw.split('\n');
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('--') || trimmed.includes('OnuIndex') || trimmed.includes('Admin State')) {
+      continue;
+    }
+
+    // VSOL / HSGQ Format: 1:1 enable enable working ZTEGc4a3583c
+    const vsolMatch = trimmed.match(/(\d+):(\d+)\s+(?:enable|disable)\s+(?:enable|disable)\s+(working|offline|dyinggasp|los)\s+([A-Za-z0-9]+)/i);
+    if (vsolMatch) {
+      const port = vsolMatch[1];
+      const onuId = parseInt(vsolMatch[2]);
+      const phaseState = vsolMatch[3].toLowerCase();
+      const sn = vsolMatch[4];
+
+      let status: OnuInfo['status'] = 'offline';
+      if (phaseState === 'working') status = 'online';
+      else if (phaseState.includes('dying')) status = 'dying-gasp';
+      else if (phaseState.includes('los')) status = 'los';
+
+      onuList.push({
+        pon_port: port,
+        onu_id: onuId,
+        sn,
+        status,
+        distance_m: distanceMap[onuId] ?? null
+      });
       continue;
     }
 
@@ -426,8 +499,12 @@ export async function rebootOltOnu(
       'quit'
     ];
   } else if (brand === 'vsol' || brand === 'hsgq') {
+    const p = String(ponPort).replace(/^gpon[-_]olt_?/i, '').replace(/^0\//, '') || '1';
     commands = [
-      `onu reboot ${ponPort} ${onuId}`
+      'configure terminal',
+      `interface gpon 0/${p}`,
+      `onu ${onuId} reboot`,
+      'end'
     ];
   } else {
     commands = [
@@ -464,6 +541,13 @@ export async function scanUnconfiguredOnus(
     commands = ['show gpon onu uncfg'];
   } else if (brand === 'huawei') {
     commands = ['display ont autofind all'];
+  } else if (brand === 'vsol' || brand === 'hsgq') {
+    commands = [
+      'configure terminal',
+      'interface gpon 0/1',
+      'show onu auto-find',
+      'end'
+    ];
   } else {
     commands = ['show onu unregister', 'show pon unconfigured-onu'];
   }
