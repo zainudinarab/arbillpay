@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import { addIsoDuration } from '../utils/duration.js';
 import { formatMikrotikHotspotComment, formatMikrotikPppComment } from '../utils/mikrotikComment.js';
 import { redisDel } from '../config/redis.js';
+import { rebootOltOnu } from '../services/oltService.js';
 
 export async function listCustomers(req: Request, res: Response) {
   try {
@@ -948,3 +949,35 @@ export async function disconnectCustomerPpp(req: Request, res: Response) {
     res.status(500).json({ success: false, message: `Gagal Disconnect: ${err.message}` });
   }
 }
+
+/**
+ * Reboot Modem ONT / ONU langsung dari identitas pelanggan (Customer)
+ */
+export async function rebootCustomerOnt(req: Request, res: Response) {
+  const { id } = req.params;
+  try {
+    const cRes = await pool.query('SELECT id, name, olt_id, pon_port, onu_id, sn_onu FROM customers WHERE id = $1', [id]);
+    if (cRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+    }
+    const customer = cRes.rows[0];
+    if (!customer.olt_id || !customer.pon_port || !customer.onu_id) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Pelanggan "${customer.name}" belum terhubung ke perangkat OLT & ONT. Tautkan OLT terlebih dahulu.` 
+      });
+    }
+
+    const oRes = await pool.query('SELECT * FROM olts WHERE id = $1', [customer.olt_id]);
+    if (oRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Perangkat OLT yang menaungi pelanggan tidak ditemukan.' });
+    }
+    const olt = oRes.rows[0];
+
+    const result = await rebootOltOnu(olt, String(customer.pon_port), parseInt(customer.onu_id));
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal me-reboot ONT pelanggan: ${err.message}` });
+  }
+}
+

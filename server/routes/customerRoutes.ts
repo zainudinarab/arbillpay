@@ -3,7 +3,7 @@ import {
   listCustomers, addCustomer, editCustomer, updateLocation, 
   createUserAccount, payCustomerBill, removeCustomer, 
   checkPhone, linkPhone, syncCustomerToMikrotik, syncAllCustomersToMikrotik, disconnectCustomerPpp,
-  checkMyStatus
+  checkMyStatus, rebootCustomerOnt
 } from '../controllers/customerController.js';
 
 import { listInvoices } from '../controllers/invoiceController.js';
@@ -29,6 +29,7 @@ router.post('/:id/create-user-account', createUserAccount);
 router.post('/:id/pay-bill', payCustomerBill);
 router.post('/:id/sync-to-mikrotik', syncCustomerToMikrotik);
 router.post('/:id/disconnect-ppp', disconnectCustomerPpp);
+router.post('/:id/reboot-ont', rebootCustomerOnt);
 router.post('/check-phone', checkPhone);
 router.post('/link-phone', linkPhone);
 router.post('/check-my-status', checkMyStatus);
