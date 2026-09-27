@@ -27,6 +27,7 @@ import {
   saveRouterToFirestore,
   deleteRouterFromFirestore
 } from '../services/firebaseService';
+import RouterInterfaceModal from './RouterInterfaceModal';
 
 export interface RouterItem {
   id: string;
@@ -66,6 +67,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingRouter, setEditingRouter] = useState<RouterItem | null>(null);
   const [selectedRouterForProfiles, setSelectedRouterForProfiles] = useState<RouterItem | null>(null);
+  const [selectedRouterForInterfaces, setSelectedRouterForInterfaces] = useState<RouterItem | null>(null);
   const [routerProfiles, setRouterProfiles] = useState<RouterProfileItem[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
 
@@ -595,6 +597,15 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
 
                 {/* Actions */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setSelectedRouterForInterfaces(rtr)}
+                    className="w-full py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-[11px] rounded-xl shadow-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all hover:scale-[1.01]"
+                    title="Buka Monitor Live Daftar Interface Port MikroTik"
+                  >
+                    <Activity size={13} />
+                    <span>🔌 Monitor Port & Interface</span>
+                  </button>
+
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => handleSyncRouterProfiles(rtr, 'pppoe')}
@@ -979,6 +990,14 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
             </form>
           </div>
         </div>
+      )}
+
+      {/* Modal Daftar Interface & Port MikroTik */}
+      {selectedRouterForInterfaces && (
+        <RouterInterfaceModal
+          router={selectedRouterForInterfaces}
+          onClose={() => setSelectedRouterForInterfaces(null)}
+        />
       )}
     </div>
   );

@@ -3314,5 +3314,202 @@ export async function removeWalledGarden(req: Request, res: Response) {
   }
 }
 
+// Controller Endpoint: Membaca daftar Interface fisik/VLAN MikroTik secara Live
+export async function getRouterInterfaces(req: Request, res: Response) {
+  const { id } = req.params;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 6
+    });
+
+    await conn.connect();
+
+    let rawIfaces: any[] = [];
+    try {
+      rawIfaces = await conn.write('/interface/print', [
+        '=.proplist=.id,name,type,running,disabled,comment,rx-byte,tx-byte,rx-packet,tx-packet,rx-error,tx-error,rx-drop,tx-drop,actual-mtu,mac-address,link-downs'
+      ]);
+    } catch (e: any) {
+      conn.close();
+      return res.status(500).json({ success: false, message: `Gagal membaca interface dari MikroTik: ${e.message}` });
+    }
+
+    conn.close();
+
+    // Query DB settings for monitored interfaces
+    const dbIfacesRes = await pool.query(
+      'SELECT id, name, interface_type, linked_node_id, is_monitored, last_rx_bytes, last_tx_bytes, last_polled_at FROM router_interfaces WHERE router_id = $1',
+      [id]
+    );
+    const dbMap = new Map<string, any>();
+    dbIfacesRes.rows.forEach(r => dbMap.set(r.name, r));
+
+    let totalRunning = 0;
+    let totalDown = 0;
+    let totalRxBytesAll = BigInt(0);
+    let totalTxBytesAll = BigInt(0);
+
+    const now = Date.now();
+
+    const formattedInterfaces = (Array.isArray(rawIfaces) ? rawIfaces : []).map(iface => {
+      const isRunning = iface.running === 'true' || iface.running === true;
+      const isDisabled = iface.disabled === 'true' || iface.disabled === true;
+
+      if (isRunning) totalRunning++;
+      else totalDown++;
+
+      const rxByte = BigInt(iface['rx-byte'] || 0);
+      const txByte = BigInt(iface['tx-byte'] || 0);
+      totalRxBytesAll += rxByte;
+      totalTxBytesAll += txByte;
+
+      const dbConfig = dbMap.get(iface.name);
+      
+      // Calculate instantaneous rate if previous read exists
+      let rxSpeedMbps = 0;
+      let txSpeedMbps = 0;
+      if (dbConfig && dbConfig.last_polled_at) {
+        const deltaSec = Math.max(1, Math.round((now - new Date(dbConfig.last_polled_at).getTime()) / 1000));
+        if (deltaSec < 3600) {
+          const prevRx = BigInt(dbConfig.last_rx_bytes || 0);
+          const prevTx = BigInt(dbConfig.last_tx_bytes || 0);
+          const deltaRx = rxByte >= prevRx ? rxByte - prevRx : rxByte;
+          const deltaTx = txByte >= prevTx ? txByte - prevTx : txByte;
+          rxSpeedMbps = Number(((Number(deltaRx) * 8) / (deltaSec * 1_000_000)).toFixed(2));
+          txSpeedMbps = Number(((Number(deltaTx) * 8) / (deltaSec * 1_000_000)).toFixed(2));
+        }
+      }
+
+      // Format bytes to human readable
+      const formatBytes = (bytes: bigint) => {
+        const num = Number(bytes);
+        if (num >= 1024 * 1024 * 1024 * 1024) return (num / (1024 * 1024 * 1024 * 1024)).toFixed(2) + ' TB';
+        if (num >= 1024 * 1024 * 1024) return (num / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        if (num >= 1024 * 1024) return (num / (1024 * 1024)).toFixed(1) + ' MB';
+        return (num / 1024).toFixed(0) + ' KB';
+      };
+
+      return {
+        id: iface['.id'],
+        name: iface.name,
+        type: iface.type || 'ether',
+        running: isRunning,
+        disabled: isDisabled,
+        comment: iface.comment || '',
+        macAddress: iface['mac-address'] || '',
+        actualMtu: iface['actual-mtu'] || '1500',
+        linkDowns: parseInt(iface['link-downs'] || '0', 10),
+        rxByte: rxByte.toString(),
+        txByte: txByte.toString(),
+        rxFormatted: formatBytes(rxByte),
+        txFormatted: formatBytes(txByte),
+        rxSpeedMbps,
+        txSpeedMbps,
+        rxError: parseInt(iface['rx-error'] || '0', 10),
+        txError: parseInt(iface['tx-error'] || '0', 10),
+        rxDrop: parseInt(iface['rx-drop'] || '0', 10),
+        txDrop: parseInt(iface['tx-drop'] || '0', 10),
+        isMonitored: dbConfig ? Boolean(dbConfig.is_monitored) : true,
+        interfaceType: dbConfig ? dbConfig.interface_type : (iface.name.toLowerCase().includes('wan') ? 'wan' : (iface.name.toLowerCase().includes('olt') ? 'olt_trunk' : 'ether')),
+        linkedNodeId: dbConfig ? dbConfig.linked_node_id : null
+      };
+    });
+
+    // Auto-upsert into router_interfaces for newly found interfaces
+    for (const iface of formattedInterfaces) {
+      if (!dbMap.has(iface.name)) {
+        pool.query(`
+          INSERT INTO router_interfaces (
+            id, router_id, name, comment, interface_type, is_monitored, last_rx_bytes, last_tx_bytes, last_polled_at
+          ) VALUES ($1, $2, $3, $4, $5, true, $6, $7, NOW())
+          ON CONFLICT (id) DO NOTHING
+        `, [
+          `${id}_${iface.name}`, id, iface.name, iface.comment || null, iface.interfaceType, iface.rxByte, iface.txByte
+        ]).catch(() => {});
+      } else {
+        pool.query(`
+          UPDATE router_interfaces 
+          SET last_rx_bytes = $1, last_tx_bytes = $2, last_polled_at = NOW()
+          WHERE router_id = $3 AND name = $4
+        `, [iface.rxByte, iface.txByte, id, iface.name]).catch(() => {});
+      }
+    }
+
+    res.json({
+      success: true,
+      router: {
+        id: router.id,
+        name: router.name,
+        ip_address: router.ip_address,
+        dns_name: router.dns_name
+      },
+      summary: {
+        total: formattedInterfaces.length,
+        running: totalRunning,
+        down: totalDown,
+        totalRxGb: Number((Number(totalRxBytesAll) / (1024 * 1024 * 1024)).toFixed(2)),
+        totalTxGb: Number((Number(totalTxBytesAll) / (1024 * 1024 * 1024)).toFixed(2))
+      },
+      interfaces: formattedInterfaces
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal membaca interface router: ${err.message}` });
+  }
+}
+
+// Controller Endpoint: Toggle status pencatatan log 30-menit per interface
+export async function toggleInterfaceMonitoring(req: Request, res: Response) {
+  const { id } = req.params;
+  const { interface_name, is_monitored } = req.body;
+
+  try {
+    await pool.query(`
+      UPDATE router_interfaces
+      SET is_monitored = $1
+      WHERE router_id = $2 AND name = $3
+    `, [Boolean(is_monitored), id, interface_name]);
+
+    res.json({
+      success: true,
+      message: `Status pemantauan log 30-menit untuk interface "${interface_name}" berhasil diubah menjadi ${is_monitored ? 'AKTIF' : 'NON-AKTIF'}.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// Controller Endpoint: Menghubungkan interface MikroTik ke Node FTTH (OLT/ODC/Switch)
+export async function linkInterfaceToFtthNode(req: Request, res: Response) {
+  const { id } = req.params;
+  const { interface_name, linked_node_id, interface_type } = req.body;
+
+  try {
+    await pool.query(`
+      UPDATE router_interfaces
+      SET linked_node_id = $1,
+          interface_type = COALESCE($2, interface_type)
+      WHERE router_id = $3 AND name = $4
+    `, [linked_node_id || null, interface_type || null, id, interface_name]);
+
+    res.json({
+      success: true,
+      message: `Interface "${interface_name}" berhasil dihubungkan ke Node FTTH!`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 
 

@@ -5,7 +5,8 @@ import {
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
   getIsolirStatus, setupIsolirOnMikrotik, syncIsolirComponent, getIsolirScript, getIsolatedCustomers,
-  getWalledGardenStatus, setupWalledGarden, removeWalledGarden
+  getWalledGardenStatus, setupWalledGarden, removeWalledGarden,
+  getRouterInterfaces, toggleInterfaceMonitoring, linkInterfaceToFtthNode
 } from '../controllers/mikrotikController.js';
 
 const router = Router();
@@ -16,6 +17,11 @@ router.post('/routers/test-connection', testConnection);
 router.post('/routers', addRouter);
 router.put('/routers/:id', editRouter);
 router.delete('/routers/:id', deleteRouter);
+
+// Router Live Interface Monitoring & Inspection
+router.get('/routers/:id/interfaces', getRouterInterfaces);
+router.post('/routers/:id/interfaces/toggle-monitor', toggleInterfaceMonitoring);
+router.post('/routers/:id/interfaces/link-node', linkInterfaceToFtthNode);
 
 // Router Profiles
 router.get('/router-profiles', listProfiles);
