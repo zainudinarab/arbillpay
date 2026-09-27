@@ -4,7 +4,8 @@ import {
   OnuInfo, 
   OnuOpticalReading, 
   RegisterOnuParams, 
-  UnconfiguredOnu 
+  UnconfiguredOnu,
+  SnmpOnuTelemetry
 } from './types.js';
 
 export interface IOltDriver {
@@ -78,6 +79,14 @@ export interface IOltDriver {
     olt: OltRecord, 
     community?: string
   ): Promise<{ success: boolean; message: string; raw_output?: string }>;
+
+  /**
+   * (Opsional) Menarik telemetri optik, suhu, voltase & byte trafik secara massal via SNMP
+   */
+  fetchSnmpTelemetry?(
+    olt: OltRecord,
+    ponPort: string | number
+  ): Promise<SnmpOnuTelemetry[]>;
 
   /**
    * (Opsional) Mengubah mode WAN ONU (Bridge / PPPoE / DHCP) via OMCI jika didukung

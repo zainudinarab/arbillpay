@@ -10,6 +10,7 @@ import {
   deleteOltOnuCLI,
   enableOltSnmpCLI,
   getOltDriver,
+  fetchOltSnmpTelemetry,
   OltRecord
 } from '../services/oltService.js';
 import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp } from '../services/snmpService.js';
@@ -709,12 +710,15 @@ export async function syncOltSnmpTelemetryAction(req: Request, res: Response) {
     if (r.rows.length === 0) return res.status(404).json({ success: false, message: 'OLT tidak ditemukan.' });
     const olt: OltRecord = r.rows[0];
 
-    const telemetryList = await fetchOltOnuTelemetryViaSnmp(
-      olt.ip_address,
-      olt.snmp_port || 161,
-      olt.snmp_community || 'public',
-      ponPort
-    );
+    let telemetryList = await fetchOltSnmpTelemetry(olt, ponPort);
+    if (!telemetryList || telemetryList.length === 0) {
+      telemetryList = await fetchOltOnuTelemetryViaSnmp(
+        olt.ip_address,
+        olt.snmp_port || 161,
+        olt.snmp_community || 'public',
+        ponPort
+      );
+    }
 
     let updatedCount = 0;
     for (const item of telemetryList) {

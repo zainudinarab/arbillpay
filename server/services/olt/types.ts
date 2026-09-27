@@ -78,3 +78,18 @@ export interface UnconfiguredOnu {
   vendor_id?: string;
   discovered_at?: string;
 }
+
+export interface SnmpOnuTelemetry {
+  onu_id: number;
+  pon_port: string;
+  status: 'online' | 'offline';
+  rx_power_dbm: number | null;
+  tx_power_dbm: number | null;
+  voltage_v: number | null;
+  temperature_c: number | null;
+  bias_current_ma: number | null;
+  rx_bytes?: number;
+  tx_bytes?: number;
+  in_errors?: number;
+}
+

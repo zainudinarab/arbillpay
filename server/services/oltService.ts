@@ -12,7 +12,8 @@ import {
   OnuOpticalReading, 
   RegisterOnuParams, 
   UnconfiguredOnu,
-  OltCapabilities 
+  OltCapabilities,
+  SnmpOnuTelemetry 
 } from './olt/types.js';
 import { executeOltSshCommands } from './olt/baseSshDriver.js';
 
@@ -24,6 +25,7 @@ export {
   RegisterOnuParams, 
   UnconfiguredOnu,
   OltCapabilities,
+  SnmpOnuTelemetry,
   getOltDriver,
   getAllOltDriverCapabilities,
   executeOltSshCommands
@@ -116,3 +118,18 @@ export async function enableOltSnmpCLI(
   const driver = getOltDriver(olt.brand);
   return driver.enableSnmp(olt, community);
 }
+
+/**
+ * 9. Tarik Telemetri Optik, Suhu, Voltase & Kuota Trafik Massal via SNMP sesuai Merek Driver
+ */
+export async function fetchOltSnmpTelemetry(
+  olt: OltRecord,
+  ponPort: string | number
+): Promise<SnmpOnuTelemetry[]> {
+  const driver = getOltDriver(olt.brand);
+  if (driver.fetchSnmpTelemetry) {
+    return driver.fetchSnmpTelemetry(olt, ponPort);
+  }
+  return [];
+}
+
