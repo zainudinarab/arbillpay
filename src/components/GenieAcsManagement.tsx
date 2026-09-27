@@ -1130,43 +1130,66 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                           </div>
                         </div>
 
-                        {/* Multi-SSID Selector Chips */}
-                        {deviceDetail?.wlans && deviceDetail.wlans.length > 0 && (
-                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                            <span className="text-[11px] font-bold text-slate-500 uppercase block tracking-wider">
-                              Pilih Profil SSID (Multi-SSID Terdeteksi: {deviceDetail.wlans.length})
+                        {/* Multi-SSID Selector Chips (Slot 1 s/d 4) */}
+                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                              Pilih Profil Multi-SSID (Slot 1 - 4)
                             </span>
-                            <div className="flex flex-wrap gap-2">
-                              {deviceDetail.wlans.map((w: any) => (
+                            <span className="text-[10px] text-sky-600 font-bold">
+                              ZTE 2.4GHz mendukung hingga 4 SSID
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {['1', '2', '3', '4'].map((idx) => {
+                              const existing = deviceDetail?.wlans?.find((w: any) => String(w.index) === idx);
+                              const isSelected = selectedSsidIndex === idx;
+                              const isEnabled = existing ? existing.enabled : false;
+
+                              return (
                                 <button
-                                  key={w.index}
+                                  key={idx}
                                   type="button"
                                   onClick={() => {
-                                    setSelectedSsidIndex(w.index);
-                                    setModalWifiSsid(w.ssid || '');
-                                    setModalWifiEnabled(w.enabled ?? true);
+                                    setSelectedSsidIndex(idx);
+                                    if (existing) {
+                                      setModalWifiSsid(existing.ssid || '');
+                                      setModalWifiEnabled(existing.enabled ?? true);
+                                    } else {
+                                      setModalWifiSsid(`HOTSPOT_SSID_${idx}`);
+                                      setModalWifiEnabled(true);
+                                    }
                                     setModalWifiPassword('');
                                   }}
                                   className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
-                                    selectedSsidIndex === w.index
+                                    isSelected
                                       ? 'bg-sky-600 text-white border-sky-600 shadow-sm'
-                                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                      : existing
+                                      ? 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                      : 'bg-slate-100 text-slate-500 border-dashed border-slate-300 hover:bg-slate-200'
                                   }`}
                                 >
                                   <Wifi size={13} />
-                                  <span>SSID #{w.index}: <strong className="font-mono">{w.ssid || `SSID-${w.index}`}</strong></span>
-                                  {w.total_associations > 0 && (
+                                  <span>
+                                    SSID #{idx}: {existing ? <strong className="font-mono">{existing.ssid}</strong> : '(Klik untuk Aktifkan)'}
+                                  </span>
+                                  {existing?.total_associations > 0 && (
                                     <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-black ${
-                                      selectedSsidIndex === w.index ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+                                      isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
                                     }`}>
-                                      {w.total_associations} Klien
+                                      {existing.total_associations} Klien
+                                    </span>
+                                  )}
+                                  {existing && !isEnabled && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">
+                                      Nonaktif
                                     </span>
                                   )}
                                 </button>
-                              ))}
-                            </div>
+                              );
+                            })}
                           </div>
-                        )}
+                        </div>
 
                         {/* Radio Switch */}
                         <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-2xl">

@@ -267,7 +267,7 @@ export async function rebootDevice(req: Request, res: Response) {
 
 export async function updateDeviceWifi(req: Request, res: Response) {
   const { device_id } = req.params;
-  const { ssid, password, enabled = true, ssid_index = '1' } = req.body;
+  const { ssid, password, enabled = true, ssid_index = '1', beacon_type } = req.body;
   const cleanUrl = genieAcsSettings.url;
 
   if (!ssid) {
@@ -279,9 +279,18 @@ export async function updateDeviceWifi(req: Request, res: Response) {
     [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.Enable`, enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
   ];
 
+  if (beacon_type) {
+    parameterValues.push([
+      `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.BeaconType`, beacon_type, 'xsd:string'
+    ]);
+  }
+
   if (password) {
     parameterValues.push([
       `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.KeyPassphrase`, password, 'xsd:string'
     ]);
   }
 
