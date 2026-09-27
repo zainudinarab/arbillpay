@@ -2555,7 +2555,7 @@ const DEFAULT_SPLITTER_CATALOG = [
 
         const lineTraffic = getLineTraffic(l);
 
-        if (isUpstreamCut) {
+        if (isUpstreamCutCable) {
           cableColor = '#dc2626';
           cableClassName = 'upstream-cut-animated';
         } else if (isTrafficMode) {
