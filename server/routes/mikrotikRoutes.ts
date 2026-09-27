@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { 
-  listRouters, testConnection, testSnmp, addRouter, editRouter, deleteRouter,
+  listRouters, testConnection, testSnmp, enableSnmpOnMikrotik, addRouter, editRouter, deleteRouter,
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
@@ -15,6 +15,7 @@ const router = Router();
 router.get('/routers', listRouters);
 router.post('/routers/test-connection', testConnection);
 router.post('/routers/test-snmp', testSnmp);
+router.post('/routers/:id/enable-snmp', enableSnmpOnMikrotik);
 router.post('/routers', addRouter);
 router.put('/routers/:id', editRouter);
 router.delete('/routers/:id', deleteRouter);

@@ -90,6 +90,7 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [snmpCommunity, setSnmpCommunity] = useState('public');
   const [snmpVersion, setSnmpVersion] = useState('v2c');
   const [testingSnmp, setTestingSnmp] = useState(false);
+  const [enablingSnmpId, setEnablingSnmpId] = useState<string | null>(null);
   const [testSnmpResult, setTestSnmpResult] = useState<{ success: boolean; message: string; sysName?: string; uptime?: string } | null>(null);
 
   // Form State
@@ -274,6 +275,34 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       setTestSnmpResult({ success: false, message: `Gagal tes SNMP: ${err?.message || 'Server offline'}` });
     } finally {
       setTestingSnmp(false);
+    }
+  };
+
+  const handleDirectEnableSnmp = async (rtr: RouterItem) => {
+    setEnablingSnmpId(rtr.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/enable-snmp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          community: 'public',
+          port: 161,
+          version: 'v2c'
+        })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        fetchRouters();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengaktifkan SNMP di MikroTik.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal mengaktifkan SNMP: ${err.message}` });
+    } finally {
+      setEnablingSnmpId(null);
     }
   };
 
@@ -656,9 +685,20 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                         📡 SNMP v2c (UDP {rtr.snmp_port || 161})
                       </span>
                     ) : (
-                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
-                        ⚡ API MikroTik (8728)
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                          ⚡ API
+                        </span>
+                        <button
+                          onClick={() => handleDirectEnableSnmp(rtr)}
+                          disabled={enablingSnmpId === rtr.id}
+                          className="px-2 py-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-[10px] rounded shadow-2xs cursor-pointer flex items-center gap-1 transition-all disabled:opacity-50"
+                          title="Aktifkan SNMP di MikroTik secara otomatis via API (Tanpa buka terminal Winbox)"
+                        >
+                          <Zap size={10} className={enablingSnmpId === rtr.id ? 'animate-spin' : ''} />
+                          <span>{enablingSnmpId === rtr.id ? 'Mengaktifkan...' : '⚡ Aktifkan SNMP'}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1163,7 +1203,46 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!editingRouter) return;
+                          setTestingSnmp(true);
+                          setTestSnmpResult(null);
+                          try {
+                            const apiUrl = getApiUrl();
+                            const res = await fetch(`${apiUrl}/api/routers/${editingRouter.id}/enable-snmp`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                community: snmpCommunity.trim() || 'public',
+                                port: parseInt(snmpPort) || 161,
+                                version: snmpVersion
+                              })
+                            });
+                            const data = await parseJsonResponse(res);
+                            if (data.success) {
+                              setSnmpEnabled(true);
+                              setTestSnmpResult({ success: true, message: data.message });
+                              setToastMsg({ type: 'success', text: data.message });
+                              fetchRouters();
+                            } else {
+                              setTestSnmpResult({ success: false, message: data.message });
+                            }
+                          } catch (e: any) {
+                            setTestSnmpResult({ success: false, message: e.message });
+                          } finally {
+                            setTestingSnmp(false);
+                          }
+                        }}
+                        disabled={testingSnmp}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Zap size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                        <span>{testingSnmp ? 'Mengaktifkan di MikroTik...' : '🚀 Aktifkan di MikroTik Otomatis (via API)'}</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={handleTestSnmp}
@@ -1174,9 +1253,9 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                         <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
                       </button>
                       {testSnmpResult && (
-                        <span className={`text-[11px] font-bold ${testSnmpResult.success ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <div className={`w-full mt-1.5 p-2 rounded-xl border text-[11px] font-bold ${testSnmpResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
                           {testSnmpResult.message}
-                        </span>
+                        </div>
                       )}
                     </div>
                   </div>

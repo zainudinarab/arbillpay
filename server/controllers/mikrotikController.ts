@@ -164,6 +164,114 @@ export async function testSnmp(req: Request, res: Response) {
   }
 }
 
+/**
+ * Mengaktifkan service SNMP di Router MikroTik secara otomatis via API
+ */
+export async function enableSnmpOnMikrotik(req: Request, res: Response) {
+  const { id } = req.params;
+  const { community = 'public', port = 161, version = 'v2c' } = req.body;
+
+  try {
+    const rRes = await pool.query('SELECT * FROM routers WHERE id = $1', [id]);
+    if (rRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+    const router = rRes.rows[0];
+
+    const conn = new RouterOSAPI({
+      host: router.ip_address,
+      port: router.api_port || 8728,
+      user: router.username || 'admin',
+      password: router.password || '',
+      timeout: 8
+    });
+
+    await conn.connect();
+
+    // 1. Aktifkan SNMP di MikroTik
+    await conn.write('/snmp/set', [
+      '=enabled=yes',
+      '=contact=Arbill Network Support',
+      '=location=POP Data Center',
+      '=trap-version=2'
+    ]);
+
+    // 2. Cek dan pastikan SNMP Community tersedia
+    const cleanComm = String(community || 'public').trim();
+    let existingComms: any[] = [];
+    try {
+      const commList = await conn.write('/snmp/community/print');
+      if (Array.isArray(commList)) existingComms = commList;
+    } catch (_) {}
+
+    const matchComm = existingComms.find((c: any) => c.name === cleanComm);
+    if (matchComm && matchComm['.id']) {
+      await conn.write('/snmp/community/set', [
+        `=.id=${matchComm['.id']}`,
+        '=read-access=yes',
+        '=addresses=0.0.0.0/0'
+      ]);
+    } else {
+      await conn.write('/snmp/community/add', [
+        `=name=${cleanComm}`,
+        '=read-access=yes',
+        '=addresses=0.0.0.0/0'
+      ]);
+    }
+
+    // 3. Pastikan port UDP 161 diizinkan di firewall input jika ada filter rule
+    try {
+      const filters = await conn.write('/ip/firewall/filter/print');
+      if (Array.isArray(filters)) {
+        const hasSnmpRule = filters.some((f: any) => 
+          f.chain === 'input' && 
+          f.protocol === 'udp' && 
+          (f['dst-port'] === '161' || f['dst-port'] === String(port)) && 
+          f.action === 'accept'
+        );
+        if (!hasSnmpRule) {
+          await conn.write('/ip/firewall/filter/add', [
+            '=chain=input',
+            '=protocol=udp',
+            `=dst-port=${port || 161}`,
+            '=action=accept',
+            '=comment=Allow SNMP Monitoring from Arbill Server',
+            '=place-before=0'
+          ]);
+        }
+      }
+    } catch (fwErr: any) {
+      console.warn('[ENABLE SNMP] Catatan firewall filter:', fwErr.message);
+    }
+
+    await conn.close();
+
+    // 4. Update data router di PostgreSQL
+    await pool.query(`
+      UPDATE routers
+      SET snmp_enabled = true,
+          snmp_port = $1,
+          snmp_community = $2,
+          snmp_version = $3
+      WHERE id = $4
+    `, [Number(port) || 161, cleanComm, version || 'v2c', id]);
+
+    // 5. Uji koneksi SNMP live
+    let snmpTestResult: any = null;
+    try {
+      snmpTestResult = await testSnmpConnection(router.ip_address, Number(port) || 161, cleanComm, (version === 'v1' ? 'v1' : 'v2c'));
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `⚡ SNMP di MikroTik "${router.name}" BERHASIL DIAKTIFKAN OTOMATIS via API!`,
+      snmp_test: snmpTestResult
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal mengaktifkan SNMP di MikroTik: ${err.message}` });
+  }
+}
+
 export async function addRouter(req: Request, res: Response) {
   const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version } = req.body;
 
