@@ -283,7 +283,11 @@ export async function initDatabaseSchema() {
 
       ALTER TABLE routers
       ADD COLUMN IF NOT EXISTS dns_name VARCHAR(255) DEFAULT 'arab.net',
-      ADD COLUMN IF NOT EXISTS hotspot_ip VARCHAR(64) DEFAULT '10.0.0.1';
+      ADD COLUMN IF NOT EXISTS hotspot_ip VARCHAR(64) DEFAULT '10.0.0.1',
+      ADD COLUMN IF NOT EXISTS snmp_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS snmp_port INT DEFAULT 161,
+      ADD COLUMN IF NOT EXISTS snmp_community VARCHAR(128) DEFAULT 'public',
+      ADD COLUMN IF NOT EXISTS snmp_version VARCHAR(16) DEFAULT 'v2c';
 
       -- Pastikan default validity_iso dan grace_period_iso terisi jika masih NULL
       UPDATE packages SET validity_iso = 'P1M' WHERE validity_iso IS NULL;

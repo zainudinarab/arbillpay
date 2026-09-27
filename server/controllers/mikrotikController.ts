@@ -6,6 +6,7 @@ import { getFirestore } from '../config/firebase.js';
 import crypto from 'crypto';
 import { parseMikrotikHotspotComment, parseMikrotikPppComment, cleanToDateOnly } from '../utils/mikrotikComment.js';
 import { redisGet, redisSet, redisDel, isRedisReady } from '../config/redis.js';
+import { testSnmpConnection } from '../services/snmpService.js';
 
 // --- ROUTERS ---
 export async function listRouters(req: Request, res: Response) {
@@ -29,11 +30,15 @@ export async function listRouters(req: Request, res: Response) {
       SELECT r.id, r.name, r.ip_address, r.api_port, r.username, r.password, r.status, 
              COALESCE(r.dns_name, 'arab.net') as dns_name,
              COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
+             COALESCE(r.snmp_enabled, false) as snmp_enabled,
+             COALESCE(r.snmp_port, 161) as snmp_port,
+             COALESCE(r.snmp_community, 'public') as snmp_community,
+             COALESCE(r.snmp_version, 'v2c') as snmp_version,
              r.last_synced, r.created_at,
              COUNT(rp.id)::int as profile_count
       FROM routers r
       LEFT JOIN router_profiles rp ON r.id = rp.router_id
-      GROUP BY r.id, r.dns_name, r.hotspot_ip
+      GROUP BY r.id, r.dns_name, r.hotspot_ip, r.snmp_enabled, r.snmp_port, r.snmp_community, r.snmp_version
       ORDER BY r.created_at DESC
     `);
     res.json({ success: true, routers: result.rows });
@@ -137,8 +142,30 @@ export async function testConnection(req: Request, res: Response) {
   }
 }
 
+/**
+ * Tes Live Koneksi SNMP ke Router MikroTik
+ */
+export async function testSnmp(req: Request, res: Response) {
+  const { host, port, community, version } = req.body;
+  if (!host) {
+    return res.status(400).json({ success: false, message: 'Host / IP Address router wajib diisi untuk tes SNMP.' });
+  }
+
+  try {
+    const cleanHost = String(host).trim();
+    const cleanPort = Number(port) || 161;
+    const cleanComm = String(community || 'public').trim();
+    const cleanVer = (version === 'v1' ? 'v1' : 'v2c') as 'v1' | 'v2c';
+
+    const result = await testSnmpConnection(cleanHost, cleanPort, cleanComm, cleanVer);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal tes SNMP: ${err.message}` });
+  }
+}
+
 export async function addRouter(req: Request, res: Response) {
-  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip } = req.body;
+  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -148,11 +175,22 @@ export async function addRouter(req: Request, res: Response) {
     const routerId = `rtr-${Date.now().toString(36)}`;
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
+    const cleanSnmpEnabled = Boolean(snmp_enabled);
+    const cleanSnmpPort = Number(snmp_port) || 161;
+    const cleanSnmpCommunity = (snmp_community || 'public').trim();
+    const cleanSnmpVersion = (snmp_version || 'v2c').trim();
+
     const result = await pool.query(`
-      INSERT INTO routers (id, name, ip_address, api_port, username, password, status, dns_name, hotspot_ip)
-      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8)
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, created_at
-    `, [routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '', cleanDns, cleanHotspotIp]);
+      INSERT INTO routers (
+        id, name, ip_address, api_port, username, password, status, dns_name, hotspot_ip,
+        snmp_enabled, snmp_port, snmp_community, snmp_version
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8, $9, $10, $11, $12)
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version, created_at
+    `, [
+      routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '',
+      cleanDns, cleanHotspotIp, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion
+    ]);
 
     const p1 = `rp-${Date.now().toString(36)}-1`;
     const p2 = `rp-${Date.now().toString(36)}-2`;
@@ -174,7 +212,7 @@ export async function addRouter(req: Request, res: Response) {
 
 export async function editRouter(req: Request, res: Response) {
   const { id } = req.params;
-  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, status } = req.body;
+  const { name, ip_address, api_port, username, password, dns_name, hotspot_ip, status, snmp_enabled, snmp_port, snmp_community, snmp_version } = req.body;
 
   if (!name || !ip_address || !username) {
     return res.status(400).json({ success: false, message: 'Nama router, IP Address, dan Username wajib diisi.' });
@@ -183,6 +221,11 @@ export async function editRouter(req: Request, res: Response) {
   try {
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
+    const cleanSnmpEnabled = Boolean(snmp_enabled);
+    const cleanSnmpPort = Number(snmp_port) || 161;
+    const cleanSnmpCommunity = (snmp_community || 'public').trim();
+    const cleanSnmpVersion = (snmp_version || 'v2c').trim();
+
     const result = await pool.query(`
       UPDATE routers
       SET name = $1,
@@ -192,10 +235,17 @@ export async function editRouter(req: Request, res: Response) {
           password = COALESCE($5, password),
           status = $6,
           dns_name = $7,
-          hotspot_ip = $8
-      WHERE id = $9
-      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, last_synced
-    `, [name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null, status || 'online', cleanDns, cleanHotspotIp, id]);
+          hotspot_ip = $8,
+          snmp_enabled = $9,
+          snmp_port = $10,
+          snmp_community = $11,
+          snmp_version = $12
+      WHERE id = $13
+      RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, snmp_enabled, snmp_port, snmp_community, snmp_version, last_synced
+    `, [
+      name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null,
+      status || 'online', cleanDns, cleanHotspotIp, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion, id
+    ]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
@@ -3452,7 +3502,9 @@ export async function getRouterInterfaces(req: Request, res: Response) {
         id: router.id,
         name: router.name,
         ip_address: router.ip_address,
-        dns_name: router.dns_name
+        dns_name: router.dns_name,
+        snmp_enabled: Boolean(router.snmp_enabled),
+        snmp_port: router.snmp_port || 161
       },
       summary: {
         total: formattedInterfaces.length,
@@ -3511,5 +3563,14 @@ export async function linkInterfaceToFtthNode(req: Request, res: Response) {
   }
 }
 
-
-
+// Controller Endpoint: Membaca sampel live 1-menitan dari Redis untuk grafik UI
+export async function getInterfaceTrafficSamples(req: Request, res: Response) {
+  const { id, interface_name } = req.params;
+  try {
+    const { getRecentInterfaceSamples } = await import('../services/trafficSamplingService.js');
+    const samples = await getRecentInterfaceSamples(id, interface_name);
+    res.json({ success: true, samples });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}

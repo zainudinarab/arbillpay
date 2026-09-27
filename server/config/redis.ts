@@ -108,4 +108,8 @@ export async function redisDelPattern(pattern: string): Promise<number> {
   }
 }
 
+export function getRedisClient(): Redis | null {
+  return redisClient;
+}
+
 export default redisClient;

@@ -39,6 +39,14 @@ initDatabaseSchema().then(async () => {
   } catch (err: any) {
     console.warn('[FTTH ROLLUP INIT NOTICE]', err.message);
   }
+
+  // Start 1-Minute Redis Traffic Sampling & Rollup Worker (SNMP + RouterOS API)
+  try {
+    const { startTrafficSamplingWorker } = await import('./server/services/trafficSamplingService.js');
+    startTrafficSamplingWorker();
+  } catch (err: any) {
+    console.warn('[TRAFFIC SAMPLING WORKER NOTICE]', err.message);
+  }
 });
 
 // Mount all API endpoints under /api

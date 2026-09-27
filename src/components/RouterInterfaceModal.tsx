@@ -60,6 +60,7 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
     totalRxGb: number;
     totalTxGb: number;
   } | null>(null);
+  const [routerMeta, setRouterMeta] = useState<{ snmp_enabled?: boolean; snmp_port?: number } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
@@ -80,6 +81,9 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
       if (data.success) {
         setInterfaces(data.interfaces || []);
         setSummary(data.summary || null);
+        if (data.router) {
+          setRouterMeta(data.router);
+        }
       } else {
         if (isManual) {
           setToastMsg({ type: 'error', text: data.message || 'Gagal memuat interface' });
@@ -190,6 +194,15 @@ export default function RouterInterfaceModal({ router, onClose }: RouterInterfac
                 <span className="bg-blue-100 text-blue-800 text-[10px] font-mono font-black px-2.5 py-0.5 rounded-full border border-blue-200">
                   {router.name} ({router.ip_address})
                 </span>
+                {routerMeta?.snmp_enabled ? (
+                  <span className="bg-emerald-50 text-emerald-800 text-[10px] font-mono font-black px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1 shadow-2xs">
+                    📡 Poller: SNMP 64-bit (Port {routerMeta.snmp_port || 161})
+                  </span>
+                ) : (
+                  <span className="bg-slate-100 text-slate-700 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border border-slate-200 flex items-center gap-1">
+                    ⚡ Poller: MikroTik API (8728)
+                  </span>
+                )}
                 {refreshing && (
                   <span className="text-[10px] text-blue-600 font-bold animate-pulse flex items-center gap-1">
                     <RefreshCw size={10} className="animate-spin" /> Membaca RouterOS...

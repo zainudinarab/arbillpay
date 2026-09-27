@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { 
-  listRouters, testConnection, addRouter, editRouter, deleteRouter,
+  listRouters, testConnection, testSnmp, addRouter, editRouter, deleteRouter,
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
   getIsolirStatus, setupIsolirOnMikrotik, syncIsolirComponent, getIsolirScript, getIsolatedCustomers,
   getWalledGardenStatus, setupWalledGarden, removeWalledGarden,
-  getRouterInterfaces, toggleInterfaceMonitoring, linkInterfaceToFtthNode
+  getRouterInterfaces, toggleInterfaceMonitoring, linkInterfaceToFtthNode, getInterfaceTrafficSamples
 } from '../controllers/mikrotikController.js';
 
 const router = Router();
@@ -14,12 +14,14 @@ const router = Router();
 // Routers
 router.get('/routers', listRouters);
 router.post('/routers/test-connection', testConnection);
+router.post('/routers/test-snmp', testSnmp);
 router.post('/routers', addRouter);
 router.put('/routers/:id', editRouter);
 router.delete('/routers/:id', deleteRouter);
 
 // Router Live Interface Monitoring & Inspection
 router.get('/routers/:id/interfaces', getRouterInterfaces);
+router.get('/routers/:id/interfaces/:interface_name/samples', getInterfaceTrafficSamples);
 router.post('/routers/:id/interfaces/toggle-monitor', toggleInterfaceMonitoring);
 router.post('/routers/:id/interfaces/link-node', linkInterfaceToFtthNode);
 

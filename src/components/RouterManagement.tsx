@@ -38,6 +38,10 @@ export interface RouterItem {
   password?: string;
   dns_name?: string;
   hotspot_ip?: string;
+  snmp_enabled?: boolean;
+  snmp_port?: number;
+  snmp_community?: string;
+  snmp_version?: string;
   status: 'online' | 'offline' | 'testing';
   last_synced?: string;
   profile_count?: number;
@@ -79,6 +83,14 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [testingConn, setTestingConn] = useState(false);
   const [testingCardId, setTestingCardId] = useState<string | null>(null);
   const [testConnResult, setTestConnResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // SNMP State
+  const [snmpEnabled, setSnmpEnabled] = useState(false);
+  const [snmpPort, setSnmpPort] = useState('161');
+  const [snmpCommunity, setSnmpCommunity] = useState('public');
+  const [snmpVersion, setSnmpVersion] = useState('v2c');
+  const [testingSnmp, setTestingSnmp] = useState(false);
+  const [testSnmpResult, setTestSnmpResult] = useState<{ success: boolean; message: string; sysName?: string; uptime?: string } | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -184,6 +196,11 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setUsername('admin');
     setPassword('');
     setTestConnResult(null);
+    setSnmpEnabled(false);
+    setSnmpPort('161');
+    setSnmpCommunity('public');
+    setSnmpVersion('v2c');
+    setTestSnmpResult(null);
   };
 
   const handleTestConnection = async () => {
@@ -230,6 +247,36 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     }
   };
 
+  const handleTestSnmp = async () => {
+    if (!ipAddress.trim()) {
+      setTestSnmpResult({ success: false, message: 'Harap isi IP Address router untuk tes SNMP!' });
+      return;
+    }
+
+    setTestingSnmp(true);
+    setTestSnmpResult(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/test-snmp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: ipAddress.trim(),
+          port: parseInt(snmpPort) || 161,
+          community: snmpCommunity.trim() || 'public',
+          version: snmpVersion
+        })
+      });
+      const data = await parseJsonResponse(res);
+      setTestSnmpResult(data);
+    } catch (err: any) {
+      setTestSnmpResult({ success: false, message: `Gagal tes SNMP: ${err?.message || 'Server offline'}` });
+    } finally {
+      setTestingSnmp(false);
+    }
+  };
+
   const handleCreateRouter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !ipAddress.trim() || !username.trim()) {
@@ -250,7 +297,11 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
         username: username.trim(),
-        password: password.trim()
+        password: password.trim(),
+        snmp_enabled: snmpEnabled,
+        snmp_port: parseInt(snmpPort) || 161,
+        snmp_community: snmpCommunity.trim() || 'public',
+        snmp_version: snmpVersion
       };
 
       if (apiUrl) {
@@ -298,7 +349,12 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setApiPort(rtr.api_port.toString());
     setUsername(rtr.username);
     setPassword('');
+    setSnmpEnabled(Boolean(rtr.snmp_enabled));
+    setSnmpPort((rtr.snmp_port || 161).toString());
+    setSnmpCommunity(rtr.snmp_community || 'public');
+    setSnmpVersion(rtr.snmp_version || 'v2c');
     setTestConnResult(null);
+    setTestSnmpResult(null);
     setShowEditModal(true);
   };
 
@@ -323,7 +379,11 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         ip_address: ipAddress.trim(),
         api_port: parseInt(apiPort) || 8728,
         username: username.trim(),
-        password: password.trim() || undefined
+        password: password.trim() || undefined,
+        snmp_enabled: snmpEnabled,
+        snmp_port: parseInt(snmpPort) || 161,
+        snmp_community: snmpCommunity.trim() || 'public',
+        snmp_version: snmpVersion
       };
 
       if (apiUrl) {
@@ -586,6 +646,22 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                     </button>
                   </div>
 
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Radio size={14} className={rtr.snmp_enabled ? 'text-indigo-600' : 'text-slate-400'} />
+                      Polling Trafik
+                    </span>
+                    {rtr.snmp_enabled ? (
+                      <span className="font-mono font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 text-[11px] flex items-center gap-1">
+                        📡 SNMP v2c (UDP {rtr.snmp_port || 161})
+                      </span>
+                    ) : (
+                      <span className="font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                        ⚡ API MikroTik (8728)
+                      </span>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock size={12} />
@@ -820,6 +896,80 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                 />
               </div>
 
+              {/* Pengaturan Poller SNMP */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio size={16} className="text-indigo-600" />
+                    <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller (High-Precision 1-Menit)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={snmpEnabled}
+                    onChange={(e) => setSnmpEnabled(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Menarik trafik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
+                </p>
+
+                {snmpEnabled && (
+                  <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
+                        <input
+                          type="number"
+                          value={snmpPort}
+                          onChange={(e) => setSnmpPort(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          placeholder="161"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                        <input
+                          type="text"
+                          value={snmpCommunity}
+                          onChange={(e) => setSnmpCommunity(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          placeholder="public"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                        <select
+                          value={snmpVersion}
+                          onChange={(e) => setSnmpVersion(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                        >
+                          <option value="v2c">v2c (64-bit Recommended)</option>
+                          <option value="v1">v1 (32-bit Legacy)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestSnmp}
+                        disabled={testingSnmp}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                        <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
+                      </button>
+                      {testSnmpResult && (
+                        <span className={`text-[11px] font-bold ${testSnmpResult.success ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {testSnmpResult.message}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* TEST CONNECTION BUTTON & STATUS BANNER */}
               <div className="pt-2">
                 <button
@@ -957,6 +1107,80 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all"
                 />
+              </div>
+
+              {/* Pengaturan Poller SNMP */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio size={16} className="text-indigo-600" />
+                    <span className="text-xs font-extrabold text-slate-800">Aktifkan SNMP Poller (High-Precision 1-Menit)</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={snmpEnabled}
+                    onChange={(e) => setSnmpEnabled(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Menarik trafik 64-bit via SNMP UDP port 161 setiap 1 menit ke Redis buffer, menghasilkan deteksi lonjakan trafik (True Peak) yang 100% akurat.
+                </p>
+
+                {snmpEnabled && (
+                  <div className="pt-2 border-t border-slate-200/80 space-y-3 animate-fade-in">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Port SNMP (UDP)</label>
+                        <input
+                          type="number"
+                          value={snmpPort}
+                          onChange={(e) => setSnmpPort(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          placeholder="161"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Community String</label>
+                        <input
+                          type="text"
+                          value={snmpCommunity}
+                          onChange={(e) => setSnmpCommunity(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          placeholder="public"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Versi SNMP</label>
+                        <select
+                          value={snmpVersion}
+                          onChange={(e) => setSnmpVersion(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                        >
+                          <option value="v2c">v2c (64-bit Recommended)</option>
+                          <option value="v1">v1 (32-bit Legacy)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestSnmp}
+                        disabled={testingSnmp}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl border border-indigo-200 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Activity size={13} className={testingSnmp ? 'animate-spin' : ''} />
+                        <span>{testingSnmp ? 'Menguji SNMP...' : '⚡ Tes Koneksi SNMP Live'}</span>
+                      </button>
+                      {testSnmpResult && (
+                        <span className={`text-[11px] font-bold ${testSnmpResult.success ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {testSnmpResult.message}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* TEST CONNECTION BUTTON & STATUS BANNER */}
