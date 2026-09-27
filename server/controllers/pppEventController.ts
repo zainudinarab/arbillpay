@@ -1,13 +1,14 @@
 import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getFirestore } from '../config/firebase.js';
+import { redisDel } from '../config/redis.js';
 
 /**
  * Webhook Event Handler untuk PPPoE Mikrotik (On-Up / On-Down)
  * Dipanggil otomatis oleh RouterOS saat user PPPoE connect atau disconnect
  * 
  * Parameter GET/POST:
- * - action: 'login' | 'logout'
+ * - action: 'login' | 'logout' | 'up' | 'down'
  * - user: username pppoe
  * - ip: remote IP address
  * - mac: caller-id / MAC address ONT
@@ -15,6 +16,7 @@ import { getFirestore } from '../config/firebase.js';
  * - uptime: durasi koneksi saat disconnect (cth: "01:23:45")
  * - bytes_in: bytes diterima (download)
  * - bytes_out: bytes terkirim (upload)
+ * - router_id: ID router mikrotik
  */
 export async function handlePppEvent(req: Request, res: Response) {
   const action = (req.query.action || req.body.action || 'login').toString().toLowerCase().trim();
@@ -23,6 +25,7 @@ export async function handlePppEvent(req: Request, res: Response) {
   const mac = (req.query.mac || req.body.mac || req.query.caller_id || req.body.caller_id || '').toString().trim();
   const session = (req.query.session || req.body.session || req.query.session_id || req.body.session_id || '').toString().trim();
   const uptime = (req.query.uptime || req.body.uptime || '').toString().trim();
+  const routerId = (req.query.router_id || req.body.router_id || req.query.routerId || req.body.routerId || 'default').toString().trim();
   const bytesIn = parseInt((req.query.bytes_in || req.body.bytes_in || '0').toString(), 10) || 0;
   const bytesOut = parseInt((req.query.bytes_out || req.body.bytes_out || '0').toString(), 10) || 0;
 
@@ -35,23 +38,25 @@ export async function handlePppEvent(req: Request, res: Response) {
 
   const logId = `ppplog-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
   const now = new Date();
+  const isOnline = action === 'login' || action === 'up';
 
   console.log(`[PPP WEBHOOK] Event: ${action.toUpperCase()} | User: ${user} | IP: ${ip || '-'} | MAC: ${mac || '-'} | Uptime: ${uptime || '-'}`);
 
   try {
     // 1. Cari pelanggan berdasarkan pppoe_username
     const custRes = await pool.query(`
-      SELECT id, name, customer_code, package_id, status, is_online
+      SELECT id, name, customer_code, package_id, status, is_online, router_id
       FROM customers
       WHERE LOWER(pppoe_username) = LOWER($1)
       LIMIT 1
     `, [user]);
 
     const customer = custRes.rows.length > 0 ? custRes.rows[0] : null;
+    const effectiveRouterId = (routerId !== 'default' ? routerId : (customer?.router_id || 'default'));
 
-    // 2. Perbarui status live pelanggan
+    // 2. Perbarui status live pelanggan di PostgreSQL
     if (customer) {
-      if (action === 'login' || action === 'up') {
+      if (isOnline) {
         await pool.query(`
           UPDATE customers
           SET is_online = true,
@@ -59,7 +64,7 @@ export async function handlePppEvent(req: Request, res: Response) {
               current_ip = COALESCE(NULLIF($2, ''), current_ip)
           WHERE id = $3
         `, [now, ip, customer.id]);
-      } else if (action === 'logout' || action === 'down') {
+      } else {
         await pool.query(`
           UPDATE customers
           SET is_online = false,
@@ -86,14 +91,36 @@ export async function handlePppEvent(req: Request, res: Response) {
       bytesOut,
       uptime || null,
       now
-    ]);
+    ]).catch(() => {});
 
-    // 4. Sinkronisasi status ke Firebase jika aktif
+    // 4. Catat juga ke pppoe_connection_logs
+    await pool.query(`
+      INSERT INTO pppoe_connection_logs (
+        router_id, customer_id, pppoe_username, ip_address, mac_address,
+        service, event_type, uptime_str, bytes_in, bytes_out, recorded_at
+      ) VALUES ($1, $2, $3, $4, $5, 'pppoe', $6, $7, $8, $9, $10)
+    `, [
+      effectiveRouterId,
+      customer ? customer.id : null,
+      user,
+      ip || null,
+      mac || null,
+      isOnline ? 'connected' : 'disconnected',
+      uptime || null,
+      bytesIn,
+      bytesOut,
+      now
+    ]).catch(() => {});
+
+    // Invalidate Redis active users cache agar panel admin langsung melihat status teranyar (0-latency)
+    redisDel('mikrotik:active_users:all').catch(() => {});
+
+    // 5. Sinkronisasi status ke Firebase jika aktif
     try {
       const db = getFirestore();
       if (db && customer) {
         await db.collection('customers').doc(customer.id).set({
-          is_online: action === 'login' || action === 'up',
+          is_online: isOnline,
           last_event: action,
           last_event_at: now.toISOString(),
           current_ip: ip || null

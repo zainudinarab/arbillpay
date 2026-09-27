@@ -697,16 +697,20 @@ export function generateHotspotProfileOnLogin(profileData: {
  * Generator script on-up & on-down untuk PPPoE Profile
  * Kompatibel untuk RouterOS v6 & v7, aman dan anti-macet via :do {} on-error={}
  */
-export function generatePppProfileOnUpDown(config?: { serverUrl?: string }) {
+export function generatePppProfileOnUpDown(config?: { serverUrl?: string; routerId?: string }) {
   const serverUrl = config?.serverUrl || process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`;
+  const rId = config?.routerId ? `&router_id=${config.routerId}` : '';
 
+  // RouterOS Script: On-Up (Instan terpanggil saat PPPoE connect)
   const onup =
-    `:local url "${serverUrl}/api/ppp/events?action=login&user=$user&ip=$remote-address&mac=$caller-id"; ` +
+    `:local rip $"remote-address"; :local mac $"caller-id"; ` +
+    `:local url "${serverUrl}/api/ppp/events?action=login&user=$user&ip=$rip&mac=$mac${rId}"; ` +
     `:do { /tool fetch url=$url mode=http keep-result=no; } on-error={};`;
 
+  // RouterOS Script: On-Down (Instan terpanggil saat PPPoE disconnect/putus)
   const ondown =
-    `:local bIn $"bytes-in"; :local bOut $"bytes-out"; :local uptime $"uptime"; ` +
-    `:local url "${serverUrl}/api/ppp/events?action=logout&user=$user&session=$caller-id&uptime=$uptime&bytes_in=$bIn&bytes_out=$bOut"; ` +
+    `:local bIn $"bytes-in"; :local bOut $"bytes-out"; :local uptime $"uptime"; :local mac $"caller-id"; ` +
+    `:local url "${serverUrl}/api/ppp/events?action=logout&user=$user&mac=$mac&uptime=$uptime&bytes_in=$bIn&bytes_out=$bOut${rId}"; ` +
     `:do { /tool fetch url=$url mode=http keep-result=no; } on-error={};`;
 
   return { onup, ondown };
@@ -875,7 +879,7 @@ export async function pushProfileToMikrotik(req: Request, res: Response) {
     });
 
     const billingServerUrl = process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`;
-    const pppScripts = generatePppProfileOnUpDown({ serverUrl: billingServerUrl });
+    const pppScripts = generatePppProfileOnUpDown({ serverUrl: billingServerUrl, routerId: prof.router_id });
 
     let pushSuccess = false;
     let pushDetailMessage = '';

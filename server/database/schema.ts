@@ -604,6 +604,25 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_router ON pppoe_connection_logs (router_id, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_event ON pppoe_connection_logs (event_type, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_time ON pppoe_connection_logs (recorded_at DESC);
+
+      CREATE TABLE IF NOT EXISTS ppp_connection_logs (
+        id VARCHAR(64) PRIMARY KEY,
+        customer_id VARCHAR(64),
+        username VARCHAR(128) NOT NULL,
+        action VARCHAR(32) NOT NULL, -- 'login' | 'logout' | 'connected' | 'disconnected'
+        ip_address VARCHAR(64),
+        mac_address VARCHAR(64),
+        session_id VARCHAR(64),
+        bytes_in BIGINT DEFAULT 0,
+        bytes_out BIGINT DEFAULT 0,
+        uptime VARCHAR(64),
+        terminate_cause VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_ppp_conn_username ON ppp_connection_logs (username, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ppp_conn_customer ON ppp_connection_logs (customer_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ppp_conn_created ON ppp_connection_logs (created_at DESC);
     `).catch(() => {});
 
     // 11. Smart Migration for Flash Sales
