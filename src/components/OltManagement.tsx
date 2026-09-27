@@ -139,6 +139,20 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
   } | null>(null);
   const [showConsoleModal, setShowConsoleModal] = useState(false);
 
+  // SNMP Test & Modal State
+  const [testingSnmpId, setTestingSnmpId] = useState<string | null>(null);
+  const [enablingSnmpId, setEnablingSnmpId] = useState<string | null>(null);
+  const [snmpModalData, setSnmpModalData] = useState<{
+    isOpen: boolean;
+    oltName: string;
+    ip: string;
+    success: boolean;
+    message: string;
+    sysName?: string;
+    sysDescr?: string;
+    uptime?: string;
+  } | null>(null);
+
   // ONU Monitor & Local Database Cache State
   const [selectedOltForOnu, setSelectedOltForOnu] = useState<string>('');
   const [selectedPonPort, setSelectedPonPort] = useState<string>('1');
@@ -524,11 +538,22 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
 
   // Uji koneksi SNMP ke OLT
   const handleTestSnmp = async (olt: OltItem) => {
+    setTestingSnmpId(olt.id);
     try {
       setToastMsg({ type: 'success', text: `Menguji SNMP ke ${olt.ip_address}:${olt.snmp_port || 161}...` });
       const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/olts/${olt.id}/test-snmp`, { method: 'POST' });
       const data = await res.json();
+      setSnmpModalData({
+        isOpen: true,
+        oltName: olt.name,
+        ip: olt.ip_address,
+        success: Boolean(data.success),
+        message: data.message || (data.success ? 'SNMP Berhasil merespons' : 'SNMP Gagal'),
+        sysName: data.sysName,
+        sysDescr: data.sysDescr,
+        uptime: data.uptime
+      });
       if (data.success) {
         setToastMsg({
           type: 'success',
@@ -541,13 +566,22 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
         });
       }
     } catch (err: any) {
+      setSnmpModalData({
+        isOpen: true,
+        oltName: olt.name,
+        ip: olt.ip_address,
+        success: false,
+        message: `Uji SNMP gagal: ${err.message}`
+      });
       setToastMsg({ type: 'error', text: `Uji SNMP gagal: ${err.message}` });
+    } finally {
+      setTestingSnmpId(null);
     }
   };
 
   // Aktifkan SNMP OLT otomatis via SSH (seperti MikroTik tanpa perlu buka web OLT)
   const handleEnableSnmp = async (olt: OltItem) => {
-    if (!window.confirm(`Aktifkan layanan SNMP pada OLT "${olt.name}" via SSH secara otomatis dengan Community "${olt.snmp_community || 'public'}"?`)) return;
+    setEnablingSnmpId(olt.id);
     try {
       setToastMsg({ type: 'success', text: `Mengirim perintah konfigurasi SNMP ke OLT ${olt.name} via SSH...` });
       const apiUrl = getApiUrl();
@@ -557,10 +591,21 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
         body: JSON.stringify({ community: olt.snmp_community || 'public' })
       });
       const data = await res.json();
+      const isOk = Boolean(data.success && (data.test ? data.test.success : true));
+      setSnmpModalData({
+        isOpen: true,
+        oltName: olt.name,
+        ip: olt.ip_address,
+        success: isOk,
+        message: data.message || (isOk ? 'SNMP Berhasil diaktifkan' : 'Gagal mengaktifkan SNMP'),
+        sysName: data.test?.sysName,
+        sysDescr: data.test?.sysDescr,
+        uptime: data.test?.uptime
+      });
       if (data.success) {
         setToastMsg({
           type: 'success',
-          text: `✅ ${data.message} ${data.test?.success ? `(Status: ${data.test.sysName || 'Aktif'})` : ''}`
+          text: `✅ ${data.message}`
         });
         loadOlts();
       } else {
@@ -570,7 +615,16 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
         });
       }
     } catch (err: any) {
+      setSnmpModalData({
+        isOpen: true,
+        oltName: olt.name,
+        ip: olt.ip_address,
+        success: false,
+        message: `Error aktifkan SNMP: ${err.message}`
+      });
       setToastMsg({ type: 'error', text: `Error aktifkan SNMP: ${err.message}` });
+    } finally {
+      setEnablingSnmpId(null);
     }
   };
 
@@ -945,21 +999,23 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                         <button
                           type="button"
                           onClick={() => handleTestSnmp(olt)}
-                          className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                          disabled={testingSnmpId === olt.id || enablingSnmpId === olt.id}
+                          className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                           title="Uji koneksi SNMP ke OLT"
                         >
-                          <Activity size={12} />
-                          <span>Tes SNMP</span>
+                          <Activity size={12} className={testingSnmpId === olt.id ? 'animate-spin' : ''} />
+                          <span>{testingSnmpId === olt.id ? 'Menguji...' : 'Tes SNMP'}</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => handleEnableSnmp(olt)}
-                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer"
+                          disabled={enablingSnmpId === olt.id || testingSnmpId === olt.id}
+                          className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                           title="Konfigurasi & Aktifkan SNMP otomatis di OLT via CLI SSH"
                         >
-                          <Zap size={12} />
-                          <span>Aktifkan SNMP</span>
+                          <Zap size={12} className={enablingSnmpId === olt.id ? 'animate-spin' : ''} />
+                          <span>{enablingSnmpId === olt.id ? 'Mengaktifkan...' : 'Aktifkan SNMP'}</span>
                         </button>
 
                         <button
@@ -1783,6 +1839,97 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 >
                   <CheckCircle2 size={14} className={savingLink ? 'animate-spin' : ''} />
                   <span>{savingLink ? 'Menyimpan...' : 'Simpan Tautan'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail & Hasil SNMP */}
+      {snmpModalData && snmpModalData.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className={`p-6 border-b flex items-center justify-between ${
+              snmpModalData.success ? 'bg-emerald-50/80 border-emerald-100' : 'bg-rose-50/80 border-rose-100'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                  snmpModalData.success ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                }`}>
+                  <Activity size={20} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-800 text-base">
+                    {snmpModalData.success ? 'Layanan SNMP OLT Aktif' : 'Status SNMP OLT'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    {snmpModalData.oltName} ({snmpModalData.ip}:161)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSnmpModalData(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-white/80 transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              {snmpModalData.success ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">System Name</span>
+                      <strong className="text-sm text-slate-800 font-mono">{snmpModalData.sysName || '-'}</strong>
+                    </div>
+                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Hardware Model</span>
+                      <strong className="text-sm text-slate-800 font-mono">{snmpModalData.sysDescr || '-'}</strong>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-emerald-700 block font-bold uppercase">Uptime OLT</span>
+                      <strong className="text-sm text-emerald-950 font-mono">{snmpModalData.uptime || '-'}</strong>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-[10px] uppercase">
+                      Online & Responsif
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-100 text-blue-900 space-y-1.5">
+                    <strong className="font-extrabold block text-xs flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-blue-600" />
+                      Manfaat & Data yang Dimonitor via SNMP OLT:
+                    </strong>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-blue-800 leading-relaxed">
+                      <li><strong>Trafik Realtime (ifInOctets / ifOutOctets):</strong> Menghitung lonjakan bandwidth (Mbps download & upload) pada port PON dan Uplink tanpa membebani CPU OLT.</li>
+                      <li><strong>Status Interface Port (ifOperStatus):</strong> Mendeteksi langsung bila link PON atau kabel fiber terputus (LOS).</li>
+                      <li><strong>Uptime & Health:</strong> Memantau kesehatan perangkat, suhu, dan stabilitas OLT secara berkala.</li>
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 space-y-2">
+                  <strong className="font-bold block">Gagal terhubung via SNMP:</strong>
+                  <p className="font-mono text-[11px]">{snmpModalData.message}</p>
+                  <p className="text-[11px] text-rose-600">
+                    Pastikan OLT mengizinkan port UDP 161 dan Community name sesuai (default: public). Anda dapat menekan tombol <strong>"Aktifkan SNMP"</strong> untuk mengonfigurasinya via SSH secara otomatis.
+                  </p>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSnmpModalData(null)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-xl shadow-xs cursor-pointer"
+                >
+                  Tutup
                 </button>
               </div>
             </div>
