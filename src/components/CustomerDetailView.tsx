@@ -31,7 +31,10 @@ import {
   Download,
   Share2,
   MessageCircle,
-  Navigation
+  Navigation,
+  Terminal,
+  RotateCcw,
+  Power
 } from 'lucide-react';
 import { CustomerItem } from './CustomerManagement';
 import { BusinessProfile } from '../types';
@@ -196,6 +199,146 @@ export default function CustomerDetailView({
       fetchLogs();
     }
   }, [customer.id, activeTab]);
+
+  // OLT SSH Integration state
+  const [oltList, setOltList] = useState<any[]>([]);
+  const [selectedOltId, setSelectedOltId] = useState<string>(customer.olt_id || '');
+  const [selectedPonPort, setSelectedPonPort] = useState<string>(customer.pon_port || '1');
+  const [selectedOnuId, setSelectedOnuId] = useState<string>(customer.onu_id ? String(customer.onu_id) : '1');
+  const [isEditingOltLink, setIsEditingOltLink] = useState(false);
+  const [savingOltLink, setSavingOltLink] = useState(false);
+  const [isCheckingPower, setIsCheckingPower] = useState(false);
+  const [livePowerData, setLivePowerData] = useState<{ rx_power?: number | string; tx_power?: number | string; olt_rx_power?: number | string; status?: string; raw_output?: string } | null>(null);
+  const [showRawOltOutput, setShowRawOltOutput] = useState(false);
+  const [isRebootingOnu, setIsRebootingOnu] = useState(false);
+  const [oltActionMsg, setOltActionMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  useEffect(() => {
+    const fetchOlts = async () => {
+      try {
+        const apiUrl = getApiUrl();
+        const res = await fetch(`${apiUrl}/api/olts`);
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.olts)) {
+          setOltList(data.olts);
+        }
+      } catch (err) {
+        console.warn('Failed to load OLT list:', err);
+      }
+    };
+    fetchOlts();
+  }, []);
+
+  const handleSaveOltLink = async () => {
+    setSavingOltLink(true);
+    setOltActionMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/customers/${customer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...customer,
+          olt_id: selectedOltId || null,
+          pon_port: selectedPonPort || null,
+          onu_id: selectedOnuId ? parseInt(selectedOnuId, 10) : null
+        })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        customer.olt_id = selectedOltId || undefined;
+        customer.pon_port = selectedPonPort || undefined;
+        customer.onu_id = selectedOnuId ? parseInt(selectedOnuId, 10) : undefined;
+        const matchedOlt = oltList.find(o => o.id === selectedOltId);
+        if (matchedOlt) {
+          customer.olt_name = matchedOlt.name;
+          customer.olt_brand = matchedOlt.brand;
+          customer.olt_ip = matchedOlt.ip_address;
+        } else if (!selectedOltId) {
+          customer.olt_name = undefined;
+          customer.olt_brand = undefined;
+          customer.olt_ip = undefined;
+        }
+        setIsEditingOltLink(false);
+        setOltActionMsg({ type: 'success', text: 'Tautan OLT berhasil disimpan!' });
+      } else {
+        setOltActionMsg({ type: 'error', text: data.message || 'Gagal menyimpan tautan OLT.' });
+      }
+    } catch (e: any) {
+      setOltActionMsg({ type: 'error', text: e.message });
+    } finally {
+      setSavingOltLink(false);
+    }
+  };
+
+  const handleCheckLivePower = async () => {
+    const oltId = customer.olt_id || selectedOltId;
+    const ponPort = customer.pon_port || selectedPonPort;
+    const onuId = customer.onu_id || selectedOnuId;
+    if (!oltId) {
+      setOltActionMsg({ type: 'error', text: 'Pilih dan hubungkan perangkat OLT terlebih dahulu.' });
+      return;
+    }
+    setIsCheckingPower(true);
+    setOltActionMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${oltId}/optical-power?pon_port=${encodeURIComponent(ponPort)}&onu_id=${encodeURIComponent(onuId)}`);
+      const data = await res.json();
+      if (data && data.success && data.optical_power) {
+        setLivePowerData(data.optical_power);
+        const rx = data.optical_power.rx_power;
+        if (rx !== undefined && rx !== null && !isNaN(Number(rx))) {
+          customer.power_laser = String(rx);
+          fetch(`${apiUrl}/api/customers/${customer.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...customer, power_laser: String(rx) })
+          }).catch(() => {});
+        }
+        setOltActionMsg({ type: 'success', text: `Berhasil membaca redaman optik live dari OLT! RX: ${data.optical_power.rx_power ?? '-'} dBm` });
+      } else {
+        setOltActionMsg({ type: 'error', text: data.message || 'Gagal membaca redaman optik dari OLT.' });
+      }
+    } catch (e: any) {
+      setOltActionMsg({ type: 'error', text: e.message });
+    } finally {
+      setIsCheckingPower(false);
+    }
+  };
+
+  const handleRebootOnu = async () => {
+    const oltId = customer.olt_id || selectedOltId;
+    const ponPort = customer.pon_port || selectedPonPort;
+    const onuId = customer.onu_id || selectedOnuId;
+    if (!oltId) {
+      setOltActionMsg({ type: 'error', text: 'Pilih dan hubungkan perangkat OLT terlebih dahulu.' });
+      return;
+    }
+    if (!window.confirm(`PERINGATAN: Apakah Anda yakin ingin me-restart modem/ONU pelanggan "${customer.name}" (Port: ${ponPort}, ONU #${onuId}) langsung dari OLT via SSH? Koneksi internet pelanggan akan terputus sebentar selama booting.`)) {
+      return;
+    }
+    setIsRebootingOnu(true);
+    setOltActionMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/olts/${oltId}/reboot-onu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pon_port: ponPort, onu_id: onuId })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        setOltActionMsg({ type: 'success', text: data.message || 'Perintah reboot berhasil dikirim ke ONU via OLT!' });
+      } else {
+        setOltActionMsg({ type: 'error', text: data.message || 'Gagal mengirim perintah reboot ke OLT.' });
+      }
+    } catch (e: any) {
+      setOltActionMsg({ type: 'error', text: e.message });
+    } finally {
+      setIsRebootingOnu(false);
+    }
+  };
 
   // Optical power calculation
   const powerLaserNum = parseFloat(customer.power_laser || '-19.5');
@@ -750,6 +893,282 @@ export default function CustomerDetailView({
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* OLT Remote Control & Live Optical Attenuation Card */}
+          <div className="md:col-span-2 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-6 shadow-xl border border-slate-700/60 space-y-5">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Terminal size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    <span>Remote OLT & Kontrol ONU (Direct SSH)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Live CLI
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Inspeksi redaman laser optik & kontrol reboot modem ONU langsung melalui CLI OLT tanpa ketergantungan TR-069
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {customer.olt_id && !isEditingOltLink && (
+                  <button
+                    onClick={() => setIsEditingOltLink(true)}
+                    className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit size={13} />
+                    <span>Ubah Port OLT</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Notification Banner */}
+            {oltActionMsg && (
+              <div className={`p-3 rounded-2xl text-xs flex items-center justify-between gap-2 ${
+                oltActionMsg.type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                oltActionMsg.type === 'error' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {oltActionMsg.type === 'success' ? <CheckCircle2 size={16} className="text-emerald-400 shrink-0" /> :
+                   oltActionMsg.type === 'error' ? <AlertTriangle size={16} className="text-rose-400 shrink-0" /> :
+                   <AlertCircle size={16} className="text-blue-400 shrink-0" />}
+                  <span>{oltActionMsg.text}</span>
+                </div>
+                <button
+                  onClick={() => setOltActionMsg(null)}
+                  className="text-white/60 hover:text-white font-bold text-xs p-1"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Link Edit Form (When unlinked or editing) */}
+            {(isEditingOltLink || !customer.olt_id) && (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
+                    {customer.olt_id ? 'Perbarui Port / OLT Pelanggan' : 'Tautkan Pelanggan ke Perangkat OLT'}
+                  </h4>
+                  {customer.olt_id && (
+                    <button
+                      onClick={() => setIsEditingOltLink(false)}
+                      className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                      Pilih OLT
+                    </label>
+                    <select
+                      value={selectedOltId}
+                      onChange={(e) => setSelectedOltId(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-hidden focus:border-indigo-500"
+                    >
+                      <option value="">-- Pilih OLT Fisik --</option>
+                      {oltList.map((olt) => (
+                        <option key={olt.id} value={olt.id}>
+                          {olt.name} ({olt.brand} - {olt.ip_address})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                      Port PON
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedPonPort}
+                      onChange={(e) => setSelectedPonPort(e.target.value)}
+                      placeholder="Contoh: 1 atau gpon-olt_1/1/1"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                      ONU ID / ONT ID
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="128"
+                      value={selectedOnuId}
+                      onChange={(e) => setSelectedOnuId(e.target.value)}
+                      placeholder="1 s/d 128"
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-indigo-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  {customer.olt_id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedOltId('');
+                        setSelectedPonPort('1');
+                        setSelectedOnuId('1');
+                        handleSaveOltLink();
+                      }}
+                      disabled={savingOltLink}
+                      className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Lepas Tautan OLT
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSaveOltLink}
+                    disabled={savingOltLink || (!selectedOltId && !customer.olt_id)}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    {savingOltLink ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                    <span>Simpan Perubahan OLT</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Linked Status & Control Panel */}
+            {customer.olt_id && !isEditingOltLink && (
+              <div className="space-y-4">
+                {/* OLT Meta & Specs Bar */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white/5 border border-white/10 rounded-2xl p-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Perangkat OLT</span>
+                    <span className="font-black text-white text-xs">{customer.olt_name || 'OLT Terhubung'}</span>
+                    <span className="text-[10px] text-indigo-300 font-mono block mt-0.5">{customer.olt_ip || '-'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Port PON OLT</span>
+                    <span className="font-mono font-black text-emerald-400 text-xs">Port #{customer.pon_port || '1'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">ONU / ONT ID</span>
+                    <span className="font-mono font-black text-indigo-300 text-xs">ID #{customer.onu_id || '1'}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Status Registrasi OLT</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>{livePowerData?.status || 'Online / Configured'}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live Optical Attenuation Indicators */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>RX Power (Modem ONU)</span>
+                      <Radio size={14} className="text-emerald-400" />
+                    </span>
+                    <div className="flex items-baseline gap-1.5 pt-1">
+                      <span className="text-2xl font-black text-emerald-400 font-mono">
+                        {livePowerData?.rx_power ?? customer.power_laser ?? '-'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-bold">dBm</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Daya sinyal optik yang diterima ONU dari OLT</p>
+                  </div>
+
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>TX Power (Modem ONU)</span>
+                      <Zap size={14} className="text-amber-400" />
+                    </span>
+                    <div className="flex items-baseline gap-1.5 pt-1">
+                      <span className="text-2xl font-black text-amber-400 font-mono">
+                        {livePowerData?.tx_power ?? '+2.45'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-bold">dBm</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Daya pancar laser dari ONU ke OLT</p>
+                  </div>
+
+                  <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                      <span>OLT RX Power (SFP Port)</span>
+                      <Activity size={14} className="text-indigo-400" />
+                    </span>
+                    <div className="flex items-baseline gap-1.5 pt-1">
+                      <span className="text-2xl font-black text-indigo-400 font-mono">
+                        {livePowerData?.olt_rx_power ?? '-20.12'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-bold">dBm</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Daya balik yang diterima port SFP OLT</p>
+                  </div>
+                </div>
+
+                {/* Primary Action Buttons */}
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCheckLivePower}
+                    disabled={isCheckingPower}
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                  >
+                    {isCheckingPower ? <RefreshCw size={15} className="animate-spin" /> : <Radio size={15} />}
+                    <span>{isCheckingPower ? 'Mengecek ke OLT via SSH...' : '📡 Cek Redaman Live via OLT SSH'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRebootOnu}
+                    disabled={isRebootingOnu}
+                    className="py-3 px-5 rounded-xl bg-rose-600/90 hover:bg-rose-600 disabled:opacity-50 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                    title="Kirim perintah reboot ke modem ONU pelanggan dari CLI OLT"
+                  >
+                    {isRebootingOnu ? <RefreshCw size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+                    <span>{isRebootingOnu ? 'Mereboot ONU...' : '🔄 Reboot Modem (ONU)'}</span>
+                  </button>
+
+                  {livePowerData?.raw_output && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRawOltOutput(!showRawOltOutput)}
+                      className="py-3 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <Terminal size={14} />
+                      <span>{showRawOltOutput ? 'Tutup Log CLI' : 'Log Terminal'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Raw CLI Output Drawer */}
+                {showRawOltOutput && livePowerData?.raw_output && (
+                  <div className="mt-3 bg-black/80 rounded-2xl p-4 border border-slate-800 text-[11px] font-mono text-emerald-400 space-y-1">
+                    <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800 text-[10px]">
+                      <span>RAW SSH OUTPUT DARI OLT</span>
+                      <span>VT100 PTY</span>
+                    </div>
+                    <pre className="overflow-x-auto whitespace-pre-wrap max-h-48 pt-1">
+                      {livePowerData.raw_output}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

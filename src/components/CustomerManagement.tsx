@@ -155,6 +155,12 @@ export interface CustomerItem {
   effective_price?: number | null;
   router_id?: string | null;
   router_profile_id?: string | null;
+  olt_id?: string | null;
+  pon_port?: string | null;
+  onu_id?: number | null;
+  olt_name?: string | null;
+  olt_brand?: string | null;
+  olt_ip?: string | null;
   package_name?: string;
   package_price?: number;
   package_type?: string;

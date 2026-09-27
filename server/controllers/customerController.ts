@@ -116,7 +116,8 @@ export async function editCustomer(req: Request, res: Response) {
     pppoe_username, pppoe_password, static_ip, installation_date,
     expired_at, grace_until, odp_port, sn_onu, power_laser, teknisi,
     latitude, longitude, maps_url,
-    package_id, custom_price, router_id, router_profile_id, status 
+    package_id, custom_price, router_id, router_profile_id, status,
+    olt_id, pon_port, onu_id
   } = req.body;
 
   if (!name || !package_id) {
@@ -147,6 +148,12 @@ export async function editCustomer(req: Request, res: Response) {
       const prCheck = await pool.query('SELECT id FROM router_profiles WHERE id = $1', [router_profile_id]);
       if (prCheck.rows.length > 0) validProfId = router_profile_id;
     }
+    let validOltId = null;
+    if (olt_id) {
+      const oCheck = await pool.query('SELECT id FROM olts WHERE id = $1', [olt_id]);
+      if (oCheck.rows.length > 0) validOltId = olt_id;
+    }
+    const onuIdVal = onu_id ? parseInt(String(onu_id), 10) : null;
 
     const result = await pool.query(`
       UPDATE customers
@@ -179,9 +186,12 @@ export async function editCustomer(req: Request, res: Response) {
           router_id = $27,
           router_profile_id = $28,
           status = $29,
+          olt_id = $30,
+          pon_port = $31,
+          onu_id = $32,
           is_synced = true
-      WHERE id = $30
-      RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price
+      WHERE id = $33
+      RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price, olt_id, pon_port, onu_id
     `, [
       user_id || null, customer_code || null, name.trim(), phone_number?.trim() || null, address?.trim() || null,
       dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
@@ -189,7 +199,9 @@ export async function editCustomer(req: Request, res: Response) {
       static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
       odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
       lat, lng, mapUrl,
-      validPkgId, customPriceVal, validRtrId, validProfId, status || 'active', id
+      validPkgId, customPriceVal, validRtrId, validProfId, status || 'active',
+      validOltId, pon_port?.trim() || null, onuIdVal,
+      id
     ]);
 
     let finalCustomer = result.rows[0];
@@ -201,12 +213,14 @@ export async function editCustomer(req: Request, res: Response) {
           id, customer_code, name, phone_number, address, dusun, desa, kecamatan, kabupaten, provinsi,
           connection_type, pppoe_username, pppoe_password, static_ip, installation_date, expired_at, grace_until,
           odp_port, sn_onu, power_laser, teknisi, latitude, longitude, maps_url,
-          package_id, custom_price, router_id, router_profile_id, status, is_synced
+          package_id, custom_price, router_id, router_profile_id, status, is_synced,
+          olt_id, pon_port, onu_id
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
           $11, $12, $13, $14, $15, $16, $17,
           $18, $19, $20, $21, $22, $23, $24,
-          $25, $26, $27, $28, $29, true
+          $25, $26, $27, $28, $29, true,
+          $30, $31, $32
         )
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
@@ -214,8 +228,11 @@ export async function editCustomer(req: Request, res: Response) {
           address = EXCLUDED.address,
           status = EXCLUDED.status,
           custom_price = EXCLUDED.custom_price,
-          pppoe_username = EXCLUDED.pppoe_username
-        RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price
+          pppoe_username = EXCLUDED.pppoe_username,
+          olt_id = EXCLUDED.olt_id,
+          pon_port = EXCLUDED.pon_port,
+          onu_id = EXCLUDED.onu_id
+        RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price, olt_id, pon_port, onu_id
       `, [
         id, customer_code || id, name.trim(), phone_number?.trim() || null, address?.trim() || null,
         dusun?.trim() || null, desa?.trim() || null, kecamatan?.trim() || null, kabupaten?.trim() || null, provinsi?.trim() || null,
@@ -223,7 +240,8 @@ export async function editCustomer(req: Request, res: Response) {
         static_ip?.trim() || null, installation_date || null, expired_at || null, grace_until || null,
         odp_port?.trim() || null, sn_onu?.trim() || null, power_laser ? String(power_laser).trim() : null, teknisi?.trim() || null,
         lat, lng, mapUrl,
-        validPkgId, customPriceVal, validRtrId, validProfId, status || 'active'
+        validPkgId, customPriceVal, validRtrId, validProfId, status || 'active',
+        validOltId, pon_port?.trim() || null, onuIdVal
       ]);
       finalCustomer = insertResult.rows[0];
     }

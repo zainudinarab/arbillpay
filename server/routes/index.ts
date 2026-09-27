@@ -14,6 +14,7 @@ import pppRoutes from './pppRoutes.js';
 import portalRoutes from './portalRoutes.js';
 import flashSaleRoutes from './flashSaleRoutes.js';
 import integrationRoutes from './integrationRoutes.js';
+import oltRoutes from './oltRoutes.js';
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use('/portal', portalRoutes);
 router.use('/', portalRoutes);
 router.use('/mikrotik', mikrotikRoutes);
 router.use('/', mikrotikRoutes);
+router.use('/', oltRoutes);
 
 // 404 handler for any unmatched /api requests to prevent hanging
 router.use((req, res) => {

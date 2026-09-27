@@ -21,20 +21,23 @@ export async function getAllCustomers() {
            c.dusun, c.desa, c.kecamatan, c.kabupaten, c.provinsi,
            c.pppoe_username, c.pppoe_password, c.static_ip, c.installation_date, c.expired_at, c.grace_until,
            c.odp_port, c.sn_onu, c.power_laser, c.teknisi, c.is_synced,
-            c.latitude, c.longitude, c.maps_url,
-            c.package_id, c.custom_price, c.router_id, c.router_profile_id, c.status, c.created_at,
-            c.is_online, c.last_connected_at, c.current_ip,
-            p.name as package_name, p.price as package_price,
-            COALESCE(c.custom_price, p.price) as effective_price,
-            p.type as package_type, p.speed_limit,
-            r.name as router_name, r.ip_address as router_ip,
-            rp.name as router_profile_name, rp.type as router_profile_type,
-            u.email as linked_user_email, u.arabpay_user_id
+           c.olt_id, c.pon_port, c.onu_id,
+           ol.name as olt_name, ol.brand as olt_brand, ol.ip_address as olt_ip,
+           c.latitude, c.longitude, c.maps_url,
+           c.package_id, c.custom_price, c.router_id, c.router_profile_id, c.status, c.created_at,
+           c.is_online, c.last_connected_at, c.current_ip,
+           p.name as package_name, p.price as package_price,
+           COALESCE(c.custom_price, p.price) as effective_price,
+           p.type as package_type, p.speed_limit,
+           r.name as router_name, r.ip_address as router_ip,
+           rp.name as router_profile_name, rp.type as router_profile_type,
+           u.email as linked_user_email, u.arabpay_user_id
     FROM customers c
     LEFT JOIN packages p ON c.package_id = p.id
     LEFT JOIN routers r ON c.router_id = r.id
     LEFT JOIN router_profiles rp ON c.router_profile_id = rp.id
     LEFT JOIN users u ON c.user_id = u.id
+    LEFT JOIN olts ol ON c.olt_id = ol.id
     ORDER BY c.created_at DESC
   `);
   return result.rows;
@@ -82,6 +85,9 @@ export async function createCustomer(data: any) {
     sn_onu: data.sn_onu?.trim() || null,
     power_laser: data.power_laser?.trim() || null,
     teknisi: data.teknisi?.trim() || null,
+    olt_id: data.olt_id || null,
+    pon_port: data.pon_port?.trim() || null,
+    onu_id: data.onu_id ? parseInt(String(data.onu_id), 10) : null,
     latitude: lat,
     longitude: lng,
     maps_url: mapUrl,
@@ -108,16 +114,18 @@ export async function createCustomer(data: any) {
       id, user_id, customer_code, name, phone_number, address, connection_type, 
       dusun, desa, kecamatan, kabupaten, provinsi,
       pppoe_username, pppoe_password, static_ip, installation_date, expired_at, grace_until,
-      odp_port, sn_onu, power_laser, teknisi, latitude, longitude, maps_url, package_id, custom_price, router_id, router_profile_id, status, is_synced
+      odp_port, sn_onu, power_laser, teknisi, olt_id, pon_port, onu_id,
+      latitude, longitude, maps_url, package_id, custom_price, router_id, router_profile_id, status, is_synced
     )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, true)
-    RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price, created_at
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, true)
+    RETURNING id, user_id, customer_code, name, phone_number, pppoe_username, latitude, longitude, maps_url, dusun, desa, kecamatan, kabupaten, provinsi, status, custom_price, olt_id, pon_port, onu_id, created_at
   `, [
     customerId, linkedUserId, code, data.name.trim(), cleanPhone, data.address?.trim() || null, data.connection_type || 'pppoe',
     data.dusun?.trim() || null, data.desa?.trim() || null, data.kecamatan?.trim() || null, data.kabupaten?.trim() || null, data.provinsi?.trim() || null,
     data.pppoe_username?.trim() || null, data.pppoe_password?.trim() || null,
     data.static_ip?.trim() || null, data.installation_date || now, data.expired_at || null, data.grace_until || null,
     data.odp_port?.trim() || null, data.sn_onu?.trim() || null, data.power_laser?.trim() || null, data.teknisi?.trim() || null,
+    data.olt_id || null, data.pon_port?.trim() || null, data.onu_id ? parseInt(String(data.onu_id), 10) : null,
     lat, lng, mapUrl,
     data.package_id, customPriceVal, data.router_id || null, data.router_profile_id || null, data.status || 'active'
   ]);

@@ -85,6 +85,7 @@ export default function Sidebar({
       icon: Network,
       roles: ['owner', 'teknisi', 'marketing', 'kasir'],
       items: [
+        { id: 'olts', label: 'Perangkat OLT (SSH)', icon: Radio, roles: ['owner', 'teknisi'] },
         { id: 'map-ftth', label: 'Peta FTTH', icon: MapPin, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'hardware', label: 'Spesifikasi Hardware', icon: Cpu, roles: ['owner', 'teknisi', 'marketing', 'kasir'] },
         { id: 'ftth-splitter', label: 'Master Splitter', icon: Settings, roles: ['owner', 'teknisi'] },

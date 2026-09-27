@@ -53,6 +53,7 @@ import CustomerManagement from './components/CustomerManagement';
 import HotspotCustomerManagement from './components/HotspotCustomerManagement';
 import PackageManagement from './components/PackageManagement';
 import RouterManagement from './components/RouterManagement';
+import OltManagement from './components/OltManagement';
 import TrafficMonitorPage from './components/TrafficMonitorPage';
 import ProfileManagement from './components/ProfileManagement';
 import HotspotVoucherManagement from './components/HotspotVoucherManagement';
@@ -1123,6 +1124,15 @@ const safeFormatDate = (val: any): string => {
       case 'routers':
         return (
           <RouterManagement
+            profile={profile}
+            t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'olts':
+      case 'olt-management':
+        return (
+          <OltManagement
             profile={profile}
             t={t}
             onLogout={handleLogout}

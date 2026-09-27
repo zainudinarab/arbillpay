@@ -255,6 +255,27 @@ export async function initDatabaseSchema() {
         uptime VARCHAR(64),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS olts (
+        id VARCHAR(64) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        brand VARCHAR(64) NOT NULL DEFAULT 'zte',
+        model VARCHAR(64) DEFAULT 'C320',
+        ip_address VARCHAR(64) NOT NULL,
+        ssh_port INT DEFAULT 22,
+        telnet_port INT DEFAULT 23,
+        protocol VARCHAR(16) DEFAULT 'ssh',
+        username VARCHAR(128) NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        enable_password VARCHAR(255),
+        snmp_port INT DEFAULT 161,
+        snmp_community VARCHAR(128) DEFAULT 'public',
+        total_pon_ports INT DEFAULT 8,
+        linked_node_id VARCHAR(64),
+        status VARCHAR(32) DEFAULT 'online',
+        last_checked_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
     `).catch((err) => console.warn('Base table init notice:', err.message));
 
     // 1. Alter & Patch router_profiles table columns (CRITICAL FIX)
@@ -363,7 +384,10 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS is_online BOOLEAN DEFAULT false,
       ADD COLUMN IF NOT EXISTS last_connected_at TIMESTAMP WITH TIME ZONE,
       ADD COLUMN IF NOT EXISTS last_disconnected_at TIMESTAMP WITH TIME ZONE,
-      ADD COLUMN IF NOT EXISTS current_ip VARCHAR(64);
+      ADD COLUMN IF NOT EXISTS current_ip VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS olt_id VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS pon_port VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS onu_id INT;
     `).catch((err) => console.warn('Patch customers notice:', err.message));
     console.log('✅ customers schema (mikrotik_id, is_synced, online tracking, address fields) patched successfully!');
 
