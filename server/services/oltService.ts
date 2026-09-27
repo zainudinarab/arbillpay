@@ -6,7 +6,7 @@
  */
 
 import { getOltDriver, getAllOltDriverCapabilities } from './olt/driverFactory.js';
-import { 
+import type { 
   OltRecord, 
   OnuInfo, 
   OnuOpticalReading, 
@@ -18,14 +18,16 @@ import {
 import { executeOltSshCommands } from './olt/baseSshDriver.js';
 
 // Re-export tipe untuk modul lain
-export { 
+export type { 
   OltRecord, 
   OnuInfo, 
   OnuOpticalReading, 
   RegisterOnuParams, 
   UnconfiguredOnu,
   OltCapabilities,
-  SnmpOnuTelemetry,
+  SnmpOnuTelemetry 
+};
+export { 
   getOltDriver,
   getAllOltDriverCapabilities,
   executeOltSshCommands

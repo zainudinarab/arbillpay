@@ -11,7 +11,7 @@ import {
   enableOltSnmpCLI,
   getOltDriver,
   fetchOltSnmpTelemetry,
-  OltRecord
+  type OltRecord
 } from '../services/oltService.js';
 import { testSnmpConnection, fetchOltOnuTelemetryViaSnmp } from '../services/snmpService.js';
 

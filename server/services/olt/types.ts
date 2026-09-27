@@ -8,8 +8,11 @@ export interface OltCapabilities {
   canConfigureWifiSsid: boolean;       // Mengubah nama SSID / Password WiFi dari OLT
   canControlCatv: boolean;             // Kontrol port TV kabel / RF (CATV On/Off)
   canRemoteReboot: boolean;            // Restart ONU dari jarak jauh via CLI/OMCI
-  canScanUnconfigured: boolean;        // Deteksi modem baru yang dicolok tapi belum terdaftar (Unauth / Autofind)
+  // SNMP Telemetry Monitoring
   snmpTelemetrySupported: boolean;     // Dukungan telemetri massal super cepat via SNMP
+  snmpReadTemperature?: boolean;       // Sensor suhu via SNMP
+  snmpReadVoltage?: boolean;           // Tegangan voltase via SNMP
+  snmpReadTrafficBytes?: boolean;      // Akumulasi kuota trafik via SNMP IF-MIB
   snmpEnterpriseOid?: string;          // OID Enterprise vendor (cth: 37950 untuk VSOL/HSAirPo)
 }
 

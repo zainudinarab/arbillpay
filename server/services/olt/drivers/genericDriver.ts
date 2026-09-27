@@ -25,7 +25,10 @@ export class GenericDriver implements IOltDriver {
       canControlCatv: false,
       canRemoteReboot: true,
       canScanUnconfigured: false,
-      snmpTelemetrySupported: false
+      snmpTelemetrySupported: false,
+      snmpReadTemperature: false,
+      snmpReadVoltage: false,
+      snmpReadTrafficBytes: false
     };
   }
 

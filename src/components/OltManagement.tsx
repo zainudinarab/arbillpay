@@ -37,6 +37,24 @@ import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
 import { getApiUrl } from '../config/api';
 
+export interface OltCapabilities {
+  brandName: string;
+  family: string;
+  canReadOpticalPower: boolean;
+  canReadTemperature: boolean;
+  canReadVoltage: boolean;
+  canConfigureWanMode: boolean;
+  canConfigureWifiSsid: boolean;
+  canControlCatv: boolean;
+  canRemoteReboot: boolean;
+  canScanUnconfigured: boolean;
+  snmpTelemetrySupported: boolean;
+  snmpReadTemperature?: boolean;
+  snmpReadVoltage?: boolean;
+  snmpReadTrafficBytes?: boolean;
+  snmpEnterpriseOid?: string;
+}
+
 export interface OltItem {
   id: string;
   name: string;
@@ -59,6 +77,7 @@ export interface OltItem {
   status?: string;
   last_checked_at?: string;
   created_at?: string;
+  capabilities?: OltCapabilities;
 }
 
 export interface MapNodeItem {
@@ -176,6 +195,7 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
   const [syncingOlt, setSyncingOlt] = useState(false);
   const [syncingSnmp, setSyncingSnmp] = useState(false);
   const [selectedOnuForDetail, setSelectedOnuForDetail] = useState<OnuListItem | null>(null);
+  const [showCapabilitiesModal, setShowCapabilitiesModal] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(true);
   const [readingOpticalId, setReadingOpticalId] = useState<string | null>(null);
@@ -1139,12 +1159,23 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 </div>
 
                 {selectedOltItem && (
-                  <div className="self-end pb-1">
+                  <div className="self-end pb-1 flex items-center gap-2 flex-wrap">
                     <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5">
-                      <span>Protokol:</span>
-                      <strong className="font-mono">{selectedOltItem.protocol?.toUpperCase()}</strong>
-                      <span>(Port {selectedOltItem.ssh_port || 22})</span>
+                      <span>Driver:</span>
+                      <strong className="font-mono text-indigo-700">
+                        {selectedOltItem.capabilities?.brandName || selectedOltItem.brand.toUpperCase()}
+                      </strong>
                     </span>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowCapabilitiesModal(true)}
+                      className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                      title="Lihat daftar kemampuan apa saja yang didukung oleh OLT ini (SSH vs SNMP)"
+                    >
+                      <Sliders size={13} className="text-indigo-600" />
+                      <span>Kemampuan Fitur</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1174,12 +1205,26 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 <button
                   type="button"
                   onClick={handleSyncSnmp}
-                  disabled={syncingSnmp}
-                  className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-                  title="Tarik telemetri optik (Rx/Tx dBm), suhu, voltase & kuota trafik dari semua ONU secepat kilat via SNMP"
+                  disabled={syncingSnmp || (selectedOltItem?.capabilities ? !selectedOltItem.capabilities.snmpTelemetrySupported : false)}
+                  className={`px-3.5 py-2 font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                    selectedOltItem?.capabilities && !selectedOltItem.capabilities.snmpTelemetrySupported
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                      : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white disabled:opacity-50'
+                  }`}
+                  title={
+                    selectedOltItem?.capabilities && !selectedOltItem.capabilities.snmpTelemetrySupported
+                      ? 'Fitur SNMP telemetri belum didukung untuk merek OLT ini'
+                      : 'Tarik telemetri optik (Rx/Tx dBm), suhu, voltase & kuota trafik dari semua ONU secepat kilat via SNMP'
+                  }
                 >
                   <Thermometer size={14} className={syncingSnmp ? 'animate-spin' : ''} />
-                  <span>{syncingSnmp ? 'Membaca Sensor...' : '⚡ Sync Telemetri (SNMP)'}</span>
+                  <span>
+                    {syncingSnmp
+                      ? 'Membaca Sensor...'
+                      : selectedOltItem?.capabilities && !selectedOltItem.capabilities.snmpTelemetrySupported
+                      ? 'SNMP Tidak Didukung'
+                      : '⚡ Sync Telemetri (SNMP)'}
+                  </span>
                 </button>
 
                 <button
@@ -1201,15 +1246,90 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 <button
                   type="button"
                   onClick={handleScanUnconfigured}
-                  disabled={scanningUncfg}
-                  className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-                  title="Pindai modem baru yang dicolok di lapangan tapi belum di-register"
+                  disabled={scanningUncfg || (selectedOltItem?.capabilities ? !selectedOltItem.capabilities.canScanUnconfigured : false)}
+                  className={`px-3.5 py-2 font-extrabold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all ${
+                    selectedOltItem?.capabilities && !selectedOltItem.capabilities.canScanUnconfigured
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white disabled:opacity-50'
+                  }`}
+                  title={
+                    selectedOltItem?.capabilities && !selectedOltItem.capabilities.canScanUnconfigured
+                      ? 'Scan modem belum didukung untuk merek ini'
+                      : 'Pindai modem baru yang dicolok di lapangan tapi belum di-register'
+                  }
                 >
                   <Sparkles size={14} className={scanningUncfg ? 'animate-spin' : ''} />
-                  <span>{scanningUncfg ? 'Memindai...' : 'Scan Modem Baru'}</span>
+                  <span>
+                    {scanningUncfg
+                      ? 'Memindai...'
+                      : selectedOltItem?.capabilities && !selectedOltItem.capabilities.canScanUnconfigured
+                      ? 'Scan Tidak Didukung'
+                      : 'Scan Modem Baru'}
+                  </span>
                 </button>
               </div>
             </div>
+
+            {/* Capability Ribbon Bar */}
+            {selectedOltItem?.capabilities && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider mr-1">
+                    Kemampuan Driver OLT:
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                    <CheckCircle2 size={11} className="text-emerald-600" />
+                    <span>SSH CLI Kontrol</span>
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                    selectedOltItem.capabilities.snmpTelemetrySupported
+                      ? 'bg-cyan-50 text-cyan-800 border-cyan-200'
+                      : 'bg-slate-100 text-slate-400 border-slate-200'
+                  }`}>
+                    {selectedOltItem.capabilities.snmpTelemetrySupported ? <CheckCircle2 size={11} className="text-cyan-600" /> : <X size={11} />}
+                    <span>SNMP Bulk Telemetri</span>
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                    selectedOltItem.capabilities.canReadTemperature
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-slate-100 text-slate-400 border-slate-200'
+                  }`}>
+                    {selectedOltItem.capabilities.canReadTemperature ? <Thermometer size={11} className="text-amber-600" /> : <X size={11} />}
+                    <span>Suhu Chipset ({selectedOltItem.capabilities.canReadTemperature ? 'Aktif' : 'N/A'})</span>
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                    selectedOltItem.capabilities.canReadVoltage
+                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                      : 'bg-slate-100 text-slate-400 border-slate-200'
+                  }`}>
+                    {selectedOltItem.capabilities.canReadVoltage ? <BatteryCharging size={11} className="text-blue-600" /> : <X size={11} />}
+                    <span>Voltase ({selectedOltItem.capabilities.canReadVoltage ? 'Aktif' : 'N/A'})</span>
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                    selectedOltItem.capabilities.canConfigureWanMode
+                      ? 'bg-purple-50 text-purple-800 border-purple-200'
+                      : 'bg-slate-100 text-slate-400 border-slate-200'
+                  }`}>
+                    {selectedOltItem.capabilities.canConfigureWanMode ? <Radio size={11} className="text-purple-600" /> : <X size={11} />}
+                    <span>Mode WAN ({selectedOltItem.capabilities.canConfigureWanMode ? 'Didukung' : 'N/A'})</span>
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCapabilitiesModal(true)}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer ml-auto"
+                >
+                  <span>Detail Matriks</span>
+                  <Info size={12} />
+                </button>
+              </div>
+            )}
 
             {/* Unconfigured ONUs Alert Box (if any found) */}
             {uncfgList.length > 0 && (
@@ -2351,6 +2471,235 @@ export default function OltManagement({ profile, t, onLogout }: OltManagementPro
                 className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
               >
                 Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ================= MODAL MATRIKS KEMAMPUAN OLT ================= */}
+      {showCapabilitiesModal && selectedOltItem && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-2xl border border-slate-100 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center font-bold shadow-inner">
+                  <Sliders size={22} className="text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base tracking-tight text-white flex items-center gap-2">
+                    <span>Matriks Kemampuan Driver OLT</span>
+                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 text-[10px] font-mono uppercase">
+                      {selectedOltItem.brand.toUpperCase()}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-indigo-200/80 font-mono mt-0.5">
+                    Perangkat: {selectedOltItem.name} ({selectedOltItem.ip_address}) — {selectedOltItem.capabilities?.brandName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCapabilitiesModal(false)}
+                className="p-2 text-indigo-200 hover:text-white rounded-xl hover:bg-white/10 transition-all cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(92vh-140px)] text-xs">
+              <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-100 text-blue-900 space-y-1">
+                <strong className="font-extrabold block text-xs flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-blue-600" />
+                  Konsep Kerjasama Dua Jalur: SSH CLI + SNMP
+                </strong>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  <strong>Jalur SSH CLI:</strong> Menjalankan konfigurasi, perintah kontrol, registrasi ONU, reboot, dan manajemen port.<br />
+                  <strong>Jalur SNMP:</strong> Membaca sensor telemetri massal (suhu, voltase, redaman Rx/Tx, arus bias, dan byte kuota download/upload) secara paralel dalam milidetik tanpa membebani CPU OLT.
+                </p>
+              </div>
+
+              {/* Tabel Matriks SSH vs SNMP */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Kolom 1: Jalur SSH CLI */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                    <Terminal size={16} className="text-emerald-600" />
+                    <h4 className="font-black uppercase tracking-wider text-slate-800 text-[11px]">
+                      Jalur 1: SSH CLI (Kontrol & Setting)
+                    </h4>
+                  </div>
+
+                  <ul className="space-y-2">
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Ambil Daftar ONU Terdaftar</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Ukur Redaman Optik Live</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Reboot / Restart ONU</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Daftarkan ONU Baru</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Deregister / Hapus ONU</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Scan Modem Baru (Autofind)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canScanUnconfigured
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canScanUnconfigured ? '✓ Aktif' : '✕ Tidak Didukung'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Ubah Mode WAN (Bridge / PPPoE)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canConfigureWanMode
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canConfigureWanMode ? '✓ Didukung' : '✕ Tidak Didukung'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Ganti WiFi SSID / Password</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canConfigureWifiSsid
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canConfigureWifiSsid ? '✓ Didukung' : '✕ Tidak Didukung'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Kontrol TV Kabel (Port CATV)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canControlCatv
+                          ? 'bg-purple-100 text-purple-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canControlCatv ? '✓ Didukung' : '✕ Tidak Didukung'}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Kolom 2: Jalur SNMP Monitoring */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
+                    <Activity size={16} className="text-cyan-600" />
+                    <h4 className="font-black uppercase tracking-wider text-slate-800 text-[11px]">
+                      Jalur 2: SNMP (Monitoring & Telemetri)
+                    </h4>
+                  </div>
+
+                  <ul className="space-y-2">
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Bulk Telemetri Paralel</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.snmpTelemetrySupported
+                          ? 'bg-cyan-100 text-cyan-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.snmpTelemetrySupported ? '✓ Aktif' : '✕ Tidak Didukung'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Sensor Suhu Chipset ONU (°C)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canReadTemperature
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canReadTemperature ? '✓ Aktif' : '✕ Tidak Tersedia'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Sensor Tegangan Voltase (V)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canReadVoltage
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canReadVoltage ? '✓ Aktif' : '✕ Tidak Tersedia'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Redaman Optik (Rx/Tx dBm)</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Arus Bias Laser (mA)</span>
+                      <span className={`px-2 py-0.5 rounded-md font-extrabold text-[10px] ${
+                        selectedOltItem.capabilities?.canReadVoltage
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {selectedOltItem.capabilities?.canReadVoltage ? '✓ Aktif' : '✕ Tidak Tersedia'}
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Akumulasi Kuota Trafik (Bytes)</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px]">
+                        ✓ Aktif (IF-MIB)
+                      </span>
+                    </li>
+
+                    <li className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-100">
+                      <span className="font-bold text-slate-700">Vendor Enterprise MIB OID</span>
+                      <span className="font-mono text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                        {selectedOltItem.capabilities?.snmpEnterpriseOid || '-'}
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50/70 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowCapabilitiesModal(false)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-xs cursor-pointer"
+              >
+                Tutup Matriks
               </button>
             </div>
           </div>

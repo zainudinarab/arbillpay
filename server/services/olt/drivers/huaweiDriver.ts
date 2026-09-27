@@ -27,6 +27,9 @@ export class HuaweiDriver implements IOltDriver {
       canRemoteReboot: true,
       canScanUnconfigured: true,    // Autofind
       snmpTelemetrySupported: true,
+      snmpReadTemperature: false,
+      snmpReadVoltage: false,
+      snmpReadTrafficBytes: true,
       snmpEnterpriseOid: '1.3.6.1.4.1.2011'
     };
   }

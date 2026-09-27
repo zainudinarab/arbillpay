@@ -27,6 +27,9 @@ export class ZteDriver implements IOltDriver {
       canRemoteReboot: true,
       canScanUnconfigured: true,
       snmpTelemetrySupported: true,
+      snmpReadTemperature: true,
+      snmpReadVoltage: true,
+      snmpReadTrafficBytes: true,
       snmpEnterpriseOid: '1.3.6.1.4.1.3902'
     };
   }
