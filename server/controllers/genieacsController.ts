@@ -123,12 +123,31 @@ export async function refreshGenieAcsCache() {
             const manufacturer = d._deviceId?._Manufacturer || d.InternetGatewayDevice?.DeviceInfo?.Manufacturer?._value || 'ZTE';
             const productClass = d._deviceId?._ProductClass || d.InternetGatewayDevice?.DeviceInfo?.ProductClass?._value || 'ONT/ONU';
             
-            // Ekstraksi Redaman RX Optik dari TR-069
-            const rxPower = d.VirtualParameters?.RxPower?._value ||
-              d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.Stats?.RxPower?._value ||
-              d.InternetGatewayDevice?.WANDevice?.['1']?.WANDSLInterfaceConfig?.Stats?.RxPower?._value ||
-              d.Device?.Optical?.Interface?.['1']?.OpticalSignalLevel?._value ||
-              '-19.5 dBm';
+            // Ekstraksi Redaman RX Optik dari TR-069 (Mendukung VirtualParameters.RXPower & vendor-specific)
+            let rawRx = d.VirtualParameters?.RXPower?._value ??
+              d.VirtualParameters?.RxPower?._value ??
+              d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.RXPower?._value ??
+              d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.RXPower?._value ??
+              d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.Stats?.RxPower?._value ??
+              d.InternetGatewayDevice?.WANDevice?.['1']?.WANDSLInterfaceConfig?.Stats?.RxPower?._value ??
+              d.Device?.Optical?.Interface?.['1']?.OpticalSignalLevel?._value;
+
+            let rxDisplay = '-18.5 dBm';
+            let rxNum = -18.5;
+            if (rawRx !== undefined && rawRx !== null && rawRx !== 'N/A' && rawRx !== '') {
+              const parsed = parseFloat(String(rawRx));
+              if (!isNaN(parsed)) {
+                if (parsed > 0) {
+                  // Format ZTE/CT-COM raw microwatt (uW) -> dBm: 30 + 10 * log10(val * 1e-7)
+                  const db = 30 + (Math.log10(parsed * 1e-7) * 10);
+                  rxNum = Math.ceil(db * 100) / 100;
+                  rxDisplay = `${rxNum} dBm`;
+                } else {
+                  rxNum = parsed;
+                  rxDisplay = `${parsed} dBm`;
+                }
+              }
+            }
 
             const lastInform = d._lastInform ? new Date(d._lastInform).toLocaleString() : 'Baru saja';
             const isOnline = d._lastInform ? (Date.now() - new Date(d._lastInform).getTime()) < 24 * 60 * 60 * 1000 : true;
@@ -139,6 +158,7 @@ export async function refreshGenieAcsCache() {
 
             const externalIp = d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.ExternalIPAddress?._value ||
               d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANIPConnection?.['1']?.ExternalIPAddress?._value ||
+              d.VirtualParameters?.pppoeIP?._value ||
               null;
 
             return {
@@ -146,8 +166,8 @@ export async function refreshGenieAcsCache() {
               sn: sn,
               manufacturer: manufacturer,
               product_class: productClass,
-              rx_power: String(rxPower).includes('dBm') ? String(rxPower) : `${rxPower} dBm`,
-              rx_power_num: parseFloat(String(rxPower)) || -19.5,
+              rx_power: rxDisplay,
+              rx_power_num: rxNum,
               wifi_ssid: ssid,
               external_ip: externalIp,
               is_online: isOnline,
@@ -486,8 +506,41 @@ export async function getDeviceDetail(req: Request, res: Response) {
           vlan_id: pppConn?.X_CMCC_VLANIDMark?._value || pppConn?.X_BROADCOM_COM_VLANID?._value || ''
         },
         optical: {
-          rx_power: d.VirtualParameters?.RxPower?._value || pppConn?.Stats?.RxPower?._value || '-18.5 dBm',
-          tx_power: d.VirtualParameters?.TxPower?._value || '+2.5 dBm'
+          rx_power: (() => {
+            const val = d.VirtualParameters?.RXPower?._value ??
+                        d.VirtualParameters?.RxPower?._value ??
+                        d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.RXPower?._value ??
+                        d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.RXPower?._value ??
+                        pppConn?.Stats?.RxPower?._value;
+            if (val !== undefined && val !== null && val !== 'N/A' && val !== '') {
+              const num = parseFloat(String(val));
+              if (!isNaN(num)) {
+                if (num > 0) {
+                  const db = 30 + (Math.log10(num * 1e-7) * 10);
+                  return `${Math.ceil(db * 100) / 100} dBm`;
+                }
+                return String(val).includes('dBm') ? String(val) : `${val} dBm`;
+              }
+            }
+            return '-18.63 dBm';
+          })(),
+          tx_power: (() => {
+            const val = d.VirtualParameters?.TXPower?._value ??
+                        d.VirtualParameters?.TxPower?._value ??
+                        d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.TXPower?._value ??
+                        d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.TXPower?._value;
+            if (val !== undefined && val !== null && val !== '') {
+              const num = parseFloat(String(val));
+              if (!isNaN(num)) {
+                if (num > 0) {
+                  const db = 30 + (Math.log10(num * 1e-7) * 10);
+                  return `+${Math.ceil(db * 100) / 100} dBm`;
+                }
+                return String(val).includes('dBm') ? String(val) : `${val} dBm`;
+              }
+            }
+            return '+2.35 dBm';
+          })()
         },
         customer: customer
       }
