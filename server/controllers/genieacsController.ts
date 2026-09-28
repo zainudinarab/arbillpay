@@ -416,6 +416,10 @@ export async function getDeviceDetail(req: Request, res: Response) {
     for (const [wKey, wVal] of Object.entries(wanConnDevices)) {
       if (wKey.startsWith('_') || !wVal) continue;
       const wObj = wVal as any;
+      const linkCfg = wObj['X_CT-COM_WANGponLinkConfig'] || wObj['X_CT-COM_WANEponLinkConfig'] || {};
+      const commonVlan = linkCfg?.VLANIDMark?._value ?? '';
+      const commonVlanEnabled = linkCfg?.Enable?._value !== false;
+      const commonPriority = linkCfg?.['802-1pMark']?._value ?? 0;
 
       if (wObj.WANPPPConnection) {
         for (const [pKey, pVal] of Object.entries(wObj.WANPPPConnection)) {
@@ -426,8 +430,16 @@ export async function getDeviceDetail(req: Request, res: Response) {
             wanConnKey = wKey;
             pppKey = pKey;
           }
+
+          const vlanId = commonVlan || pObj.X_CMCC_VLANIDMark?._value || pObj.X_BROADCOM_COM_VLANID?._value || pObj.X_HW_VLAN?._value || pObj['X_ZTE-COM_VLANID']?._value || '';
+          const serviceList = pObj['X_CT-COM_ServiceList']?._value || pObj['X_ZTE-COM_ServiceList']?._value || pObj.X_CMCC_ServiceList?._value || pObj.X_HW_SERVICELIST?._value || 'INTERNET';
+          const portBindingRaw = pObj['X_CT-COM_LanInterface']?._value || pObj['X_ZTE-COM_LanInterface']?._value || '';
+          const connType = pObj.ConnectionType?._value || 'IP_Routed';
+
           wanConnections.push({
-            type: 'PPPoE',
+            conn_type: 'PPP',
+            type: connType === 'PPPoE_Bridged' ? 'Bridge Hotspot' : 'PPPoE',
+            mode: connType === 'PPPoE_Bridged' ? 'bridge' : 'pppoe',
             wan_index: wKey,
             sub_index: pKey,
             name: pObj.Name?._value || `PPP-${wKey}.${pKey}`,
@@ -436,7 +448,14 @@ export async function getDeviceDetail(req: Request, res: Response) {
             status: pObj.ConnectionStatus?._value || 'Connected',
             mac: pObj.MACAddress?._value || '',
             uptime: pObj.Uptime?._value || 0,
-            vlan_id: pObj.X_CMCC_VLANIDMark?._value || pObj.X_BROADCOM_COM_VLANID?._value || ''
+            vlan_id: String(vlanId),
+            vlan_enabled: commonVlanEnabled,
+            priority: Number(commonPriority) || 0,
+            service_list: serviceList,
+            port_binding: portBindingRaw,
+            mtu: pObj.MaxMRUSize?._value || pObj.CurrentMRUSize?._value || 1492,
+            nat_enabled: pObj.NATEnabled?._value !== false && pObj.NATEnabled?._value !== 'FALSE',
+            is_tr069: String(pObj.Name?._value || '').toUpperCase().includes('TR069') || String(serviceList).toUpperCase().includes('TR069')
           });
         }
       }
@@ -445,8 +464,14 @@ export async function getDeviceDetail(req: Request, res: Response) {
         for (const [iKey, iVal] of Object.entries(wObj.WANIPConnection)) {
           if (iKey.startsWith('_') || !iVal) continue;
           const iObj = iVal as any;
+          const vlanId = commonVlan || iObj.X_CMCC_VLANIDMark?._value || iObj.X_BROADCOM_COM_VLANID?._value || iObj.X_HW_VLAN?._value || iObj['X_ZTE-COM_VLANID']?._value || '';
+          const serviceList = iObj['X_CT-COM_ServiceList']?._value || iObj['X_ZTE-COM_ServiceList']?._value || iObj.X_CMCC_ServiceList?._value || iObj.X_HW_SERVICELIST?._value || 'TR069';
+          const portBindingRaw = iObj['X_CT-COM_LanInterface']?._value || iObj['X_ZTE-COM_LanInterface']?._value || '';
+
           wanConnections.push({
-            type: 'IPoE / DHCP (TR-069)',
+            conn_type: 'IP',
+            type: 'IPoE / DHCP',
+            mode: 'ipoe',
             wan_index: wKey,
             sub_index: iKey,
             name: iObj.Name?._value || `IP-${wKey}.${iKey}`,
@@ -455,7 +480,14 @@ export async function getDeviceDetail(req: Request, res: Response) {
             status: 'Connected',
             mac: iObj.MACAddress?._value || '',
             uptime: 0,
-            vlan_id: iObj.X_CMCC_VLANIDMark?._value || iObj.X_CT_COM_VLANID?._value || ''
+            vlan_id: String(vlanId),
+            vlan_enabled: commonVlanEnabled,
+            priority: Number(commonPriority) || 0,
+            service_list: serviceList,
+            port_binding: portBindingRaw,
+            mtu: 1500,
+            nat_enabled: false,
+            is_tr069: true
           });
         }
       }
@@ -551,7 +583,7 @@ export async function getDeviceDetail(req: Request, res: Response) {
 }
 
 /**
- * Mengubah Pengaturan WAN / PPPoE via TR-069
+ * Mengubah Pengaturan WAN / PPPoE via TR-069 lengkap (Mirip Masuk Web Modem)
  */
 export async function updateDeviceWan(req: Request, res: Response) {
   const { device_id } = req.params;
@@ -560,25 +592,82 @@ export async function updateDeviceWan(req: Request, res: Response) {
     username, 
     password, 
     vlan_id, 
-    wan_conn_index = '1', 
-    ppp_index = '1' 
+    vlan_enabled = true,
+    priority = 0,
+    service_list = 'INTERNET',
+    port_binding = [],
+    mtu = 1492,
+    nat_enabled = true,
+    wan_conn_index = '3', 
+    ppp_index = '1',
+    conn_type = 'PPP'
   } = req.body;
   const cleanUrl = genieAcsSettings.url;
 
   const parameterValues: [string, any, string][] = [];
 
+  // 1. VLAN ID & 802.1p Priority (Mendukung ZTE CT-COM GPON/EPON & CMCC/Huawei)
+  if (vlan_id !== undefined && vlan_id !== null && vlan_id !== '') {
+    const vlanNum = parseInt(String(vlan_id), 10);
+    if (!isNaN(vlanNum)) {
+      // ZTE GPON Link Config
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.X_CT-COM_WANGponLinkConfig.VLANIDMark`, String(vlanNum), 'xsd:unsignedInt'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.X_CT-COM_WANGponLinkConfig.Enable`, vlan_enabled ? 'true' : 'false', 'xsd:boolean'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.X_CT-COM_WANGponLinkConfig.802-1pMark`, String(priority || 0), 'xsd:unsignedInt'
+      ]);
+      // ZTE EPON Link Config
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.X_CT-COM_WANEponLinkConfig.VLANIDMark`, String(vlanNum), 'xsd:unsignedInt'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.X_CT-COM_WANEponLinkConfig.Enable`, vlan_enabled ? 'true' : 'false', 'xsd:boolean'
+      ]);
+      // CMCC / Generic Broadcom
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlanNum), 'xsd:unsignedInt'
+      ]);
+    }
+  }
+
+  // 2. Service List (INTERNET, OTHER, TR069, VOIP)
+  if (service_list) {
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CT-COM_ServiceList`, String(service_list), 'xsd:string'
+    ]);
+  }
+
+  // 3. Port Binding (LAN1-4 & SSID1-4)
+  if (Array.isArray(port_binding)) {
+    const mappedPorts = port_binding.map((p: string) => {
+      if (p.startsWith('LAN')) {
+        const idx = p.replace('LAN', '');
+        return `InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.${idx}`;
+      }
+      if (p.startsWith('SSID')) {
+        const idx = p.replace('SSID', '');
+        return `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${idx}`;
+      }
+      return p;
+    }).join(',');
+
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CT-COM_LanInterface`, mappedPorts, 'xsd:string'
+    ]);
+  }
+
+  // 4. Mode Operasi (PPPoE Route vs Bridge Hotspot)
   if (mode === 'bridge') {
     parameterValues.push([
       `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.ConnectionType`, 'PPPoE_Bridged', 'xsd:string'
     ]);
     parameterValues.push([
-      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, 'FALSE', 'xsd:boolean'
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, 'false', 'xsd:boolean'
     ]);
-    if (vlan_id) {
-      parameterValues.push([
-        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
-      ]);
-    }
   } else {
     // Mode PPPoE Route
     if (!username) {
@@ -589,7 +678,7 @@ export async function updateDeviceWan(req: Request, res: Response) {
       `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.ConnectionType`, 'IP_Routed', 'xsd:string'
     ]);
     parameterValues.push([
-      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, 'TRUE', 'xsd:boolean'
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.NATEnabled`, nat_enabled ? 'true' : 'false', 'xsd:boolean'
     ]);
     parameterValues.push([
       `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.Username`, username, 'xsd:string'
@@ -601,9 +690,9 @@ export async function updateDeviceWan(req: Request, res: Response) {
       ]);
     }
 
-    if (vlan_id) {
+    if (mtu) {
       parameterValues.push([
-        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.X_CMCC_VLANIDMark`, String(vlan_id), 'xsd:unsignedInt'
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}.WANPPPConnection.${ppp_index}.MaxMRUSize`, String(mtu), 'xsd:unsignedInt'
       ]);
     }
   }
@@ -622,10 +711,68 @@ export async function updateDeviceWan(req: Request, res: Response) {
       const modeDesc = mode === 'bridge' ? 'Bridge Hotspot (Voucher)' : `PPPoE Route (${username})`;
       res.json({
         success: true,
-        message: `🌐 Pengaturan WAN ${modeDesc} berhasil dikirim ke ONT "${device_id}" via TR-069!`
+        message: `🌐 Pengaturan WAN ${modeDesc} (VLAN ${vlan_id || 'Off'}) berhasil dikirim ke ONT "${device_id}" via TR-069!`
       });
     } else {
       res.status(500).json({ success: false, message: `GenieACS gagal memproses task WAN (HTTP ${r.status})` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Hapus Profil WAN via TR-069 (deleteObject)
+ */
+export async function deleteDeviceWan(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const { wan_conn_index, name = '' } = req.body;
+  if (!wan_conn_index) return res.status(400).json({ success: false, message: 'wan_conn_index wajib disertakan.' });
+
+  // Proteksi: jangan hapus profil TR-069 management!
+  if (String(name).toUpperCase().includes('TR069')) {
+    return res.status(403).json({ success: false, message: 'Profil TR-069 Management dilindungi dan tidak boleh dihapus agar modem tidak putus koneksi.' });
+  }
+
+  const cleanUrl = genieAcsSettings.url;
+  try {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'deleteObject',
+        objectName: `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${wan_conn_index}`
+      })
+    });
+    if (r.ok) {
+      res.json({ success: true, message: `🗑️ Profil WAN "${name || wan_conn_index}" berhasil dihapus dari ONT via TR-069!` });
+    } else {
+      res.status(500).json({ success: false, message: `GenieACS mengembalikan status HTTP ${r.status}` });
+    }
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Tambah Profil WAN Baru via TR-069 (addObject)
+ */
+export async function createDeviceWan(req: Request, res: Response) {
+  const { device_id } = req.params;
+  const cleanUrl = genieAcsSettings.url;
+  try {
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'addObject',
+        objectName: `InternetGatewayDevice.WANDevice.1.WANConnectionDevice`
+      })
+    });
+    if (r.ok) {
+      res.json({ success: true, message: `➕ Permintaan pembuatan profil WAN baru berhasil dikirim ke ONT via TR-069!` });
+    } else {
+      res.status(500).json({ success: false, message: `GenieACS gagal memproses addObject (HTTP ${r.status})` });
     }
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });

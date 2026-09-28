@@ -28,7 +28,8 @@ import {
   EyeOff,
   Cpu,
   Power,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 
@@ -74,14 +75,24 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   const [showWifiPassword, setShowWifiPassword] = useState<boolean>(false);
   const [isWifiSaving, setIsWifiSaving] = useState<boolean>(false);
 
-  const [modalWanMode, setModalWanMode] = useState<'pppoe' | 'bridge'>('pppoe');
+  const [modalWanMode, setModalWanMode] = useState<'pppoe' | 'bridge' | 'ipoe'>('pppoe');
+  const [modalWanName, setModalWanName] = useState<string>('');
   const [modalWanUsername, setModalWanUsername] = useState<string>('');
   const [modalWanPassword, setModalWanPassword] = useState<string>('');
   const [modalWanVlan, setModalWanVlan] = useState<string>('');
+  const [modalWanVlanEnabled, setModalWanVlanEnabled] = useState<boolean>(true);
+  const [modalWanPriority, setModalWanPriority] = useState<number>(0);
+  const [modalWanServiceList, setModalWanServiceList] = useState<string>('INTERNET');
+  const [modalWanPortBinding, setModalWanPortBinding] = useState<string[]>([]);
+  const [modalWanMtu, setModalWanMtu] = useState<number>(1492);
+  const [modalWanNatEnabled, setModalWanNatEnabled] = useState<boolean>(true);
   const [modalWanConnIndex, setModalWanConnIndex] = useState<string>('1');
   const [modalPppIndex, setModalPppIndex] = useState<string>('1');
+  const [selectedWanConnKey, setSelectedWanConnKey] = useState<string>('');
   const [showWanPassword, setShowWanPassword] = useState<boolean>(false);
   const [isWanSaving, setIsWanSaving] = useState<boolean>(false);
+  const [isWanDeleting, setIsWanDeleting] = useState<boolean>(false);
+  const [isWanCreating, setIsWanCreating] = useState<boolean>(false);
 
   const [modalSelectedCustomerId, setModalSelectedCustomerId] = useState<string>('');
   const [customerSearchTerm, setCustomerSearchTerm] = useState<string>('');
@@ -242,10 +253,15 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
           setModalWifiSsid(dev.wlan?.ssid || device.wifi_ssid || '');
           setModalWifiEnabled(dev.wlan?.enabled ?? true);
         }
-        setModalWanUsername(dev.wan?.username || '');
-        setModalWanVlan(dev.wan?.vlan_id || '');
-        setModalWanConnIndex(dev.wan?.wan_conn_index || '1');
-        setModalPppIndex(dev.wan?.ppp_index || '1');
+        if (dev.wan_connections && dev.wan_connections.length > 0) {
+          const nonTr069 = dev.wan_connections.find((w: any) => !w.is_tr069) || dev.wan_connections[0];
+          selectWanProfile(nonTr069);
+        } else {
+          setModalWanUsername(dev.wan?.username || '');
+          setModalWanVlan(dev.wan?.vlan_id || '');
+          setModalWanConnIndex(dev.wan?.wan_conn_index || '1');
+          setModalPppIndex(dev.wan?.ppp_index || '1');
+        }
         if (dev.customer?.id) {
           setModalSelectedCustomerId(dev.customer.id);
         }
@@ -255,6 +271,38 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     } finally {
       setIsDetailLoading(false);
     }
+  };
+
+  // Helper untuk memilih profil WAN yang diedit
+  const selectWanProfile = (wc: any) => {
+    setSelectedWanConnKey(`${wc.wan_index}.${wc.sub_index}`);
+    setModalWanConnIndex(wc.wan_index || '1');
+    setModalPppIndex(wc.sub_index || '1');
+    setModalWanName(wc.name || '');
+    setModalWanMode(wc.mode || (String(wc.type).toLowerCase().includes('bridge') ? 'bridge' : 'pppoe'));
+    setModalWanUsername(wc.username || '');
+    setModalWanPassword('');
+    setModalWanVlan(wc.vlan_id || '');
+    setModalWanVlanEnabled(wc.vlan_enabled ?? true);
+    setModalWanPriority(wc.priority || 0);
+    setModalWanServiceList(wc.service_list || 'INTERNET');
+    setModalWanMtu(wc.mtu || 1492);
+    setModalWanNatEnabled(wc.nat_enabled ?? true);
+
+    const pbRaw = String(wc.port_binding || '');
+    const ports: string[] = [];
+    ['LAN1', 'LAN2', 'LAN3', 'LAN4', 'SSID1', 'SSID2', 'SSID3', 'SSID4'].forEach((p) => {
+      const lanNum = p.replace('LAN', '');
+      const ssidNum = p.replace('SSID', '');
+      if (
+        pbRaw.includes(p) ||
+        (p.startsWith('LAN') && pbRaw.includes(`LANEthernetInterfaceConfig.${lanNum}`)) ||
+        (p.startsWith('SSID') && pbRaw.includes(`WLANConfiguration.${ssidNum}`))
+      ) {
+        ports.push(p);
+      }
+    });
+    setModalWanPortBinding(ports);
   };
 
   // Reboot ONU Device via TR-069
@@ -402,6 +450,12 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
           username: modalWanUsername,
           password: modalWanPassword,
           vlan_id: modalWanVlan,
+          vlan_enabled: modalWanVlanEnabled,
+          priority: modalWanPriority,
+          service_list: modalWanServiceList,
+          port_binding: modalWanPortBinding,
+          mtu: modalWanMtu,
+          nat_enabled: modalWanNatEnabled,
           wan_conn_index: modalWanConnIndex || '1',
           ppp_index: modalPppIndex || '1'
         })
@@ -410,7 +464,7 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
-        fetchData();
+        openManageModal(selectedDeviceForManage, 'wan');
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal memperbarui konfigurasi WAN.' });
       }
@@ -418,6 +472,75 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
       setToastMsg({ type: 'error', text: `Gagal simpan WAN: ${err.message}` });
     } finally {
       setIsWanSaving(false);
+    }
+  };
+
+  // Delete WAN Profile via TR-069
+  const handleDeleteWanProfile = async () => {
+    if (!selectedDeviceForManage || !modalWanConnIndex) return;
+    if (modalWanName.toUpperCase().includes('TR069') || modalWanServiceList.toUpperCase().includes('TR069')) {
+      alert('Peringatan: Profil TR-069 Management dilindungi dan tidak boleh dihapus agar modem tidak kehilangan koneksi ke server.');
+      return;
+    }
+    if (!window.confirm(`Apakah Anda yakin ingin MENGHAPUS profil WAN "${modalWanName || modalWanConnIndex}" dari modem via TR-069?`)) return;
+
+    setIsWanDeleting(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/wan`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wan_conn_index: modalWanConnIndex,
+          name: modalWanName
+        })
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setTimeout(() => {
+          if (selectedDeviceForManage) openManageModal(selectedDeviceForManage, 'wan');
+        }, 1500);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal menghapus profil WAN.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal hapus WAN: ${err.message}` });
+    } finally {
+      setIsWanDeleting(false);
+    }
+  };
+
+  // Create New WAN Profile via TR-069
+  const handleCreateWanProfile = async () => {
+    if (!selectedDeviceForManage) return;
+    if (!window.confirm('Kirim perintah pembuatan profil WAN baru (addObject) ke modem via TR-069?')) return;
+
+    setIsWanCreating(true);
+    setToastMsg(null);
+
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/wan/new`, {
+        method: 'POST'
+      });
+
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({ type: 'success', text: data.message });
+        setTimeout(() => {
+          if (selectedDeviceForManage) openManageModal(selectedDeviceForManage, 'wan');
+        }, 2000);
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal membuat profil WAN baru.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal buat WAN baru: ${err.message}` });
+    } finally {
+      setIsWanCreating(false);
     }
   };
 
@@ -1272,218 +1395,401 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                     {/* TAB 3: WAN / PPPOE */}
                     {manageTab === 'wan' && (
                       <div className="space-y-4">
-                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start gap-3">
-                          <Globe size={20} className="text-indigo-600 mt-0.5 shrink-0" />
-                          <div className="text-xs text-indigo-900 leading-relaxed">
-                            <strong className="block font-bold">Konfigurasi WAN / Akun PPPoE via TR-069</strong>
-                            Suntikkan akun PPPoE dan VLAN ID langsung ke profil WAN ONT. Sangat berguna untuk aktivasi pelanggan baru tanpa perlu menyentuh antarmuka web ONT.
+                        {/* Header Banner WAN */}
+                        <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <Globe size={20} className="text-indigo-600 mt-0.5 shrink-0" />
+                            <div className="text-xs text-indigo-900 leading-relaxed">
+                              <strong className="block font-bold">Konfigurasi WAN Lengkap via TR-069 (Mirip Menu Web Modem)</strong>
+                              Kelola seluruh profil WAN, ganti mode PPPoE / Bridge Hotspot, atur VLAN ID, Port Binding LAN/SSID, dan MTU langsung dari panel Arbill.
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={handleCreateWanProfile}
+                            disabled={isWanCreating}
+                            className="shrink-0 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                          >
+                            {isWanCreating ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
+                            <span>+ Buat Profil Baru</span>
+                          </button>
                         </div>
 
                         {/* Daftar Semua Koneksi WAN (Multi-WAN) */}
                         {deviceDetail?.wan_connections && deviceDetail.wan_connections.length > 0 && (
-                          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2">
-                            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                              Daftar Profil WAN Aktif di ONT ({deviceDetail.wan_connections.length} Profil)
+                          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                Daftar Profil WAN di ONT ({deviceDetail.wan_connections.length} Profil Terdeteksi)
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Klik salah satu profil untuk mengedit di bawah:
+                              </span>
                             </div>
-                            <div className="divide-y divide-slate-200 text-xs">
-                              {deviceDetail.wan_connections.map((wc: any, idx: number) => (
-                                <div key={idx} className="py-2.5 flex items-center justify-between">
-                                  <div>
-                                    <div className="font-bold text-slate-800 flex items-center gap-2">
-                                      <span className="font-mono text-sky-700">{wc.name}</span>
-                                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 text-slate-700 font-bold">{wc.type}</span>
-                                    </div>
-                                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                                      IP: <strong className="text-slate-800">{wc.ip || '0.0.0.0'}</strong> {wc.username ? `• Akun: ${wc.username}` : ''} {wc.vlan_id ? `• VLAN: ${wc.vlan_id}` : ''}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                              {deviceDetail.wan_connections.map((wc: any, idx: number) => {
+                                const isSelected = selectedWanConnKey === `${wc.wan_index}.${wc.sub_index}`;
+                                return (
+                                  <div
+                                    key={idx}
+                                    onClick={() => selectWanProfile(wc)}
+                                    className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                                      isSelected
+                                        ? 'bg-indigo-50/80 border-indigo-500 shadow-sm ring-2 ring-indigo-200'
+                                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div>
+                                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                          <span className="font-mono text-indigo-700 truncate max-w-[180px]">{wc.name}</span>
+                                          {wc.is_tr069 && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-sky-100 text-sky-800 font-bold">
+                                              TR-069
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 font-mono mt-1 space-y-0.5">
+                                          <div>IP: <strong className="text-slate-800">{wc.ip || '0.0.0.0'}</strong></div>
+                                          {wc.username && <div>User: <span className="text-slate-700">{wc.username}</span></div>}
+                                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                            <span>VLAN: <strong className="text-slate-700">{wc.vlan_id || 'Off'}</strong></span>
+                                            <span>•</span>
+                                            <span>Service: <strong className="text-slate-700">{wc.service_list}</strong></span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                          wc.mode === 'bridge'
+                                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                            : wc.is_tr069
+                                            ? 'bg-sky-100 text-sky-800 border border-sky-200'
+                                            : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                        }`}>
+                                          {wc.type}
+                                        </span>
+                                        {isSelected && (
+                                          <span className="text-[9px] font-bold text-indigo-600 bg-indigo-100/80 px-1.5 py-0.5 rounded">
+                                            ✏️ Aktif Diedit
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   </div>
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                    {wc.status || 'Connected'}
-                                  </span>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
 
-                        {/* Current Status Box */}
-                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-                          <div>
-                            <span className="text-[10px] text-slate-400 font-bold block uppercase">IP WAN Saat Ini</span>
-                            <span className="font-mono font-bold text-slate-800">{deviceDetail?.wan?.ip_address || '-'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-slate-400 font-bold block uppercase">Status Sambungan</span>
-                            <span className="font-bold text-emerald-600">{deviceDetail?.wan?.connection_status || 'Connected'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-slate-400 font-bold block uppercase">MAC Address</span>
-                            <span className="font-mono text-slate-600">{deviceDetail?.wan?.mac_address || '-'}</span>
-                          </div>
-                        </div>
-
-                        {/* WAN Mode Selector (PPPoE vs Bridge Hotspot) */}
-                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                            Pilih Tipe / Mode Operasi WAN:
-                          </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                            <button
-                              type="button"
-                              onClick={() => setModalWanMode('pppoe')}
-                              className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
-                                modalWanMode === 'pppoe'
-                                  ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 font-bold text-xs">
-                                <Globe size={15} className="text-indigo-600" />
-                                <span>🌐 Mode PPPoE (Route Internet)</span>
-                              </div>
-                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">
-                                Untuk pelanggan internet rumahan/bulanan. ONT melakukan dial PPPoE, NAT, dan DHCP lokal.
-                              </p>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setModalWanMode('bridge')}
-                              className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
-                                modalWanMode === 'bridge'
-                                  ? 'bg-amber-50 border-amber-600 text-amber-900 shadow-xs'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 font-bold text-xs">
-                                <Zap size={15} className="text-amber-600" />
-                                <span>⚡ Mode Bridge (Hotspot Voucher)</span>
-                              </div>
-                              <p className="text-[10px] text-slate-500 mt-1 leading-normal">
-                                Jembatan langsung ke Hotspot MikroTik. HP pengguna langsung muncul login voucher Arbill.
-                              </p>
-                            </button>
-                          </div>
-                        </div>
-
-                        {modalWanMode === 'bridge' ? (
-                          <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-3">
-                            <div className="flex items-start gap-3">
-                              <Zap size={18} className="text-amber-600 mt-0.5 shrink-0" />
-                              <div className="text-xs text-amber-900 leading-relaxed">
-                                <strong className="block font-bold">Mode Bridge Hotspot Aktif</strong>
-                                Trafik Wi-Fi atau LAN akan langsung diteruskan ke VLAN Hotspot MikroTik tanpa proses NAT di modem. Pengguna yang tersambung ke Wi-Fi akan langsung memunculkan form login voucher Arbill.
-                              </div>
-                            </div>
-
+                        {/* FORM EDITOR PROFIL WAN TERPILIH */}
+                        <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-xs">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID Hotspot MikroTik *</label>
-                              <input
-                                type="number"
-                                required
-                                value={modalWanVlan}
-                                onChange={(e) => setModalWanVlan(e.target.value)}
-                                placeholder="Contoh: 100 atau 200"
-                                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                              />
-                              <p className="text-[10px] text-slate-400 mt-1">
-                                Masukkan ID VLAN Hotspot dari MikroTik yang melewati port OLT Anda.
-                              </p>
+                              <span className="text-xs font-bold text-slate-800 block">
+                                Form Konfigurasi: <span className="text-indigo-600 font-mono">{modalWanName || `Profil Indeks ${modalWanConnIndex}`}</span>
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                Perubahan akan langsung disinkronkan ke hardware ONT via TR-069 NBI.
+                              </span>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-100 text-slate-600">
+                              Indeks: WANDevice.1.{modalWanConnIndex}
+                            </span>
+                          </div>
+
+                          {/* 1. Mode Operasi (PPPoE vs Bridge vs IPoE) */}
+                          <div className="space-y-1.5">
+                            <label className="block text-xs font-bold text-slate-700">Tipe / Mode Operasi WAN:</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => setModalWanMode('pppoe')}
+                                className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                                  modalWanMode === 'pppoe'
+                                    ? 'bg-indigo-50 border-indigo-600 text-indigo-900 shadow-xs'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 font-bold text-xs">
+                                  <Globe size={15} className="text-indigo-600" />
+                                  <span>🌐 PPPoE (Route Internet Bulanan)</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                  ONT melakukan dial PPPoE ke MikroTik, NAT aktif, dan membagikan DHCP ke klien.
+                                </p>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setModalWanMode('bridge')}
+                                className={`p-3 rounded-xl text-left border transition-all cursor-pointer ${
+                                  modalWanMode === 'bridge'
+                                    ? 'bg-amber-50 border-amber-600 text-amber-900 shadow-xs'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 font-bold text-xs">
+                                  <Zap size={15} className="text-amber-600" />
+                                  <span>⚡ Bridge (Hotspot Voucher Arbill)</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 mt-1 leading-normal">
+                                  Trafik diteruskan langsung ke Hotspot MikroTik. HP pengguna langsung muncul form voucher.
+                                </p>
+                              </button>
                             </div>
                           </div>
-                        ) : (
-                          <>
-                            {/* PPPoE Username */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="block text-xs font-bold text-slate-700">Username PPPoE *</label>
-                                {deviceDetail?.customer?.pppoe_username && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setModalWanUsername(deviceDetail.customer.pppoe_username)}
-                                    className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                                  >
-                                    Salin dari Akun Pelanggan ({deviceDetail.customer.pppoe_username})
-                                  </button>
-                                )}
-                              </div>
-                              <input
-                                type="text"
-                                required
-                                value={modalWanUsername}
-                                onChange={(e) => setModalWanUsername(e.target.value)}
-                                placeholder="Contoh: ppp_ahmad@speednet"
-                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                              />
-                            </div>
 
-                            {/* PPPoE Password */}
-                            <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1">Password PPPoE</label>
-                              <div className="relative">
+                          {/* 2. Pengaturan VLAN (Seperti di Web Modem) */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
                                 <input
-                                  type={showWanPassword ? 'text' : 'password'}
-                                  value={modalWanPassword}
-                                  onChange={(e) => setModalWanPassword(e.target.value)}
-                                  placeholder="Ketik password baru (biarkan kosong jika tidak diubah)"
-                                  className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  type="checkbox"
+                                  id="wanVlanCheck"
+                                  checked={modalWanVlanEnabled}
+                                  onChange={(e) => setModalWanVlanEnabled(e.target.checked)}
+                                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowWanPassword(!showWanPassword)}
-                                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                                >
-                                  {showWanPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
+                                <label htmlFor="wanVlanCheck" className="text-xs font-bold text-slate-800 cursor-pointer">
+                                  Enable VLAN Tagging
+                                </label>
                               </div>
+                              <span className="text-[10px] text-slate-400">
+                                Tagging VLAN GPON / EPON
+                              </span>
                             </div>
 
-                            {/* VLAN ID & Connection Index */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                               <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1">VLAN ID (Opsional)</label>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  VLAN ID (1 ~ 4094) {modalWanVlanEnabled && '*'}
+                                </label>
                                 <input
                                   type="number"
+                                  disabled={!modalWanVlanEnabled}
                                   value={modalWanVlan}
                                   onChange={(e) => setModalWanVlan(e.target.value)}
-                                  placeholder="Contoh: 200"
-                                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  placeholder="Contoh: 200 atau 100"
+                                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
                                 />
                               </div>
 
                               <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1">Indeks Profil WAN</label>
-                                <input
-                                  type="text"
-                                  disabled
-                                  value={`Device.1 / PPP.${modalPppIndex}`}
-                                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs font-mono text-slate-500"
-                                />
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  802.1p Priority (0 ~ 7)
+                                </label>
+                                <select
+                                  disabled={!modalWanVlanEnabled}
+                                  value={modalWanPriority}
+                                  onChange={(e) => setModalWanPriority(parseInt(e.target.value, 10))}
+                                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                  {[0, 1, 2, 3, 4, 5, 6, 7].map((num) => (
+                                    <option key={num} value={num}>
+                                      {num} {num === 0 ? '(Default / Best Effort)' : num === 6 ? '(Voice/High)' : ''}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
                             </div>
-                          </>
-                        )}
+                          </div>
 
-                        {/* Submit Button */}
-                        <div className="pt-3 border-t border-slate-100 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={handleSaveWanConfig}
-                            disabled={isWanSaving || (modalWanMode === 'pppoe' && !modalWanUsername)}
-                            className={`px-6 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 text-white ${
-                              modalWanMode === 'bridge' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'
-                            }`}
-                          >
-                            {isWanSaving && <RefreshCw size={14} className="animate-spin" />}
-                            <span>
-                              {isWanSaving 
-                                ? 'Menerapkan TR-069...' 
-                                : modalWanMode === 'bridge'
-                                ? '⚡ Terapkan Mode Bridge Hotspot'
-                                : '💾 Terapkan Mode PPPoE Route'}
-                            </span>
-                          </button>
+                          {/* 3. Port Binding (LAN 1-4 & SSID 1-4) - Sama seperti Web Modem */}
+                          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-slate-800 block">
+                                Port Binding (Ikat Port LAN & Wi-Fi ke Profil Ini):
+                              </label>
+                              <span className="text-[10px] text-slate-400">
+                                Port yang dicentang akan menggunakan profil WAN ini
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+                              {/* LAN Ports */}
+                              {['LAN1', 'LAN2', 'LAN3', 'LAN4'].map((p) => {
+                                const checked = modalWanPortBinding.includes(p);
+                                return (
+                                  <label
+                                    key={p}
+                                    className={`px-3 py-2 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                                      checked
+                                        ? 'bg-indigo-50 border-indigo-400 text-indigo-900 font-bold'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setModalWanPortBinding([...modalWanPortBinding, p]);
+                                        } else {
+                                          setModalWanPortBinding(modalWanPortBinding.filter((x) => x !== p));
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                    <span>Port {p}</span>
+                                  </label>
+                                );
+                              })}
+
+                              {/* SSID Ports */}
+                              {['SSID1', 'SSID2', 'SSID3', 'SSID4'].map((p) => {
+                                const checked = modalWanPortBinding.includes(p);
+                                return (
+                                  <label
+                                    key={p}
+                                    className={`px-3 py-2 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                                      checked
+                                        ? 'bg-amber-50 border-amber-400 text-amber-900 font-bold'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setModalWanPortBinding([...modalWanPortBinding, p]);
+                                        } else {
+                                          setModalWanPortBinding(modalWanPortBinding.filter((x) => x !== p));
+                                        }
+                                      }}
+                                      className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                                    />
+                                    <span>Wi-Fi {p}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* 4. Service List & MTU */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block font-bold text-slate-700 mb-1">Service List</label>
+                              <select
+                                value={modalWanServiceList}
+                                onChange={(e) => setModalWanServiceList(e.target.value)}
+                                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              >
+                                <option value="INTERNET">INTERNET (Koneksi Pelanggan Biasa)</option>
+                                <option value="OTHER">OTHER (Hotspot / Bridge Khusus)</option>
+                                <option value="VOIP">VOIP (Telepon IP)</option>
+                                <option value="TR069">TR069 (Akses Server Management)</option>
+                                <option value="INTERNET_TR069">INTERNET_TR069 (Gabungan Internet & ACS)</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block font-bold text-slate-700 mb-1">MTU / MRU</label>
+                              <input
+                                type="number"
+                                value={modalWanMtu}
+                                onChange={(e) => setModalWanMtu(parseInt(e.target.value, 10) || 1492)}
+                                placeholder="1492 untuk PPPoE, 1500 untuk Bridge"
+                                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 5. Parameter Khusus PPPoE (Hanya tampil jika mode PPPoE) */}
+                          {modalWanMode === 'pppoe' && (
+                            <div className="space-y-3 pt-2 border-t border-slate-100">
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-xs font-bold text-slate-700">Username PPPoE *</label>
+                                  {deviceDetail?.customer?.pppoe_username && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setModalWanUsername(deviceDetail.customer.pppoe_username)}
+                                      className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                                    >
+                                      Salin dari Akun Pelanggan ({deviceDetail.customer.pppoe_username})
+                                    </button>
+                                  )}
+                                </div>
+                                <input
+                                  type="text"
+                                  required
+                                  value={modalWanUsername}
+                                  onChange={(e) => setModalWanUsername(e.target.value)}
+                                  placeholder="Contoh: ppp_ahmad@speednet"
+                                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Password PPPoE</label>
+                                <div className="relative">
+                                  <input
+                                    type={showWanPassword ? 'text' : 'password'}
+                                    value={modalWanPassword}
+                                    onChange={(e) => setModalWanPassword(e.target.value)}
+                                    placeholder="Ketik password baru (biarkan kosong jika tidak diubah)"
+                                    className="w-full px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowWanPassword(!showWanPassword)}
+                                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  >
+                                    {showWanPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <input
+                                  type="checkbox"
+                                  id="wanNatCheck"
+                                  checked={modalWanNatEnabled}
+                                  onChange={(e) => setModalWanNatEnabled(e.target.checked)}
+                                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                                />
+                                <label htmlFor="wanNatCheck" className="text-xs font-bold text-slate-700 cursor-pointer">
+                                  Enable NAT (Network Address Translation)
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ACTION BUTTONS (Simpan & Hapus) */}
+                          <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                            <div>
+                              {!modalWanName.toUpperCase().includes('TR069') && !modalWanServiceList.toUpperCase().includes('TR069') ? (
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteWanProfile}
+                                  disabled={isWanDeleting}
+                                  className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  {isWanDeleting ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                  <span>Hapus Profil Ini</span>
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                  🔒 Profil TR-069 Management Dilindungi
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={handleSaveWanConfig}
+                              disabled={isWanSaving || (modalWanMode === 'pppoe' && !modalWanUsername)}
+                              className={`px-6 py-2.5 font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 text-white ${
+                                modalWanMode === 'bridge' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                              }`}
+                            >
+                              {isWanSaving && <RefreshCw size={14} className="animate-spin" />}
+                              <span>{isWanSaving ? 'Menerapkan TR-069...' : `💾 Terapkan Pengaturan WAN ke ONT`}</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}

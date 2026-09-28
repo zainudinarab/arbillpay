@@ -8,6 +8,8 @@ import {
   updateDeviceWifi,
   getDeviceDetail,
   updateDeviceWan,
+  deleteDeviceWan,
+  createDeviceWan,
   factoryResetDevice,
   refreshDeviceTask,
   linkCustomerToDevice
@@ -23,6 +25,8 @@ router.get('/devices/:device_id/detail', getDeviceDetail);
 router.post('/devices/:device_id/reboot', rebootDevice);
 router.post('/devices/:device_id/wifi', updateDeviceWifi);
 router.post('/devices/:device_id/wan', updateDeviceWan);
+router.delete('/devices/:device_id/wan', deleteDeviceWan);
+router.post('/devices/:device_id/wan/new', createDeviceWan);
 router.post('/devices/:device_id/factory-reset', factoryResetDevice);
 router.post('/devices/:device_id/refresh', refreshDeviceTask);
 router.post('/devices/:device_id/link-customer', linkCustomerToDevice);
