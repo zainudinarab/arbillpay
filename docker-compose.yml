@@ -15,6 +15,9 @@ services:
     ports:
       # Port 3006 sesuai target Cloudflare Tunnel (http://localhost:3006)
       - "3006:3006"
+    volumes:
+      # Mount folder public: Perubahan myqr, gambar, dan aset statis langsung aktif seketika tanpa perlu build ulang Docker
+      - ./public:/app/public
     # Memuat seluruh kredensial & variabel rahasia dari file .env
     env_file:
       - .env
