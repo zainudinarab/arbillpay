@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import crypto from 'crypto';
 import { pool } from '../config/db.js';
 import { genieAcsSettings, updateGenieAcsSettings } from '../services/genieacsService.js';
 
@@ -10,6 +11,35 @@ function getGenieAcsHeaders(user = genieAcsSettings.username, pass = genieAcsSet
     headers['Authorization'] = 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
   }
   return headers;
+}
+
+/**
+ * Memicu Connection Request HTTP Digest Auth langsung ke port CPE / ONT (misal 192.168.201.216:58000)
+ * Menjamin tugas TR-069 langsung ditarik detik itu juga tanpa jeda periodic inform.
+ */
+async function sendDigestConnReq(url?: string, username = 'acs', password = 'acsadmin12345'): Promise<number | null> {
+  if (!url) return null;
+  try {
+    const res1 = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const authHeader = res1.headers.get('www-authenticate');
+    if (authHeader && authHeader.startsWith('Digest')) {
+      const realm = authHeader.match(/realm="([^"]+)"/)?.[1] || '';
+      const nonce = authHeader.match(/nonce="([^"]+)"/)?.[1] || '';
+      const qop = authHeader.match(/qop="([^"]+)"/)?.[1] || 'auth';
+      const cnonce = crypto.randomBytes(8).toString('hex');
+      const nc = '00000001';
+      const uri = '/';
+      const ha1 = crypto.createHash('md5').update(`${username}:${realm}:${password}`).digest('hex');
+      const ha2 = crypto.createHash('md5').update(`GET:${uri}`).digest('hex');
+      const response = crypto.createHash('md5').update(`${ha1}:${nonce}:${nc}:${cnonce}:${qop}:${ha2}`).digest('hex');
+      const digestHeader = `Digest username="${username}", realm="${realm}", nonce="${nonce}", uri="${uri}", qop=${qop}, nc=${nc}, cnonce="${cnonce}", response="${response}"`;
+      const res2 = await fetch(url, { headers: { 'Authorization': digestHeader }, signal: AbortSignal.timeout(3000) });
+      return res2.status;
+    }
+    return res1.status;
+  } catch {
+    return null;
+  }
 }
 
 // Inisialisasi pengaturan GenieACS dari database system_settings saat awal
@@ -708,6 +738,22 @@ export async function updateDeviceWan(req: Request, res: Response) {
     });
 
     if (r.ok) {
+      // Trigger instant ONT digest connection request
+      try {
+        const devRes = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: device_id }))}`, { headers: getGenieAcsHeaders() });
+        if (devRes.ok) {
+          const devData = await devRes.json();
+          const mgmt = devData[0]?.InternetGatewayDevice?.ManagementServer;
+          sendDigestConnReq(
+            mgmt?.ConnectionRequestURL?._value,
+            mgmt?.ConnectionRequestUsername?._value || 'acs',
+            mgmt?.ConnectionRequestPassword?._value || 'acsadmin12345'
+          ).catch(() => {});
+        }
+      } catch {
+        // Non-blocking
+      }
+
       const modeDesc = mode === 'bridge' ? 'Bridge Hotspot (Voucher)' : `PPPoE Route (${username})`;
       res.json({
         success: true,
@@ -745,6 +791,22 @@ export async function deleteDeviceWan(req: Request, res: Response) {
       })
     });
     if (r.ok) {
+      // Trigger instant ONT digest connection request
+      try {
+        const devRes = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: device_id }))}`, { headers: getGenieAcsHeaders() });
+        if (devRes.ok) {
+          const devData = await devRes.json();
+          const mgmt = devData[0]?.InternetGatewayDevice?.ManagementServer;
+          sendDigestConnReq(
+            mgmt?.ConnectionRequestURL?._value,
+            mgmt?.ConnectionRequestUsername?._value || 'acs',
+            mgmt?.ConnectionRequestPassword?._value || 'acsadmin12345'
+          ).catch(() => {});
+        }
+      } catch {
+        // Non-blocking
+      }
+
       res.json({ success: true, message: `🗑️ Profil WAN "${name || wan_conn_index}" berhasil dihapus dari ONT via TR-069!` });
     } else {
       res.status(500).json({ success: false, message: `GenieACS mengembalikan status HTTP ${r.status}` });
@@ -755,27 +817,195 @@ export async function deleteDeviceWan(req: Request, res: Response) {
 }
 
 /**
- * Tambah Profil WAN Baru via TR-069 (addObject)
+ * Tambah Profil WAN Baru via TR-069 (addObject WANConnectionDevice + WANPPPConnection)
  */
 export async function createDeviceWan(req: Request, res: Response) {
   const { device_id } = req.params;
+  const {
+    name,
+    mode = 'pppoe',
+    vlan_id = '100',
+    vlan_enabled = true,
+    priority = 0,
+    service_list = 'INTERNET',
+    port_binding = [],
+    username = '',
+    password = '',
+    mtu = 1492,
+    nat_enabled = true
+  } = req.body;
   const cleanUrl = genieAcsSettings.url;
+  const headers = getGenieAcsHeaders();
+
   try {
-    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000&connection_request`, {
+    // 1. Ambil data perangkat saat ini & info ConnectionRequest
+    const devRes = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: device_id }))}`, { headers });
+    const devData = await devRes.json();
+    const d = devData[0];
+    if (!d) return res.status(404).json({ success: false, message: 'Perangkat tidak ditemukan di GenieACS.' });
+
+    const mgmt = d?.InternetGatewayDevice?.ManagementServer;
+    const connReqUrl = mgmt?.ConnectionRequestURL?._value;
+    const connReqUser = mgmt?.ConnectionRequestUsername?._value || 'acs';
+    const connReqPass = mgmt?.ConnectionRequestPassword?._value || 'acsadmin12345';
+
+    const oldWanDev = d?.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice || {};
+    const oldKeys = Object.keys(oldWanDev).filter(k => !k.startsWith('_')).map(Number);
+
+    // Hapus fault jika ada agar antrean task langsung jalan
+    await fetch(`${cleanUrl}/faults/${encodeURIComponent(device_id)}%3Adefault`, { method: 'DELETE', headers }).catch(() => {});
+
+    // 2. Kirim addObject WANConnectionDevice
+    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000`, {
       method: 'POST',
-      headers: getGenieAcsHeaders(),
+      headers,
       body: JSON.stringify({
         name: 'addObject',
-        objectName: `InternetGatewayDevice.WANDevice.1.WANConnectionDevice`
+        objectName: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice'
       })
     });
-    if (r.ok) {
-      res.json({ success: true, message: `➕ Permintaan pembuatan profil WAN baru berhasil dikirim ke ONT via TR-069!` });
-    } else {
-      res.status(500).json({ success: false, message: `GenieACS gagal memproses addObject (HTTP ${r.status})` });
+    await sendDigestConnReq(connReqUrl, connReqUser, connReqPass);
+
+    // 3. Polling index baru dari ONT
+    let newWanIdx: number | null = null;
+    for (let i = 0; i < 5; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const r = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: device_id }))}`, { headers });
+      const currentData = await r.json();
+      const curWan = currentData[0]?.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice || {};
+      const curKeys = Object.keys(curWan).filter(k => !k.startsWith('_')).map(Number);
+      const added = curKeys.filter(k => !oldKeys.includes(k));
+      if (added.length > 0) {
+        newWanIdx = added[0];
+        break;
+      }
     }
+
+    if (!newWanIdx) {
+      newWanIdx = oldKeys.length > 0 ? Math.max(...oldKeys) + 1 : 1;
+    }
+
+    // 4. Tambah WANPPPConnection di dalam WANConnectionDevice baru
+    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'addObject',
+        objectName: `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection`
+      })
+    });
+    await sendDigestConnReq(connReqUrl, connReqUser, connReqPass);
+    await new Promise(r => setTimeout(r, 1200));
+
+    // 5. Rakit parameter lengkap untuk profil baru
+    const parameterValues: [string, any, string][] = [];
+    const vlanNum = parseInt(String(vlan_id), 10) || 1;
+    
+    // VLAN GPON & EPON
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.X_CT-COM_WANGponLinkConfig.VLANIDMark`, String(vlanNum), 'xsd:unsignedInt'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.X_CT-COM_WANGponLinkConfig.Enable`, vlan_enabled ? 'true' : 'false', 'xsd:boolean'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.X_CT-COM_WANGponLinkConfig.802-1pMark`, String(priority || 0), 'xsd:unsignedInt'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.X_CT-COM_WANEponLinkConfig.VLANIDMark`, String(vlanNum), 'xsd:unsignedInt'
+    ]);
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.X_CT-COM_WANEponLinkConfig.Enable`, vlan_enabled ? 'true' : 'false', 'xsd:boolean'
+    ]);
+
+    // Service List & Port Binding
+    const sList = service_list || (mode === 'bridge' ? 'OTHER' : 'INTERNET');
+    parameterValues.push([
+      `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.X_CT-COM_ServiceList`, String(sList), 'xsd:string'
+    ]);
+
+    if (Array.isArray(port_binding) && port_binding.length > 0) {
+      const bindingParts: string[] = [];
+      port_binding.forEach((p: string) => {
+        if (p.startsWith('LAN')) {
+          const lanNum = p.replace('LAN', '');
+          bindingParts.push(`InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.${lanNum}`);
+        } else if (p.startsWith('SSID')) {
+          const wlanNum = p.replace('SSID', '');
+          bindingParts.push(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wlanNum}`);
+        } else if (p.includes('.')) {
+          bindingParts.push(p);
+        }
+      });
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.X_CT-COM_LanInterface`, bindingParts.join(','), 'xsd:string'
+      ]);
+    }
+
+    // Mode: Bridge vs PPPoE
+    if (mode === 'bridge') {
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.ConnectionType`, 'PPPoE_Bridged', 'xsd:string'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.NATEnabled`, 'false', 'xsd:boolean'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.MaxMRUSize`, String(mtu || 1500), 'xsd:unsignedInt'
+      ]);
+    } else {
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.ConnectionType`, 'IP_Routed', 'xsd:string'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.NATEnabled`, nat_enabled ? 'true' : 'false', 'xsd:boolean'
+      ]);
+      if (username) {
+        parameterValues.push([
+          `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.Username`, username, 'xsd:string'
+        ]);
+      }
+      if (password) {
+        parameterValues.push([
+          `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.Password`, password, 'xsd:string'
+        ]);
+      }
+      parameterValues.push([
+        `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}.WANPPPConnection.1.MaxMRUSize`, String(mtu || 1492), 'xsd:unsignedInt'
+      ]);
+    }
+
+    // 6. Terapkan Parameter
+    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+    await sendDigestConnReq(connReqUrl, connReqUser, connReqPass);
+    await new Promise(r => setTimeout(r, 1200));
+
+    // 7. Refresh Object
+    await fetch(`${cleanUrl}/devices/${encodeURIComponent(device_id)}/tasks?timeout=4000`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'refreshObject',
+        objectName: `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${newWanIdx}`
+      })
+    });
+    await sendDigestConnReq(connReqUrl, connReqUser, connReqPass);
+
+    const profileDesc = mode === 'bridge' ? `Bridge (Hotspot VLAN ${vlanNum})` : `PPPoE Route (VLAN ${vlanNum})`;
+    res.json({
+      success: true,
+      message: `🎉 Profil WAN "${name || profileDesc}" berhasil dibuat dan disinkronkan ke hardware ONT via TR-069!`,
+      wan_index: String(newWanIdx)
+    });
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: `Gagal membuat profil WAN: ${err.message}` });
   }
 }
 

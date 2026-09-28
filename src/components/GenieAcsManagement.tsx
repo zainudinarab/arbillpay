@@ -94,6 +94,21 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   const [isWanDeleting, setIsWanDeleting] = useState<boolean>(false);
   const [isWanCreating, setIsWanCreating] = useState<boolean>(false);
 
+  // New WAN Profile Creation Form State
+  const [isCreatingNewWan, setIsCreatingNewWan] = useState<boolean>(false);
+  const [newWanMode, setNewWanMode] = useState<'pppoe' | 'bridge'>('pppoe');
+  const [newWanName, setNewWanName] = useState<string>('');
+  const [newWanVlan, setNewWanVlan] = useState<string>('100');
+  const [newWanVlanEnabled, setNewWanVlanEnabled] = useState<boolean>(true);
+  const [newWanPriority, setNewWanPriority] = useState<number>(0);
+  const [newWanServiceList, setNewWanServiceList] = useState<string>('INTERNET');
+  const [newWanPortBinding, setNewWanPortBinding] = useState<string[]>([]);
+  const [newWanUsername, setNewWanUsername] = useState<string>('');
+  const [newWanPassword, setNewWanPassword] = useState<string>('');
+  const [newWanMtu, setNewWanMtu] = useState<number>(1492);
+  const [newWanNatEnabled, setNewWanNatEnabled] = useState<boolean>(true);
+  const [showNewWanPassword, setShowNewWanPassword] = useState<boolean>(false);
+
   const [modalSelectedCustomerId, setModalSelectedCustomerId] = useState<string>('');
   const [customerSearchTerm, setCustomerSearchTerm] = useState<string>('');
   const [isCustomerSaving, setIsCustomerSaving] = useState<boolean>(false);
@@ -515,9 +530,12 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
   };
 
   // Create New WAN Profile via TR-069
-  const handleCreateWanProfile = async () => {
+  const handleSubmitCreateWan = async () => {
     if (!selectedDeviceForManage) return;
-    if (!window.confirm('Kirim perintah pembuatan profil WAN baru (addObject) ke modem via TR-069?')) return;
+    if (newWanMode === 'pppoe' && !newWanUsername.trim()) {
+      alert('Username PPPoE wajib diisi untuk mode Route.');
+      return;
+    }
 
     setIsWanCreating(true);
     setToastMsg(null);
@@ -525,15 +543,30 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
     try {
       const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/genieacs/devices/${encodeURIComponent(selectedDeviceForManage.id)}/wan/new`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newWanName.trim() || undefined,
+          mode: newWanMode,
+          vlan_id: newWanVlan,
+          vlan_enabled: newWanVlanEnabled,
+          priority: newWanPriority,
+          service_list: newWanServiceList,
+          port_binding: newWanPortBinding,
+          username: newWanUsername,
+          password: newWanPassword,
+          mtu: newWanMtu,
+          nat_enabled: newWanNatEnabled
+        })
       });
 
       const data = await parseJsonResponse(res);
       if (data.success) {
         setToastMsg({ type: 'success', text: data.message });
+        setIsCreatingNewWan(false);
         setTimeout(() => {
           if (selectedDeviceForManage) openManageModal(selectedDeviceForManage, 'wan');
-        }, 2000);
+        }, 1500);
       } else {
         setToastMsg({ type: 'error', text: data.message || 'Gagal membuat profil WAN baru.' });
       }
@@ -1406,14 +1439,288 @@ export default function GenieAcsManagement({ profile, t, onLogout }: GenieAcsMan
                           </div>
                           <button
                             type="button"
-                            onClick={handleCreateWanProfile}
+                            onClick={() => setIsCreatingNewWan(!isCreatingNewWan)}
                             disabled={isWanCreating}
                             className="shrink-0 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
                           >
-                            {isWanCreating ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
-                            <span>+ Buat Profil Baru</span>
+                            {isCreatingNewWan ? <X size={13} /> : <Plus size={13} />}
+                            <span>{isCreatingNewWan ? 'Tutup Form Tambah' : '+ Buat Profil Baru'}</span>
                           </button>
                         </div>
+
+                        {/* FORM BUAT PROFIL WAN BARU */}
+                        {isCreatingNewWan && (
+                          <div className="bg-gradient-to-br from-indigo-50/90 to-purple-50/70 border-2 border-indigo-400 rounded-2xl p-4 space-y-4 shadow-sm animate-in fade-in duration-200">
+                            <div className="flex items-center justify-between border-b border-indigo-200 pb-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                                  +
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-sm text-indigo-950">
+                                    Form Buat Profil WAN Baru di ONT
+                                  </h4>
+                                  <p className="text-[11px] text-slate-500">
+                                    Parameter akan disuntikkan langsung via TR-069 NBI dan ONT akan membuat interface WAN baru secara otomatis.
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setIsCreatingNewWan(false)}
+                                className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+                              >
+                                <X size={14} /> Batal
+                              </button>
+                            </div>
+
+                            {/* Mode Selector */}
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                1. Pilih Mode Operasi WAN Baru:
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <label
+                                  className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                                    newWanMode === 'pppoe'
+                                      ? 'bg-white border-indigo-600 ring-2 ring-indigo-200 shadow-xs'
+                                      : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="newWanMode"
+                                    checked={newWanMode === 'pppoe'}
+                                    onChange={() => {
+                                      setNewWanMode('pppoe');
+                                      setNewWanServiceList('INTERNET');
+                                      setNewWanMtu(1492);
+                                      setNewWanNatEnabled(true);
+                                    }}
+                                    className="mt-0.5 text-indigo-600"
+                                  />
+                                  <div>
+                                    <div className="font-bold text-indigo-950">🌐 Mode PPPoE (Route Internet Bulanan)</div>
+                                    <div className="text-[10px] text-slate-500">
+                                      Modem melakukan dial PPPoE ke MikroTik. Cocok untuk pelanggan rumahan / paket bulanan.
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label
+                                  className={`flex items-start gap-2.5 p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                                    newWanMode === 'bridge'
+                                      ? 'bg-white border-indigo-600 ring-2 ring-indigo-200 shadow-xs'
+                                      : 'bg-white/60 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="newWanMode"
+                                    checked={newWanMode === 'bridge'}
+                                    onChange={() => {
+                                      setNewWanMode('bridge');
+                                      setNewWanServiceList('OTHER');
+                                      setNewWanMtu(1500);
+                                      setNewWanNatEnabled(false);
+                                    }}
+                                    className="mt-0.5 text-indigo-600"
+                                  />
+                                  <div>
+                                    <div className="font-bold text-indigo-950">⚡ Mode Bridge (Hotspot Voucher Arbill)</div>
+                                    <div className="text-[10px] text-slate-500">
+                                      Jembatan transparan langsung ke MikroTik Hotspot. Pengguna login voucher via browser HP.
+                                    </div>
+                                  </div>
+                                </label>
+                              </div>
+                            </div>
+
+                            {/* VLAN Tagging & Priority */}
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                2. VLAN & Service Traffic:
+                              </label>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    VLAN ID (1 - 4094) *
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="4094"
+                                    value={newWanVlan}
+                                    onChange={(e) => setNewWanVlan(e.target.value)}
+                                    placeholder="Misal: 100"
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-indigo-400 focus:outline-hidden"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    802.1p Priority (0 - 7)
+                                  </label>
+                                  <select
+                                    value={newWanPriority}
+                                    onChange={(e) => setNewWanPriority(parseInt(e.target.value) || 0)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer"
+                                  >
+                                    {[0, 1, 2, 3, 4, 5, 6, 7].map((p) => (
+                                      <option key={p} value={p}>
+                                        Priority {p} {p === 0 ? '(Default)' : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                    Service List
+                                  </label>
+                                  <select
+                                    value={newWanServiceList}
+                                    onChange={(e) => setNewWanServiceList(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-400 focus:outline-hidden cursor-pointer"
+                                  >
+                                    <option value="INTERNET">INTERNET (Trafik Reguler)</option>
+                                    <option value="OTHER">OTHER (Bridge Hotspot)</option>
+                                    <option value="VOIP">VOIP</option>
+                                    <option value="INTERNET_TR069">INTERNET_TR069</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Port Binding LAN & SSID */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                  3. Port Binding (Ikat Port LAN & Wi-Fi ke Profil Ini):
+                                </label>
+                                <span className="text-[10px] text-slate-500">Centang port yang dialirkan ke profil baru ini</span>
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {['LAN1', 'LAN2', 'LAN3', 'LAN4', 'SSID1', 'SSID2', 'SSID3', 'SSID4'].map((port) => {
+                                  const isChecked = newWanPortBinding.includes(port);
+                                  return (
+                                    <label
+                                      key={port}
+                                      className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer select-none transition-all ${
+                                        isChecked
+                                          ? 'bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs'
+                                          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {
+                                          setNewWanPortBinding(prev =>
+                                            prev.includes(port) ? prev.filter(x => x !== port) : [...prev, port]
+                                          );
+                                        }}
+                                        className="hidden"
+                                      />
+                                      <span className="w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px] shrink-0 border-current">
+                                        {isChecked && '✓'}
+                                      </span>
+                                      <span>{port.startsWith('LAN') ? `Port ${port}` : `Wi-Fi ${port}`}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Username, Password, MTU, NAT */}
+                            {newWanMode === 'pppoe' && (
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                                  4. Akun PPPoE Pelanggan:
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                      Username PPPoE *
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={newWanUsername}
+                                      onChange={(e) => setNewWanUsername(e.target.value)}
+                                      placeholder="Misal: pelanggan01@arbill"
+                                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-800 focus:ring-2 focus:ring-indigo-400 focus:outline-hidden"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                      Password PPPoE
+                                    </label>
+                                    <div className="relative">
+                                      <input
+                                        type={showNewWanPassword ? 'text' : 'password'}
+                                        value={newWanPassword}
+                                        onChange={(e) => setNewWanPassword(e.target.value)}
+                                        placeholder="Ketik password PPPoE"
+                                        className="w-full px-3 py-2 pr-9 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-400 focus:outline-hidden"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowNewWanPassword(!showNewWanPassword)}
+                                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                      >
+                                        {showNewWanPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* MTU & NAT & Actions */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-indigo-200">
+                              <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={newWanNatEnabled}
+                                    onChange={(e) => setNewWanNatEnabled(e.target.checked)}
+                                    className="rounded text-indigo-600"
+                                  />
+                                  <span>Enable NAT</span>
+                                </label>
+                                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                                  <span>MTU:</span>
+                                  <input
+                                    type="number"
+                                    value={newWanMtu}
+                                    onChange={(e) => setNewWanMtu(parseInt(e.target.value) || 1492)}
+                                    className="w-20 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-center"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setIsCreatingNewWan(false)}
+                                  className="px-4 py-2 border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-100 cursor-pointer"
+                                >
+                                  Batal
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleSubmitCreateWan}
+                                  disabled={isWanCreating || !newWanVlan}
+                                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  {isWanCreating && <RefreshCw size={13} className="animate-spin" />}
+                                  <span>{isWanCreating ? 'Menyuntikkan ke ONT via TR-069...' : '🚀 Buat & Suntikkan Profil ke ONT'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Daftar Semua Koneksi WAN (Multi-WAN) */}
                         {deviceDetail?.wan_connections && deviceDetail.wan_connections.length > 0 && (
