@@ -1114,7 +1114,11 @@ export async function getVoucherStatus(req: Request, res: Response) {
         }
       }
 
-      return res.status(404).json({ success: false, message: `Voucher "${code}" tidak ditemukan.` });
+      return res.json({ 
+        success: true, 
+        not_found: true, 
+        message: `Akun "${code}" tidak terdaftar sebagai voucher billing (user statis / bypass).` 
+      });
     }
 
     const v = vcRes.rows[0];
