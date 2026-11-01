@@ -208,7 +208,7 @@ export async function payInvoice(req: Request, res: Response) {
   const { payment_method } = req.body;
 
   try {
-    const invRes = await pool.query('SELECT * FROM invoices WHERE id = $1', [id]);
+    const invRes = await pool.query('SELECT * FROM invoices WHERE id = $1 OR invoice_number = $1', [id]);
     if (invRes.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Tagihan tidak ditemukan.' });
     }
@@ -218,7 +218,7 @@ export async function payInvoice(req: Request, res: Response) {
       UPDATE invoices 
       SET status = 'paid', paid_at = CURRENT_TIMESTAMP, payment_method = $1 
       WHERE id = $2
-    `, [payment_method || 'Tunai/Kasir', id]);
+    `, [payment_method || 'Tunai/Kasir', inv.id]);
 
     if (inv.customer_id) {
       const custRes = await pool.query(`

@@ -1050,8 +1050,12 @@ export default function CustomerPortal({
     setSelectedPackage({
       is_invoice: true,
       invoice_id: inv.id,
+      invoice_number: inv.invoice_number || inv.id,
       package_name: inv.package_name || inv.invoice_number || 'Tagihan Internet',
-      price: Number(inv.amount || 0)
+      price: Number(inv.amount || 0),
+      due_date: inv.due_date,
+      customer_name: inv.customer_name,
+      customer_phone: inv.customer_phone
     });
     setPaymentStep('confirm');
     setPinCode('');
@@ -1479,7 +1483,7 @@ export default function CustomerPortal({
       const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
       const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const refCode = 'VCH-' + Date.now().toString(36).toUpperCase();
+      const refCode = (selectedPackage?.is_invoice ? 'INV-' : 'VCH-') + Date.now().toString(36).toUpperCase();
 
       const rawPhone = (currentUser?.phone_number || '085746520724').replace(/\D/g, '');
       const phone08 = rawPhone.startsWith('62') ? '0' + rawPhone.slice(2) : (rawPhone.startsWith('0') ? rawPhone : '0' + rawPhone);
@@ -1489,14 +1493,18 @@ export default function CustomerPortal({
       let isDeductionSuccessful = false;
       let arabpayErrorMessage = '';
 
-      const pkgName = selectedPackage?.package_name || selectedPackage?.name || selectedPackage?.profile_name || 'Voucher Hotspot';
-      const pkgDetails = [
-        pkgName,
-        selectedPackage?.validity || selectedPackage?.duration || '',
-        selectedPackage?.bandwidth || selectedPackage?.speed || ''
-      ].filter(Boolean).join(' - ');
-
-      const purchaseDesc = `Pembelian ${pkgDetails || 'Voucher Hotspot'}`;
+      const pkgName = selectedPackage?.package_name || selectedPackage?.name || selectedPackage?.profile_name || (selectedPackage?.is_invoice ? 'Tagihan Internet' : 'Voucher Hotspot');
+      let purchaseDesc = '';
+      if (selectedPackage?.is_invoice) {
+        purchaseDesc = `Pembayaran Tagihan ${pkgName} (${selectedPackage.invoice_number || selectedPackage.invoice_id})`;
+      } else {
+        const pkgDetails = [
+          pkgName,
+          selectedPackage?.validity || selectedPackage?.duration || '',
+          selectedPackage?.bandwidth || selectedPackage?.speed || ''
+        ].filter(Boolean).join(' - ');
+        purchaseDesc = `Pembelian ${pkgDetails || 'Voucher Hotspot'}`;
+      }
 
       // 1. Try S2S Wallet Withdraw Endpoint with phone variations (08... & 628...)
       for (const pNo of phoneCandidates) {
@@ -1624,6 +1632,42 @@ export default function CustomerPortal({
       // Local state update & instant voucher generation ON SUCCESS
       const newBalance = Math.max(0, currentBal - price);
       onLoginSuccess({ ...currentUser!, arabpay_balance: newBalance });
+
+      // JIKA TRANSAKSI ADALAH PEMBAYARAN INVOICE / TAGIHAN INTERNET:
+      if (selectedPackage?.is_invoice) {
+        try {
+          const apiUrl = getApiUrl();
+          const targetInvId = selectedPackage.invoice_id || selectedPackage.invoice_number;
+          const payRes = await fetch(`${apiUrl}/api/invoices/${encodeURIComponent(targetInvId)}/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              payment_method: 'ArabPay E-Wallet',
+              arabpay_user_id: currentUser?.arabpay_user_id || currentUser?.id,
+              reference_id: refCode
+            })
+          });
+          const payData = await payRes.json().catch(() => null);
+          if (payData && payData.success) {
+            setPaymentStep('success');
+            fetchLiveMemberRegistrationsStatus();
+            fetchCustomerProfile();
+            fetchPortalConfig();
+            setTimeout(() => {
+              fetchLiveArabPayBalance();
+            }, 1000);
+            return;
+          } else {
+            setPinError(payData?.message || 'Gagal melunasi tagihan di database.');
+            setPaymentStep('pin');
+            return;
+          }
+        } catch (err: any) {
+          setPinError(err?.message || 'Gagal terhubung ke server untuk melunasi tagihan.');
+          setPaymentStep('pin');
+          return;
+        }
+      }
 
       // Register or claim voucher on Mikrotik RouterOS via Backend API & PostgreSQL
       let finalVoucherCode = '';
@@ -3682,18 +3726,7 @@ export default function CustomerPortal({
 
                         {!isPaid && (
                           <button
-                            onClick={() => {
-                              setSelectedPackage({
-                                is_invoice: true,
-                                invoice_id: inv.id,
-                                invoice_number: inv.invoice_number || inv.id,
-                                name: `Tagihan ${inv.invoice_number || inv.id}`,
-                                price: amount,
-                                customer_id: inv.customer_id
-                              });
-                              setPaymentStep('confirm');
-                              setShowPaymentModal(true);
-                            }}
+                            onClick={() => handleInitiatePayInvoice(inv)}
                             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-lg shadow-emerald-600/20 active:scale-95 flex items-center gap-1.5"
                           >
                             <CreditCard size={14} />
@@ -4117,7 +4150,7 @@ export default function CustomerPortal({
               <>
                 <div className="p-5 border-b border-slate-800 flex items-center justify-between">
                   <h3 className="font-extrabold text-lg text-slate-100 flex items-center gap-2">
-                    <ShoppingCart className="w-5 h-5 text-indigo-400" /> Konfirmasi Pembelian
+                    <ShoppingCart className="w-5 h-5 text-indigo-400" /> {selectedPackage?.is_invoice ? 'Konfirmasi Pembayaran Tagihan' : 'Konfirmasi Pembelian'}
                   </h3>
                   <button onClick={handleClosePaymentModal} className="p-1.5 hover:bg-slate-800 rounded-lg transition cursor-pointer">
                     <X className="w-4 h-4 text-slate-400" />
@@ -4153,20 +4186,43 @@ export default function CustomerPortal({
                         </p>
                       </div>
                     )}
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400">Voucher WiFi</span>
-                      <span className="font-extrabold text-indigo-400">{selectedPackage.package_name || selectedPackage.name || '3 Jam'}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400">Durasi</span>
-                      <span className="text-slate-300 font-medium">
-                        {selectedPackage.validity_iso ? parseIso8601(selectedPackage.validity_iso).human : selectedPackage.validity_value ? `${selectedPackage.validity_value} ${selectedPackage.validity_unit === 'day' ? 'Hari' : 'Jam'}` : selectedPackage.duration || '3 Jam'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-400">Speed</span>
-                      <span className="text-slate-300 font-medium">{formatSpeedDisplay(selectedPackage.rate_limit || selectedPackage.speed || '10 Mbps')}</span>
-                    </div>
+                    {selectedPackage.is_invoice ? (
+                      <>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400">Tagihan Layanan</span>
+                          <span className="font-extrabold text-indigo-400">{selectedPackage.package_name || selectedPackage.name || 'Paket Internet'}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400">No. Tagihan</span>
+                          <span className="text-slate-300 font-mono font-bold">#{selectedPackage.invoice_number || selectedPackage.invoice_id}</span>
+                        </div>
+                        {selectedPackage.due_date && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-400">Jatuh Tempo</span>
+                            <span className="text-slate-300 font-medium">
+                              {new Date(selectedPackage.due_date).toLocaleDateString('id-ID')}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400">Voucher WiFi</span>
+                          <span className="font-extrabold text-indigo-400">{selectedPackage.package_name || selectedPackage.name || '3 Jam'}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400">Durasi</span>
+                          <span className="text-slate-300 font-medium">
+                            {selectedPackage.validity_iso ? parseIso8601(selectedPackage.validity_iso).human : selectedPackage.validity_value ? `${selectedPackage.validity_value} ${selectedPackage.validity_unit === 'day' ? 'Hari' : 'Jam'}` : selectedPackage.duration || '3 Jam'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-400">Speed</span>
+                          <span className="text-slate-300 font-medium">{formatSpeedDisplay(selectedPackage.rate_limit || selectedPackage.speed || '10 Mbps')}</span>
+                        </div>
+                      </>
+                    )}
                     {(() => {
                       const itemPrice = Number(selectedPackage.price || 0);
                       let feeAmount = 0;
@@ -4185,7 +4241,7 @@ export default function CustomerPortal({
                       return (
                         <>
                           <div className="flex items-center justify-between text-sm border-t border-slate-850 pt-2.5">
-                            <span className="text-slate-400">Harga Voucher</span>
+                            <span className="text-slate-400">{selectedPackage.is_invoice ? 'Nominal Tagihan' : 'Harga Voucher'}</span>
                             <span className="font-mono font-bold text-slate-200">{formatRupiah(itemPrice)}</span>
                           </div>
 
@@ -4498,7 +4554,11 @@ export default function CustomerPortal({
               <div className="p-12 text-center space-y-4">
                 <RefreshCw size={36} className="animate-spin text-indigo-400 mx-auto" />
                 <h4 className="font-bold text-slate-100 text-base">Memproses Transaksi ArabPay...</h4>
-                <p className="text-xs text-slate-400">Verifikasi PIN S2S & Menerbitkan Voucher Hotspot</p>
+                <p className="text-xs text-slate-400">
+                  {selectedPackage?.is_invoice 
+                    ? 'Verifikasi PIN S2S & Melunasi Tagihan Layanan' 
+                    : 'Verifikasi PIN S2S & Menerbitkan Voucher Hotspot'}
+                </p>
               </div>
             )}
 
