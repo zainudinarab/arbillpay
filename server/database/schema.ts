@@ -693,22 +693,34 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_event ON pppoe_connection_logs (event_type, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_time ON pppoe_connection_logs (recorded_at DESC);
 
-      -- Backward-compatible VIEW for any legacy code querying ppp_connection_logs
-      CREATE OR REPLACE VIEW ppp_connection_logs AS 
-      SELECT 
-        id::text as id,
-        customer_id,
-        pppoe_username as username,
-        CASE WHEN event_type = 'connected' THEN 'login' ELSE 'logout' END as action,
-        ip_address,
-        mac_address,
-        session_id,
-        bytes_in,
-        bytes_out,
-        uptime_str as uptime,
-        terminate_cause,
-        recorded_at as created_at
-      FROM pppoe_connection_logs;
+      -- Pastikan tabel/view lama ppp_connection_logs dihapus permanen
+      DROP VIEW IF EXISTS ppp_connection_logs CASCADE;
+      DROP TABLE IF EXISTS ppp_connection_logs CASCADE;
+
+      -- 10.8 Antrean Pemantauan Disconnect & Alert Telegram (Offline Watch Queue)
+      CREATE TABLE IF NOT EXISTS customer_offline_queue (
+        id BIGSERIAL PRIMARY KEY,
+        customer_id VARCHAR(64),
+        pppoe_username VARCHAR(128) NOT NULL,
+        customer_name VARCHAR(255),
+        router_id VARCHAR(64),
+        router_name VARCHAR(255),
+        package_name VARCHAR(255),
+        ip_address VARCHAR(64),
+        mac_address VARCHAR(64),
+        disconnected_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        grace_period_minutes INT NOT NULL DEFAULT 5,
+        alert_due_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'PENDING', -- 'PENDING' | 'ALERT_SENT' | 'RECOVERED' | 'DISMISSED'
+        alert_sent_at TIMESTAMP WITH TIME ZONE,
+        recovered_at TIMESTAMP WITH TIME ZONE,
+        notes TEXT,
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_offline_queue_user_status ON customer_offline_queue (LOWER(pppoe_username), status);
+      CREATE INDEX IF NOT EXISTS idx_offline_queue_due ON customer_offline_queue (alert_due_at) WHERE status = 'PENDING';
     `).catch(() => {});
 
     // 11. Smart Migration for Flash Sales

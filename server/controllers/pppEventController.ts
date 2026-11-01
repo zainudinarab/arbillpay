@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getFirestore } from '../config/firebase.js';
 import { redisDel } from '../config/redis.js';
+import { enqueueDisconnectedCustomer, handleCustomerReconnected } from '../services/telegramAlertService.js';
 
 /**
  * Webhook Event Handler untuk PPPoE Mikrotik (On-Up / On-Down)
@@ -95,6 +96,20 @@ export async function handlePppEvent(req: Request, res: Response) {
     ]).catch((err) => {
       console.warn('[PPP EVENT LOG] Gagal mencatat pppoe_connection_logs:', err.message);
     });
+
+    // 4. Masukkan ke antrean pemantauan offline (jika down) atau selesaikan antrean (jika up)
+    if (isOnline) {
+      handleCustomerReconnected(user, customer?.id).catch(() => {});
+    } else {
+      enqueueDisconnectedCustomer({
+        customerId: customer?.id,
+        username: user,
+        routerId: effectiveRouterId,
+        ip: ip || customer?.current_ip,
+        mac: mac,
+        disconnectedAt: now
+      }).catch(() => {});
+    }
 
     // Invalidate Redis active users cache agar panel admin langsung melihat status teranyar (0-latency)
     redisDel('mikrotik:active_users:all').catch(() => {});

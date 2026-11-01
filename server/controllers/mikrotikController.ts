@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { parseMikrotikHotspotComment, parseMikrotikPppComment, cleanToDateOnly } from '../utils/mikrotikComment.js';
 import { redisGet, redisSet, redisDel, isRedisReady } from '../config/redis.js';
 import { testSnmpConnection, fetchRouterInterfacesSnmp, SnmpInterfaceRecord } from '../services/snmpService.js';
+import { enqueueDisconnectedCustomer, handleCustomerReconnected } from '../services/telegramAlertService.js';
 
 // --- ROUTERS ---
 export async function listRouters(req: Request, res: Response) {
@@ -1963,6 +1964,9 @@ export async function refreshActiveUsersCache() {
               router_id, pppoe_username, ip_address, mac_address, service, event_type, recorded_at
             ) VALUES ($1, $2, $3, $4, $5, 'connected', NOW())
           `, [curr.router_id, curr.username, curr.address || null, curr.caller_id || null, curr.service || 'pppoe']).catch(() => {});
+
+          // Batalkan / selesaikan antrean offline jika konek kembali
+          handleCustomerReconnected(curr.username).catch(() => {});
         }
       }
 
@@ -1974,6 +1978,14 @@ export async function refreshActiveUsersCache() {
               router_id, pppoe_username, ip_address, mac_address, service, event_type, uptime_str, recorded_at
             ) VALUES ($1, $2, $3, $4, $5, 'disconnected', $6, NOW())
           `, [prev.router_id, prev.username, prev.address || null, prev.caller_id || null, prev.service || 'pppoe', prev.uptime || null]).catch(() => {});
+
+          // Masukkan ke antrean pemantauan (akan diberi toleransi grace period sebelum alert)
+          enqueueDisconnectedCustomer({
+            username: prev.username,
+            routerId: prev.router_id,
+            ip: prev.address || null,
+            mac: prev.caller_id || null
+          }).catch(() => {});
         }
       }
     }
