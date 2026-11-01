@@ -2095,6 +2095,15 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                                   </button>
 
                                   <button
+                                    onClick={() => openConnectionLogsModal(cust)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-[11px] inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                                    title="Lihat Riwayat & Log Koneksi PPP (Connect / Disconnect)"
+                                  >
+                                    <Activity size={13} />
+                                    <span>Log</span>
+                                  </button>
+
+                                  <button
                                     onClick={() => openEditModal(cust)}
                                     className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-all cursor-pointer"
                                     title="Edit Data Pelanggan"
