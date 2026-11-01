@@ -998,8 +998,9 @@ export function generateHotspotProfileOnLogin(profileData: {
 
   const record = `; :local mac $"mac-address"; :local time [/system clock get time ]; /system script add name="$date-|-$time-|-$user-|-${price}-|-$address-|-$mac-|-${validity}-|-${pname}-|-$comment" owner="$month$year" source=$date comment=mikhmon`;
 
+  const safePname = encodeURIComponent(pname);
   // Webhook notifikasi first-login ke server Arbill (non-blocking, anti-macet dengan :do {} on-error={})
-  const notifyServer = `; :local mac $"mac-address"; :do { /tool fetch url="${serverUrl}/api/vouchers/first-login?code=$user&mac=$mac&ip=$address" mode=http keep-result=no; } on-error={}`;
+  const notifyServer = `; :local mac $"mac-address"; :do { /tool fetch url="${serverUrl}/api/vouchers/first-login?code=$user&mac=$mac&ip=$address&profile=${safePname}" mode=http keep-result=no; } on-error={}`;
 
   let onlogin =
     `:put (",${expmode},${price},${validity},${sprice},,${getlock},${srvlock},${getsupportBy},2312012,");` +

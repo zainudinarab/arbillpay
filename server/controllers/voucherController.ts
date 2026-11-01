@@ -957,6 +957,7 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
   const code = (req.query.code || req.body.code || '').toString().trim();
   const mac = (req.query.mac || req.body.mac || '').toString().trim();
   const ip = (req.query.ip || req.body.ip || '').toString().trim();
+  const profileName = (req.query.profile || req.body.profile || '').toString().trim();
   const routerIdentity = (req.query.router || req.body.router || '').toString().trim();
 
   if (!code) {
@@ -966,7 +967,7 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
     });
   }
 
-  console.log(`[VOUCHER FIRST-LOGIN WEBHOOK] Menerima sinyal aktif voucher: code=${code}, mac=${mac}, ip=${ip}, router=${routerIdentity}`);
+  console.log(`[VOUCHER FIRST-LOGIN WEBHOOK] Menerima sinyal aktif voucher: code=${code}, mac=${mac}, ip=${ip}, profile=${profileName || '-'}, router=${routerIdentity}`);
 
   try {
     // 1. Cari voucher di database beserta konfigurasi paket & validity_iso-nya
@@ -997,25 +998,53 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
         voucher_id: voucher.id,
         first_login_at: voucher.first_login_at,
         expired_at: voucher.expired_at,
+        profile_name: voucher.profile_name || profileName || null,
         already_active: true
       });
     }
 
+    let routerProfileId = voucher.router_profile_id || null;
+    let effectiveProfileName = voucher.profile_name || profileName || null;
+    let validityIso = voucher.validity_iso;
+
+    // Jika voucher belum terhubung ke router_profile_id tapi nama profile dikirim dari router, hubungkan sekarang
+    if (!routerProfileId && profileName) {
+      try {
+        const prRes = await pool.query(
+          `SELECT rp.id, rp.name, rp.package_id, p.validity_iso 
+           FROM router_profiles rp 
+           LEFT JOIN packages p ON rp.package_id = p.id
+           WHERE LOWER(rp.name) = LOWER($1) 
+           LIMIT 1`,
+          [profileName]
+        );
+        if (prRes.rows.length > 0) {
+          routerProfileId = prRes.rows[0].id;
+          effectiveProfileName = prRes.rows[0].name;
+          if (!validityIso && prRes.rows[0].validity_iso) {
+            validityIso = prRes.rows[0].validity_iso;
+          }
+        }
+      } catch (_) {}
+    }
+
     // 3. Hitung masa aktif dan tanggal expired berdasarkan validity_iso paket
     const now = new Date();
-    const validityIso = voucher.validity_iso || 'P1D'; // Default 1 hari jika tidak diset
-    const expiredAt = addIsoDurationToDate(now, validityIso);
+    const finalValidityIso = validityIso || 'P1D'; // Default 1 hari jika tidak diset
+    const expiredAt = addIsoDurationToDate(now, finalValidityIso);
 
-    // 4. Update database PostgreSQL
+    // 4. Update database PostgreSQL dengan profile_name & router_profile_id
     await pool.query(`
       UPDATE hotspot_vouchers
       SET status = 'used',
           first_login_at = $1,
           mac_address = $2,
           ip_address = $3,
-          expired_at = $4
-      WHERE id = $5
-    `, [now, mac || null, ip || null, expiredAt, voucher.id]);
+          expired_at = $4,
+          profile_name = COALESCE($5, profile_name),
+          router_profile_id = COALESCE(router_profile_id, $6)
+      WHERE id = $7
+    `, [now, mac || null, ip || null, expiredAt, effectiveProfileName, routerProfileId, voucher.id]);
 
     // 5. Update Cloud Firestore jika menggunakan mode Firebase
     try {
@@ -1026,6 +1055,7 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
           first_login_at: now.toISOString(),
           mac_address: mac || null,
           ip_address: ip || null,
+          profile_name: effectiveProfileName || null,
           expired_at: expiredAt.toISOString()
         }, { merge: true });
       }
@@ -1033,18 +1063,19 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
       console.warn('[VOUCHER FIRST-LOGIN] Firebase sync notice:', fbErr.message);
     }
 
-    console.log(`✅ [VOUCHER FIRST-LOGIN] Voucher ${code} BERHASIL DIAKTIFKAN! Aktif: ${now.toISOString()} | Expired: ${expiredAt.toISOString()} | MAC: ${mac || '-'}`);
+    console.log(`✅ [VOUCHER FIRST-LOGIN] Voucher ${code} (Profile: ${effectiveProfileName || '-'}) BERHASIL DIAKTIFKAN! Aktif: ${now.toISOString()} | Expired: ${expiredAt.toISOString()} | MAC: ${mac || '-'}`);
 
     return res.json({
       success: true,
-      message: `⚡ Voucher "${code}" berhasil diaktifkan untuk pertama kali!`,
+      message: `⚡ Voucher "${code}" (${effectiveProfileName || '-'}) berhasil diaktifkan untuk pertama kali!`,
       voucher_id: voucher.id,
       code: code,
+      profile_name: effectiveProfileName,
       mac_address: mac || null,
       ip_address: ip || null,
       first_login_at: now.toISOString(),
       expired_at: expiredAt.toISOString(),
-      package_name: voucher.package_name || voucher.profile_name || 'Voucher Hotspot'
+      package_name: voucher.package_name || effectiveProfileName || 'Voucher Hotspot'
     });
   } catch (err: any) {
     console.error(`[VOUCHER FIRST-LOGIN ERROR] Gagal memproses first-login voucher ${code}:`, err.message);

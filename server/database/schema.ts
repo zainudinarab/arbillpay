@@ -344,6 +344,7 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64),
       ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS profile_name VARCHAR(128),
       ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP WITH TIME ZONE;
 
       -- Alter & Patch invoices table for voucher relation
