@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { pool } from '../config/db.js';
 import { getInvoices, generateInvoiceNumber, runAutoBillingJob } from '../models/invoiceModel.js';
 import { createArabPayPaymentOrder } from '../services/arabpayService.js';
+import { autoUnisolirCustomerOnMikrotik } from '../services/mikrotikService.js';
 import { sendInvoicePaymentLinkWA } from '../services/whatsappService.js';
 import { addIsoDuration } from '../utils/duration.js';
 
@@ -251,6 +252,11 @@ export async function payInvoice(req: Request, res: Response) {
             AND status = 'pending' 
             AND id != $2
         `, [c.id, inv.id]);
+
+        // ⚡ Otomatis pulihkan profil isolir di router MikroTik dan putus sesi aktif
+        autoUnisolirCustomerOnMikrotik(c.id).catch((unisolirErr) => {
+          console.warn('[AUTO UNISOLIR ERROR]', unisolirErr?.message || unisolirErr);
+        });
       }
     }
 
@@ -354,6 +360,11 @@ export async function handleArabPayCallback(req: Request, res: Response) {
           SET expired_at = $1, grace_until = $2, status = 'active' 
           WHERE id = $3
         `, [newExpDate.toISOString().split('T')[0], newGraceDate.toISOString().split('T')[0], c.id]);
+
+        // ⚡ Otomatis pulihkan profil isolir di router MikroTik dan putus sesi aktif
+        autoUnisolirCustomerOnMikrotik(c.id).catch((unisolirErr) => {
+          console.warn('[AUTO UNISOLIR CALLBACK ERROR]', unisolirErr?.message || unisolirErr);
+        });
       }
     }
 
