@@ -5440,14 +5440,16 @@ export default function CustomerPortal({
                                   <span>{expandedQrVoucherId === v.id ? 'Tutup QR' : 'Lihat QR'}</span>
                                 </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => window.open(`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login`, '_blank')}
+                                <a
+                                  href={`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
                                   className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
+                                  title="Buka halaman login hotspot dan langsung masuk otomatis"
                                 >
                                   <span>Login WiFi</span>
                                   <ExternalLink className="w-3 h-3" />
-                                </button>
+                                </a>
                               </div>
                             ) : (
                               <span className="text-slate-500 italic">Hangus</span>
