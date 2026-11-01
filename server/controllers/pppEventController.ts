@@ -74,43 +74,27 @@ export async function handlePppEvent(req: Request, res: Response) {
       }
     }
 
-    // 3. Catat Riwayat Koneksi ke tabel ppp_connection_logs
-    await pool.query(`
-      INSERT INTO ppp_connection_logs (
-        id, customer_id, username, action, ip_address, mac_address, session_id, bytes_in, bytes_out, uptime, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    `, [
-      logId,
-      customer ? customer.id : null,
-      user,
-      action === 'up' ? 'login' : action === 'down' ? 'logout' : action,
-      ip || null,
-      mac || null,
-      session || null,
-      bytesIn,
-      bytesOut,
-      uptime || null,
-      now
-    ]).catch(() => {});
-
-    // 4. Catat juga ke pppoe_connection_logs
+    // 3. Catat Riwayat Koneksi ke satu tabel utama: pppoe_connection_logs
     await pool.query(`
       INSERT INTO pppoe_connection_logs (
         router_id, customer_id, pppoe_username, ip_address, mac_address,
-        service, event_type, uptime_str, bytes_in, bytes_out, recorded_at
-      ) VALUES ($1, $2, $3, $4, $5, 'pppoe', $6, $7, $8, $9, $10)
+        service, event_type, session_id, uptime_str, bytes_in, bytes_out, recorded_at
+      ) VALUES ($1, $2, $3, $4, $5, 'pppoe', $6, $7, $8, $9, $10, $11)
     `, [
-      effectiveRouterId,
+      effectiveRouterId || 'default',
       customer ? customer.id : null,
       user,
       ip || null,
       mac || null,
       isOnline ? 'connected' : 'disconnected',
+      session || null,
       uptime || null,
       bytesIn,
       bytesOut,
       now
-    ]).catch(() => {});
+    ]).catch((err) => {
+      console.warn('[PPP EVENT LOG] Gagal mencatat pppoe_connection_logs:', err.message);
+    });
 
     // Invalidate Redis active users cache agar panel admin langsung melihat status teranyar (0-latency)
     redisDel('mikrotik:active_users:all').catch(() => {});
@@ -156,16 +140,38 @@ export async function listPppLogs(req: Request, res: Response) {
 
   try {
     let query = `
-      SELECT l.*, c.name as customer_name, c.customer_code, p.name as package_name
-      FROM ppp_connection_logs l
-      LEFT JOIN customers c ON l.customer_id = c.id
+      SELECT 
+        pcl.id,
+        pcl.router_id,
+        pcl.customer_id,
+        pcl.pppoe_username as username,
+        pcl.pppoe_username,
+        CASE WHEN pcl.event_type = 'connected' THEN 'login' ELSE 'logout' END as action,
+        pcl.event_type,
+        pcl.ip_address,
+        pcl.mac_address,
+        pcl.session_id,
+        pcl.service,
+        pcl.uptime_str as uptime,
+        pcl.bytes_in,
+        pcl.bytes_out,
+        pcl.terminate_cause,
+        pcl.recorded_at as created_at,
+        pcl.recorded_at,
+        c.name as customer_name,
+        c.customer_code,
+        p.name as package_name,
+        r.name as router_name
+      FROM pppoe_connection_logs pcl
+      LEFT JOIN customers c ON (pcl.customer_id = c.id OR LOWER(pcl.pppoe_username) = LOWER(c.pppoe_username))
       LEFT JOIN packages p ON c.package_id = p.id
+      LEFT JOIN routers r ON pcl.router_id = r.id
     `;
     const params: any[] = [];
     const whereClauses: string[] = [];
 
     if (customerId) {
-      // Find customer's pppoe_username to match both linked and legacy unlinked logs
+      // Match by customer id or pppoe_username
       let custUsername = '';
       try {
         const cRes = await pool.query('SELECT pppoe_username FROM customers WHERE id = $1', [customerId]);
@@ -179,13 +185,13 @@ export async function listPppLogs(req: Request, res: Response) {
       if (custUsername) {
         params.push(custUsername.toLowerCase());
         const userParamIdx = params.length;
-        whereClauses.push(`(l.customer_id = $${custParamIdx} OR LOWER(l.username) = $${userParamIdx})`);
+        whereClauses.push(`(pcl.customer_id = $${custParamIdx} OR LOWER(pcl.pppoe_username) = $${userParamIdx})`);
       } else {
-        whereClauses.push(`l.customer_id = $${custParamIdx}`);
+        whereClauses.push(`pcl.customer_id = $${custParamIdx}`);
       }
     } else if (username) {
       params.push(`%${username.toLowerCase()}%`);
-      whereClauses.push(`LOWER(l.username) LIKE $${params.length}`);
+      whereClauses.push(`LOWER(pcl.pppoe_username) LIKE $${params.length}`);
     }
 
     if (whereClauses.length > 0) {
@@ -193,7 +199,7 @@ export async function listPppLogs(req: Request, res: Response) {
     }
 
     params.push(limit);
-    query += ` ORDER BY l.created_at DESC LIMIT $${params.length}`;
+    query += ` ORDER BY pcl.recorded_at DESC LIMIT $${params.length}`;
 
     const result = await pool.query(query, params);
     
@@ -206,8 +212,8 @@ export async function listPppLogs(req: Request, res: Response) {
     for (const r of result.rows) {
       totalBytesIn += parseInt(r.bytes_in || '0', 10);
       totalBytesOut += parseInt(r.bytes_out || '0', 10);
-      if (r.action === 'login' || r.action === 'up') loginCount++;
-      if (r.action === 'logout' || r.action === 'down') logoutCount++;
+      if (r.event_type === 'connected' || r.action === 'login' || r.action === 'up') loginCount++;
+      if (r.event_type === 'disconnected' || r.action === 'logout' || r.action === 'down') logoutCount++;
     }
 
     res.json({

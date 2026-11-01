@@ -242,20 +242,6 @@ export async function initDatabaseSchema() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
-      CREATE TABLE IF NOT EXISTS ppp_connection_logs (
-        id VARCHAR(64) PRIMARY KEY,
-        customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE SET NULL,
-        username VARCHAR(255) NOT NULL,
-        action VARCHAR(32) NOT NULL,
-        ip_address VARCHAR(64),
-        mac_address VARCHAR(64),
-        session_id VARCHAR(64),
-        bytes_in BIGINT DEFAULT 0,
-        bytes_out BIGINT DEFAULT 0,
-        uptime VARCHAR(64),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-
       CREATE TABLE IF NOT EXISTS olts (
         id VARCHAR(64) PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
@@ -679,15 +665,16 @@ export async function initDatabaseSchema() {
       CREATE INDEX IF NOT EXISTS idx_traffic_log_time ON interface_traffic_logs (recorded_at DESC);
     `).catch(() => {});
 
-    // 10.7 PPPoE / Hotspot Customer Connection & Disconnection Event Logs
+    // 10.7 PPPoE / Hotspot Customer Connection & Disconnection Event Logs (Unified Single Table)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS pppoe_connection_logs (
         id BIGSERIAL PRIMARY KEY,
-        router_id VARCHAR(64) NOT NULL,
+        router_id VARCHAR(64) DEFAULT 'default',
         customer_id VARCHAR(64),
         pppoe_username VARCHAR(128) NOT NULL,
         ip_address VARCHAR(64),
         mac_address VARCHAR(64),
+        session_id VARCHAR(64),
         service VARCHAR(32) DEFAULT 'pppoe',
         event_type VARCHAR(32) NOT NULL, -- 'connected' | 'disconnected'
         uptime_seconds INT DEFAULT 0,
@@ -698,30 +685,30 @@ export async function initDatabaseSchema() {
         recorded_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE pppoe_connection_logs ADD COLUMN IF NOT EXISTS session_id VARCHAR(64);
+
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_username ON pppoe_connection_logs (pppoe_username, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_customer ON pppoe_connection_logs (customer_id, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_router ON pppoe_connection_logs (router_id, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_event ON pppoe_connection_logs (event_type, recorded_at DESC);
       CREATE INDEX IF NOT EXISTS idx_pppoe_logs_time ON pppoe_connection_logs (recorded_at DESC);
 
-      CREATE TABLE IF NOT EXISTS ppp_connection_logs (
-        id VARCHAR(64) PRIMARY KEY,
-        customer_id VARCHAR(64),
-        username VARCHAR(128) NOT NULL,
-        action VARCHAR(32) NOT NULL, -- 'login' | 'logout' | 'connected' | 'disconnected'
-        ip_address VARCHAR(64),
-        mac_address VARCHAR(64),
-        session_id VARCHAR(64),
-        bytes_in BIGINT DEFAULT 0,
-        bytes_out BIGINT DEFAULT 0,
-        uptime VARCHAR(64),
-        terminate_cause VARCHAR(255),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_ppp_conn_username ON ppp_connection_logs (username, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_ppp_conn_customer ON ppp_connection_logs (customer_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_ppp_conn_created ON ppp_connection_logs (created_at DESC);
+      -- Backward-compatible VIEW for any legacy code querying ppp_connection_logs
+      CREATE OR REPLACE VIEW ppp_connection_logs AS 
+      SELECT 
+        id::text as id,
+        customer_id,
+        pppoe_username as username,
+        CASE WHEN event_type = 'connected' THEN 'login' ELSE 'logout' END as action,
+        ip_address,
+        mac_address,
+        session_id,
+        bytes_in,
+        bytes_out,
+        uptime_str as uptime,
+        terminate_cause,
+        recorded_at as created_at
+      FROM pppoe_connection_logs;
     `).catch(() => {});
 
     // 11. Smart Migration for Flash Sales
