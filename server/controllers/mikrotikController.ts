@@ -960,6 +960,63 @@ export function mikrotikTimeToIso(str?: string | null): string | null {
 }
 
 /**
+ * Mengambil URL publik Billing Server yang valid dan dapat diakses oleh Router MikroTik
+ * Prioritas:
+ * 1. Request aktif dari browser (Origin / Referer / Host aktif dari web misal https://arbill.arabpay.my.id)
+ * 2. process.env.BILLING_SERVER_URL
+ * 3. process.env.BILLING_SERVER_HOST (default: arbill.arabpay.my.id)
+ */
+export function getBillingServerUrl(req?: Request): string {
+  // 1. Jika ada explicit BILLING_SERVER_URL di .env
+  if (process.env.BILLING_SERVER_URL && process.env.BILLING_SERVER_URL.trim()) {
+    const u = process.env.BILLING_SERVER_URL.trim().replace(/\/+$/, '');
+    if (!u.includes('postgres_db') && !u.includes('localhost:5432')) {
+      return u;
+    }
+  }
+
+  // 2. Deteksi dinamis dari request aktif browser (Origin / Referer / Host)
+  if (req) {
+    const origin = req.get('origin');
+    if (origin && origin.startsWith('http') && !origin.includes('postgres_db') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+      return origin.replace(/\/+$/, '');
+    }
+
+    const referer = req.get('referer');
+    if (referer && referer.startsWith('http') && !referer.includes('postgres_db') && !referer.includes('localhost') && !referer.includes('127.0.0.1')) {
+      try {
+        const u = new URL(referer);
+        return `${u.protocol}//${u.host}`;
+      } catch (_) {}
+    }
+
+    const forwardedHost = req.get('x-forwarded-host');
+    const forwardedProto = req.get('x-forwarded-proto') || 'https';
+    if (forwardedHost && !forwardedHost.includes('postgres_db') && !forwardedHost.includes('localhost')) {
+      return `${forwardedProto}://${forwardedHost.split(',')[0].trim()}`;
+    }
+
+    const host = req.get('host');
+    if (host && !host.includes('postgres_db') && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+      const proto = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      return `${proto}://${host}`;
+    }
+  }
+
+  // 3. Ambil dari BILLING_SERVER_HOST di .env (misal: arbill.arabpay.my.id)
+  if (process.env.BILLING_SERVER_HOST && process.env.BILLING_SERVER_HOST.trim()) {
+    const host = process.env.BILLING_SERVER_HOST.trim();
+    if (host.startsWith('http://') || host.startsWith('https://')) {
+      return host.replace(/\/+$/, '');
+    }
+    return `https://${host}`;
+  }
+
+  // 4. Default fallback domain publik
+  return 'https://arbill.arabpay.my.id';
+}
+
+/**
  * Generator script on-login, bgservice, dan cshglobal (RouterOS v6 & v7 compatible)
  * Diadopsi persis dari logika arsitektur vpntunnel/MikrotikSyncService.php
  */
@@ -982,7 +1039,9 @@ export function generateHotspotProfileOnLogin(profileData: {
   const srvlock = (profileData.lock_server ?? STATIC_MIKROTIK_SCRIPT_CONFIG.lock_server) ? 'true' : 'false';
   const getsupportBy = profileData.support_by || STATIC_MIKROTIK_SCRIPT_CONFIG.support_by;
   const expmode = profileData.expired_mode || STATIC_MIKROTIK_SCRIPT_CONFIG.expired_mode;
-  const serverUrl = profileData.server_url || process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`;
+  const serverUrl = profileData.server_url || getBillingServerUrl();
+  const isHttps = serverUrl.startsWith('https://');
+  const fetchMode = isHttps ? 'mode=https check-certificate=no' : 'mode=http';
 
   const lock = (profileData.lock_user ?? STATIC_MIKROTIK_SCRIPT_CONFIG.lock_user)
     ? '; [:local mac $"mac-address"; /ip hotspot user set mac-address=$mac [find where name=$user]]'
@@ -1000,7 +1059,7 @@ export function generateHotspotProfileOnLogin(profileData: {
 
   const safePname = encodeURIComponent(pname);
   // Webhook notifikasi first-login ke server Arbill (non-blocking, anti-macet dengan :do {} on-error={})
-  const notifyServer = `; :local mac $"mac-address"; :do { /tool fetch url="${serverUrl}/api/vouchers/first-login?code=$user&mac=$mac&ip=$address&profile=${safePname}" mode=http keep-result=no; } on-error={}`;
+  const notifyServer = `; :local mac $"mac-address"; :do { /tool fetch url="${serverUrl}/api/vouchers/first-login?code=$user&mac=$mac&ip=$address&profile=${safePname}" ${fetchMode} keep-result=no; } on-error={}`;
 
   let onlogin =
     `:put (",${expmode},${price},${validity},${sprice},,${getlock},${srvlock},${getsupportBy},2312012,");` +
@@ -1061,20 +1120,22 @@ export function generateHotspotProfileOnLogin(profileData: {
  * Kompatibel untuk RouterOS v6 & v7, aman dan anti-macet via :do {} on-error={}
  */
 export function generatePppProfileOnUpDown(config?: { serverUrl?: string; routerId?: string }) {
-  const serverUrl = config?.serverUrl || process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`;
+  const serverUrl = config?.serverUrl || getBillingServerUrl();
   const rId = config?.routerId ? `&router_id=${config.routerId}` : '';
+  const isHttps = serverUrl.startsWith('https://');
+  const fetchMode = isHttps ? 'mode=https check-certificate=no' : 'mode=http';
 
   // RouterOS Script: On-Up (Instan terpanggil saat PPPoE connect)
   const onup =
     `:local rip $"remote-address"; :local mac $"caller-id"; ` +
     `:local url "${serverUrl}/api/ppp/events?action=login&user=$user&ip=$rip&mac=$mac${rId}"; ` +
-    `:do { /tool fetch url=$url mode=http keep-result=no; } on-error={};`;
+    `:do { /tool fetch url=$url ${fetchMode} keep-result=no; } on-error={};`;
 
   // RouterOS Script: On-Down (Instan terpanggil saat PPPoE disconnect/putus)
   const ondown =
     `:local bIn $"bytes-in"; :local bOut $"bytes-out"; :local uptime $"uptime"; :local mac $"caller-id"; ` +
     `:local url "${serverUrl}/api/ppp/events?action=logout&user=$user&mac=$mac&uptime=$uptime&bytes_in=$bIn&bytes_out=$bOut${rId}"; ` +
-    `:do { /tool fetch url=$url mode=http keep-result=no; } on-error={};`;
+    `:do { /tool fetch url=$url ${fetchMode} keep-result=no; } on-error={};`;
 
   return { onup, ondown };
 }
@@ -1229,6 +1290,8 @@ export async function pushProfileToMikrotik(req: Request, res: Response) {
     // Hitung format validity untuk script on-login Mikrotik RouterOS langsung dari ISO-8601 Duration
     const formattedValidity = isoDurationToMikrotikValidity(prof.validity_iso) || '1d';
 
+    const billingServerUrl = (req.body?.server_url || req.query?.server_url || getBillingServerUrl(req)).toString().trim();
+
     const hotspotScripts = generateHotspotProfileOnLogin({
       profile_name: prof.name,
       price: prof.package_price || 0,
@@ -1238,10 +1301,9 @@ export async function pushProfileToMikrotik(req: Request, res: Response) {
       lock_server: prof.package_lock_server !== null && prof.package_lock_server !== undefined ? Boolean(prof.package_lock_server) : STATIC_MIKROTIK_SCRIPT_CONFIG.lock_server,
       support_by: STATIC_MIKROTIK_SCRIPT_CONFIG.support_by,
       expired_mode: prof.package_expired_mode || STATIC_MIKROTIK_SCRIPT_CONFIG.expired_mode,
-      server_url: process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`,
+      server_url: billingServerUrl,
     });
 
-    const billingServerUrl = process.env.BILLING_SERVER_URL || `http://${process.env.DB_HOST || '30.30.2.53'}:${process.env.PORT || 3006}`;
     const pppScripts = generatePppProfileOnUpDown({ serverUrl: billingServerUrl, routerId: prof.router_id });
 
     let pushSuccess = false;
