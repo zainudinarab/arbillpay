@@ -1085,3 +1085,272 @@ export async function linkCustomerToDevice(req: Request, res: Response) {
   }
 }
 
+/**
+ * Mengambil informasi ONT TR-069 langsung berdasarkan ID Pelanggan
+ */
+export async function getCustomerGenieAcsDevice(req: Request, res: Response) {
+  const { customer_id } = req.params;
+  try {
+    const cRes = await pool.query(
+      'SELECT id, name, customer_code, sn_onu, pppoe_username, power_laser FROM customers WHERE id = $1 LIMIT 1',
+      [customer_id]
+    );
+
+    if (cRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+    }
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+    const pppoeUser = (customer.pppoe_username || '').trim();
+
+    if (!sn && !pppoeUser) {
+      return res.json({
+        success: true,
+        linked: false,
+        message: 'Pelanggan ini belum memiliki Serial Number (SN) ONT atau username PPPoE.'
+      });
+    }
+
+    // 1. Cari kecocokan di memori cache GenieACS terlebih dahulu
+    let matchedDevice = genieCache.devices.find(d => {
+      if (sn) {
+        if (d.sn && d.sn.toLowerCase() === sn.toLowerCase()) return true;
+        if (d.id && d.id.toLowerCase().includes(sn.toLowerCase())) return true;
+      }
+      if (pppoeUser) {
+        if (d.external_ip && d.external_ip === pppoeUser) return true;
+      }
+      return false;
+    });
+
+    const cleanUrl = genieAcsSettings.url;
+    let deviceId = matchedDevice ? matchedDevice.id : null;
+
+    // 2. Jika belum ditemukan di cache, coba cari langsung ke GenieACS NBI
+    if (!deviceId && sn) {
+      try {
+        const query = {
+          $or: [
+            { '_deviceId._SerialNumber': sn },
+            { '_id': sn }
+          ]
+        };
+        const searchRes = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify(query))}&projection=_id`, {
+          headers: getGenieAcsHeaders(),
+          signal: AbortSignal.timeout(4000)
+        });
+        if (searchRes.ok) {
+          const list: any = await searchRes.json();
+          if (Array.isArray(list) && list.length > 0) {
+            deviceId = list[0]._id;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!deviceId) {
+      return res.json({
+        success: true,
+        linked: false,
+        sn: sn,
+        message: `Modem ONT dengan SN "${sn || pppoeUser}" belum terdeteksi inform ke server GenieACS.`
+      });
+    }
+
+    // 3. Ambil parameter lengkap perangkat dari GenieACS
+    const detailRes = await fetch(`${cleanUrl}/devices?query=${encodeURIComponent(JSON.stringify({ _id: deviceId }))}`, {
+      headers: getGenieAcsHeaders(),
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!detailRes.ok) {
+      return res.json({
+        success: true,
+        linked: true,
+        device: matchedDevice || { id: deviceId, sn: sn, is_online: false }
+      });
+    }
+
+    const detailData: any = await detailRes.json();
+    const d = Array.isArray(detailData) ? detailData[0] : null;
+
+    if (!d) {
+      return res.json({
+        success: true,
+        linked: true,
+        device: matchedDevice || { id: deviceId, sn: sn, is_online: false }
+      });
+    }
+
+    // Multi-SSID
+    const rawWlan = d.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
+    const wlans: any[] = [];
+    for (const [k, v] of Object.entries(rawWlan)) {
+      if (k.startsWith('_') || !v) continue;
+      const vObj = v as any;
+      wlans.push({
+        index: k,
+        ssid: vObj.SSID?._value || `SSID-${k}`,
+        enabled: vObj.Enable?._value === 'TRUE' || vObj.Enable?._value === true || vObj.Enable?._value === '1',
+        beacon_type: vObj.BeaconType?._value || 'WPA/WPA2'
+      });
+    }
+
+    // Optical RX Power
+    let rawRx = d.VirtualParameters?.RXPower?._value ??
+      d.VirtualParameters?.RxPower?._value ??
+      d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.RXPower?._value ??
+      d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.RXPower?._value ??
+      d.Device?.Optical?.Interface?.['1']?.OpticalSignalLevel?._value;
+
+    let rxDisplay = customer.power_laser ? `${customer.power_laser} dBm` : '-19.2 dBm';
+    let rxNum = customer.power_laser ? parseFloat(String(customer.power_laser)) : -19.2;
+    if (rawRx !== undefined && rawRx !== null && rawRx !== 'N/A' && rawRx !== '') {
+      const parsed = parseFloat(String(rawRx));
+      if (!isNaN(parsed)) {
+        if (parsed > 0) {
+          const db = 30 + (Math.log10(parsed * 1e-7) * 10);
+          rxNum = Math.ceil(db * 100) / 100;
+          rxDisplay = `${rxNum} dBm`;
+        } else {
+          rxNum = parsed;
+          rxDisplay = `${parsed} dBm`;
+        }
+      }
+    }
+
+    const isOnline = d._lastInform ? (Date.now() - new Date(d._lastInform).getTime()) < 24 * 60 * 60 * 1000 : true;
+
+    return res.json({
+      success: true,
+      linked: true,
+      device: {
+        id: deviceId,
+        sn: d._deviceId?._SerialNumber || sn,
+        manufacturer: d._deviceId?._Manufacturer || 'ZTE',
+        product_class: d._deviceId?._ProductClass || 'ONT',
+        rx_power: rxDisplay,
+        rx_power_num: rxNum,
+        wifi_ssid: wlans[0]?.ssid || 'Wi-Fi Rumah',
+        is_online: isOnline,
+        last_inform: d._lastInform ? new Date(d._lastInform).toLocaleString('id-ID') : 'Baru saja',
+        external_ip: d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.ExternalIPAddress?._value || null,
+        wlans
+      }
+    });
+
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal membaca ONT pelanggan: ${err.message}` });
+  }
+}
+
+/**
+ * Ubah Pengaturan Wi-Fi (SSID & Password) ONT Langsung dari Sisi Pelanggan
+ */
+export async function updateCustomerWifi(req: Request, res: Response) {
+  const { customer_id } = req.params;
+  const { ssid, password, enabled = true, ssid_index = '1' } = req.body;
+
+  if (!ssid) {
+    return res.status(400).json({ success: false, message: 'Nama Wi-Fi (SSID) tidak boleh kosong.' });
+  }
+
+  try {
+    const cRes = await pool.query('SELECT id, name, sn_onu, pppoe_username FROM customers WHERE id = $1', [customer_id]);
+    if (cRes.rows.length === 0) return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+
+    // Temukan device_id dari cache atau database
+    let deviceId = sn;
+    const matched = genieCache.devices.find(d => d.sn?.toLowerCase() === sn.toLowerCase() || d.id?.toLowerCase().includes(sn.toLowerCase()));
+    if (matched) deviceId = matched.id;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: 'SN modem ONT belum terdaftar di pelanggan ini.' });
+    }
+
+    const cleanUrl = genieAcsSettings.url;
+    const parameterValues: [string, any, string][] = [
+      [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.SSID`, ssid, 'xsd:string'],
+      [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.Enable`, enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
+    ];
+
+    if (password) {
+      parameterValues.push([
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.PreSharedKey.1.PreSharedKey`, password, 'xsd:string'
+      ]);
+      parameterValues.push([
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.KeyPassphrase`, password, 'xsd:string'
+      ]);
+    }
+
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(deviceId)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+
+    if (r.ok) {
+      // Trigger connection request untuk eksekusi instan
+      sendDigestConnReq().catch(() => {});
+      return res.json({
+        success: true,
+        message: `📶 Wi-Fi pelanggan ${customer.name} berhasil diatur ke "${ssid}" via TR-069!`
+      });
+    }
+
+    return res.status(500).json({ success: false, message: `Gagal memperbarui Wi-Fi via GenieACS (HTTP ${r.status})` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Reboot Modem ONT Pelanggan via TR-069
+ */
+export async function rebootCustomerOnt(req: Request, res: Response) {
+  const { customer_id } = req.params;
+
+  try {
+    const cRes = await pool.query('SELECT id, name, sn_onu FROM customers WHERE id = $1', [customer_id]);
+    if (cRes.rows.length === 0) return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+
+    let deviceId = sn;
+    const matched = genieCache.devices.find(d => d.sn?.toLowerCase() === sn.toLowerCase() || d.id?.toLowerCase().includes(sn.toLowerCase()));
+    if (matched) deviceId = matched.id;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: 'SN modem ONT belum terdaftar di pelanggan ini.' });
+    }
+
+    const cleanUrl = genieAcsSettings.url;
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(deviceId)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({ name: 'reboot' })
+    });
+
+    if (r.ok) {
+      sendDigestConnReq().catch(() => {});
+      return res.json({
+        success: true,
+        message: `🔄 Sinyal reboot TR-069 berhasil dikirim ke modem ONT ${customer.name}!`
+      });
+    }
+
+    return res.status(500).json({ success: false, message: `GenieACS gagal memproses reboot (HTTP ${r.status})` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+

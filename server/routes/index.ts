@@ -16,6 +16,7 @@ import flashSaleRoutes from './flashSaleRoutes.js';
 import integrationRoutes from './integrationRoutes.js';
 import oltRoutes from './oltRoutes.js';
 import telegramRoutes from './telegramRoutes.js';
+import whatsappRoutes from './whatsappRoutes.js';
 
 const router = Router();
 
@@ -47,6 +48,7 @@ router.use('/', portalRoutes);
 router.use('/mikrotik', mikrotikRoutes);
 router.use('/', mikrotikRoutes);
 router.use('/telegram', telegramRoutes);
+router.use('/whatsapp', whatsappRoutes);
 router.use('/', oltRoutes);
 
 // 404 handler for any unmatched /api requests to prevent hanging

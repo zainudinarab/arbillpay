@@ -394,4 +394,200 @@ export async function processOfflineQueueWorker() {
 // Jalankan background worker setiap 30 detik
 setInterval(() => {
   processOfflineQueueWorker().catch(() => {});
+  checkMassOutageCorrelation().catch(() => {});
 }, 30 * 1000);
+
+/**
+ * ==============================================================
+ * ENGINE DETEKSI GANGGUAN MASSAL (MASS OUTAGE & FIBER CUT CORRELATION)
+ * ==============================================================
+ */
+interface MassOutageCluster {
+  key: string;
+  clusterType: 'ODP' | 'ROUTER' | 'AREA';
+  clusterName: string;
+  routerName: string;
+  customers: { pppoe_username: string; customer_name: string; disconnected_at: Date }[];
+  detectedAt: Date;
+  alertSent: boolean;
+}
+
+const activeOutageClusters: Map<string, MassOutageCluster> = new Map();
+
+/**
+ * Menganalisis korelasi disconnect pelanggan untuk mendeteksi kabel putus massal
+ */
+export async function checkMassOutageCorrelation() {
+  const cfg = await getTelegramConfig();
+  if (!cfg.enabled || !cfg.botToken || !cfg.chatId) return;
+
+  try {
+    // 1. Ambil semua antrean pelanggan yang offline dalam 15 menit terakhir
+    const res = await pool.query(`
+      SELECT q.id, q.pppoe_username, q.customer_name, q.router_id, q.router_name, q.disconnected_at,
+             c.odp_port, c.dusun, c.desa
+      FROM customer_offline_queue q
+      LEFT JOIN customers c ON (LOWER(c.pppoe_username) = LOWER(q.pppoe_username) OR c.id = q.customer_id)
+      WHERE q.status IN ('PENDING', 'ALERT_SENT')
+        AND q.disconnected_at >= NOW() - INTERVAL '15 minutes'
+      ORDER BY q.disconnected_at DESC
+    `);
+
+    if (res.rows.length < 3) {
+      // Periksa apakah cluster yang sebelumnya aktif kini sudah pulih
+      await checkMassOutageRecovery(new Set());
+      return;
+    }
+
+    // 2. Kelompokkan berdasarkan ODP (jika diisi)
+    const odpGroups: Map<string, any[]> = new Map();
+    const routerGroups: Map<string, any[]> = new Map();
+
+    for (const row of res.rows) {
+      const odp = (row.odp_port || '').trim().toUpperCase();
+      if (odp && odp !== '-' && odp !== 'NONE') {
+        if (!odpGroups.has(odp)) odpGroups.set(odp, []);
+        odpGroups.get(odp)!.push(row);
+      }
+
+      const routerKey = row.router_name || row.router_id || 'MikroTik';
+      if (!routerGroups.has(routerKey)) routerGroups.set(routerKey, []);
+      routerGroups.get(routerKey)!.push(row);
+    }
+
+    const currentClusterKeys = new Set<string>();
+
+    // 3. Deteksi Cluster ODP (Ambang Batas: >= 3 pelanggan di 1 ODP yang sama)
+    for (const [odp, list] of odpGroups.entries()) {
+      if (list.length >= 3) {
+        const clusterKey = `ODP:${odp}`;
+        currentClusterKeys.add(clusterKey);
+
+        if (!activeOutageClusters.has(clusterKey)) {
+          const firstRouter = list[0]?.router_name || 'MikroTik Utama';
+          const cluster: MassOutageCluster = {
+            key: clusterKey,
+            clusterType: 'ODP',
+            clusterName: `ODP ${odp}`,
+            routerName: firstRouter,
+            customers: list.map(x => ({
+              pppoe_username: x.pppoe_username,
+              customer_name: x.customer_name || x.pppoe_username,
+              disconnected_at: new Date(x.disconnected_at)
+            })),
+            detectedAt: new Date(),
+            alertSent: false
+          };
+
+          activeOutageClusters.set(clusterKey, cluster);
+
+          // Kirim Alert Mass Outage Telegram
+          const custListStr = cluster.customers
+            .slice(0, 10)
+            .map((c, idx) => `${idx + 1}. <b>${c.customer_name}</b> (<code>${c.pppoe_username}</code>)`)
+            .join('\n');
+
+          const moreNotice = cluster.customers.length > 10 ? `\n<i>...dan ${cluster.customers.length - 10} pelanggan lainnya</i>` : '';
+
+          const alertText =
+            `🚨⚠️ <b>PERINGATAN GANGGUAN MASSAL (MASS OUTAGE)!</b>\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `📍 <b>Titik ODP Terdampak:</b> <b>${cluster.clusterName}</b>\n` +
+            `📡 <b>Router:</b> ${cluster.routerName}\n` +
+            `👥 <b>Pelanggan Padam:</b> <b>${cluster.customers.length} Pelanggan Serentak</b>\n\n` +
+            `📋 <b>Daftar Pelanggan Terputus:</b>\n` +
+            `${custListStr}${moreNotice}\n\n` +
+            `⏰ <b>Waktu Deteksi:</b> ${formatWib(cluster.detectedAt)}\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `⚠️ <b>Indikasi Teknis:</b> Kemungkinan besar kabel distribusi Fiber Optik (FO) putus / tertekuk parah, atau splitter ODP rusak. Tim teknisi mohon lakukan pengecekan fisik ke lokasi!`;
+
+          await sendTelegramMessage(alertText);
+          cluster.alertSent = true;
+          console.log(`[MASS OUTAGE DETECTOR] 🚨 Alert dikirim untuk cluster: ${clusterKey} (${list.length} users).`);
+        }
+      }
+    }
+
+    // 4. Deteksi Cluster Router (Ambang Batas: >= 5 pelanggan di Router yang sama tanpa terpetakan ODP)
+    for (const [rName, list] of routerGroups.entries()) {
+      if (list.length >= 5) {
+        const clusterKey = `ROUTER:${rName}`;
+        currentClusterKeys.add(clusterKey);
+
+        if (!activeOutageClusters.has(clusterKey)) {
+          const cluster: MassOutageCluster = {
+            key: clusterKey,
+            clusterType: 'ROUTER',
+            clusterName: `Router ${rName}`,
+            routerName: rName,
+            customers: list.map(x => ({
+              pppoe_username: x.pppoe_username,
+              customer_name: x.customer_name || x.pppoe_username,
+              disconnected_at: new Date(x.disconnected_at)
+            })),
+            detectedAt: new Date(),
+            alertSent: false
+          };
+
+          activeOutageClusters.set(clusterKey, cluster);
+
+          const custListStr = cluster.customers
+            .slice(0, 10)
+            .map((c, idx) => `${idx + 1}. <b>${c.customer_name}</b> (<code>${c.pppoe_username}</code>)`)
+            .join('\n');
+
+          const moreNotice = cluster.customers.length > 10 ? `\n<i>...dan ${cluster.customers.length - 10} pelanggan lainnya</i>` : '';
+
+          const alertText =
+            `🚨⚠️ <b>PERINGATAN GANGGUAN AREA / ROUTER!</b>\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `📡 <b>Router / Gateway:</b> <b>${cluster.routerName}</b>\n` +
+            `👥 <b>Total Pelanggan Terputus:</b> <b>${cluster.customers.length} Pelanggan Bersamaan</b>\n\n` +
+            `📋 <b>Daftar Pelanggan:</b>\n` +
+            `${custListStr}${moreNotice}\n\n` +
+            `⏰ <b>Waktu Terdeteksi:</b> ${formatWib(cluster.detectedAt)}\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `⚠️ <i>Kemungkinan terjadi pemadaman listrik di area POP/Server atau uplink backbone terputus.</i>`;
+
+          await sendTelegramMessage(alertText);
+          cluster.alertSent = true;
+          console.log(`[MASS OUTAGE DETECTOR] 🚨 Alert dikirim untuk cluster router: ${clusterKey} (${list.length} users).`);
+        }
+      }
+    }
+
+    // 5. Periksa cluster yang sudah sembuh
+    await checkMassOutageRecovery(currentClusterKeys);
+
+  } catch (err: any) {
+    console.warn('[MASS OUTAGE DETECTOR ERROR]:', err.message);
+  }
+}
+
+/**
+ * Notifikasi pemulihan jika gangguan massal telah selesai
+ */
+async function checkMassOutageRecovery(activeKeys: Set<string>) {
+  for (const [key, cluster] of activeOutageClusters.entries()) {
+    if (!activeKeys.has(key) && cluster.alertSent) {
+      const now = new Date();
+      const diffMs = now.getTime() - cluster.detectedAt.getTime();
+      const durasiStr = formatDurationMs(diffMs);
+
+      const recoveryMsg =
+        `✅🎉 <b>GANGGUAN MASSAL TELAH PULIH (MASS OUTAGE RESOLVED)!</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `📍 <b>Cluster / Titik:</b> <b>${cluster.clusterName}</b> (${cluster.routerName})\n` +
+        `👥 <b>Pelanggan:</b> Seluruh pelanggan telah kembali online normal\n` +
+        `⏱️ <b>Durasi Gangguan:</b> ${durasiStr}\n` +
+        `⏰ <b>Waktu Pulih:</b> ${formatWib(now)}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `<i>Kabel distribusi / jaringan telah aktif kembali. Kerja bagus tim teknisi! 🚀</i>`;
+
+      await sendTelegramMessage(recoveryMsg);
+      console.log(`[MASS OUTAGE DETECTOR] ✅ Cluster ${key} pulih setelah ${durasiStr}.`);
+      activeOutageClusters.delete(key);
+    }
+  }
+}
+

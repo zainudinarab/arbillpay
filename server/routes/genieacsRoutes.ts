@@ -12,7 +12,10 @@ import {
   createDeviceWan,
   factoryResetDevice,
   refreshDeviceTask,
-  linkCustomerToDevice
+  linkCustomerToDevice,
+  getCustomerGenieAcsDevice,
+  updateCustomerWifi,
+  rebootCustomerOnt
 } from '../controllers/genieacsController.js';
 
 const router = Router();
@@ -21,6 +24,9 @@ router.get('/settings', getSettings);
 router.post('/settings', saveSettings);
 router.get('/devices', listDevices);
 router.post('/sync-customers', syncCustomersLaser);
+router.get('/customer/:customer_id/device', getCustomerGenieAcsDevice);
+router.post('/customer/:customer_id/wifi', updateCustomerWifi);
+router.post('/customer/:customer_id/reboot', rebootCustomerOnt);
 router.get('/devices/:device_id/detail', getDeviceDetail);
 router.post('/devices/:device_id/reboot', rebootDevice);
 router.post('/devices/:device_id/wifi', updateDeviceWifi);
