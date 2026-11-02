@@ -17,6 +17,7 @@ import integrationRoutes from './integrationRoutes.js';
 import oltRoutes from './oltRoutes.js';
 import telegramRoutes from './telegramRoutes.js';
 import whatsappRoutes from './whatsappRoutes.js';
+import speedtestRoutes from './speedtestRoutes.js';
 
 const router = Router();
 
@@ -49,6 +50,7 @@ router.use('/mikrotik', mikrotikRoutes);
 router.use('/', mikrotikRoutes);
 router.use('/telegram', telegramRoutes);
 router.use('/whatsapp', whatsappRoutes);
+router.use('/speedtest', speedtestRoutes);
 router.use('/', oltRoutes);
 
 // 404 handler for any unmatched /api requests to prevent hanging

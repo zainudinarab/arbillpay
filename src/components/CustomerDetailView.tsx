@@ -42,6 +42,7 @@ import { CustomerItem } from './CustomerManagement';
 import { BusinessProfile } from '../types';
 import { getApiUrl } from '../config/api';
 import { getInvoicesFromFirestore } from '../services/firebaseService';
+import SpeedtestModal from './SpeedtestModal';
 
 interface CustomerDetailViewProps {
   customer: CustomerItem;
@@ -253,6 +254,7 @@ export default function CustomerDetailView({
   const [showAdminPassModal, setShowAdminPassModal] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [showConnectedClients, setShowConnectedClients] = useState(false);
+  const [showSpeedtestModal, setShowSpeedtestModal] = useState(false);
 
   const handleUpdateAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1402,6 +1404,16 @@ export default function CustomerDetailView({
                     <span>Ganti Nama (SSID) & Sandi Wi-Fi</span>
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setShowSpeedtestModal(true)}
+                    className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                    title="Uji throughput bandwidth dan latensi langsung ke server Arbill lokal"
+                  >
+                    <Gauge size={15} />
+                    <span>Uji Speedtest Lokal</span>
+                  </button>
+
                   {tr069Device.connected_hosts && tr069Device.connected_hosts.length > 0 && (
                     <button
                       type="button"
@@ -2093,6 +2105,17 @@ export default function CustomerDetailView({
           </div>
         </div>
       )}
+
+      {/* Modal Speedtest Server Lokal */}
+      <SpeedtestModal
+        isOpen={showSpeedtestModal}
+        onClose={() => setShowSpeedtestModal(false)}
+        customerName={customer.name}
+        customerId={customer.id}
+        pppoeUsername={customer.pppoe_username}
+        packageSpeed={customer.package_speed_limit || customer.speed_limit}
+        packageName={customer.package_name}
+      />
     </div>
   );
 }

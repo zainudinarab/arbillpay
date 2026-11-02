@@ -6,9 +6,10 @@ import {
   Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft, ChevronDown,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info, Smartphone, Database,
-  MessageCircle, Megaphone, Flame, Home
+  MessageCircle, Megaphone, Flame, Home, Gauge
 } from 'lucide-react';
 import LoginModal from './LoginModal';
+import SpeedtestModal from './SpeedtestModal';
 import VoucherQrCode from './VoucherQrCode';
 import { getApiUrl } from '../config/api';
 import { getPackagesFromFirestore, getVouchersFromFirestore, saveCustomerToFirestore, getCustomersFromFirestore } from '../services/firebaseService';
@@ -107,6 +108,7 @@ export default function CustomerPortal({
   // Filter Durasi Voucher & Modals untuk 4 Stat Card
   const [durationFilter, setDurationFilter] = useState<'all' | '1h' | '3h' | '1d' | '7d' | '30d'>('all');
   const [showVoucherSayaModal, setShowVoucherSayaModal] = useState(false);
+  const [showSpeedtestModal, setShowSpeedtestModal] = useState(false);
   const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'active' | 'used'>('all');
   const [showLanggananModal, setShowLanggananModal] = useState(false);
   const [showTagihanModal, setShowTagihanModal] = useState(false);
@@ -2348,6 +2350,15 @@ export default function CustomerPortal({
                 </button>
 
                 <button
+                  onClick={() => setShowSpeedtestModal(true)}
+                  className="px-4 py-3 bg-indigo-600/30 hover:bg-indigo-600/40 active:scale-95 border border-indigo-500/40 text-indigo-300 font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
+                  title="Uji kecepatan koneksi internet lokal Anda"
+                >
+                  <Gauge className="w-4 h-4 text-indigo-400" />
+                  <span>Speedtest</span>
+                </button>
+
+                <button
                   onClick={() => setShowProfileModal(true)}
                   className="px-5 py-3 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-2xl flex items-center justify-center gap-2 transition cursor-pointer"
                 >
@@ -2874,6 +2885,17 @@ export default function CustomerPortal({
                           className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-left"
                         >
                           <UserCheck size={15} className="text-emerald-400" />
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setShowSpeedtestModal(true);
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-indigo-300 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer text-left"
+                        >
+                          <Gauge size={15} className="text-indigo-400" />
+                          <span>⚡ Speedtest Lokal</span>
                           <span>Profil Saya</span>
                         </button>
 
@@ -6166,6 +6188,15 @@ export default function CustomerPortal({
       )}
 
       {/* Login Modal Overlay */}
+      {/* Speedtest Server Lokal Modal */}
+      <SpeedtestModal
+        isOpen={showSpeedtestModal}
+        onClose={() => setShowSpeedtestModal(false)}
+        customerName={currentUser?.name}
+        pppoeUsername={currentUser?.username}
+        packageSpeed={currentUser?.speed_limit || '20 Mbps'}
+      />
+
       {showLoginModal && (
         <LoginModal
           initialMode={window.location.hash.includes('admin-login') ? 'admin' : 'sso'}
