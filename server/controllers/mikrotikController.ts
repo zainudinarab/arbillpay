@@ -1132,9 +1132,11 @@ export function generatePppProfileOnUpDown(config?: { serverUrl?: string; router
     `:do { /tool fetch url=$url ${fetchMode} keep-result=no; } on-error={};`;
 
   // RouterOS Script: On-Down (Instan terpanggil saat PPPoE disconnect/putus)
+  // Di RouterOS, dynamic interface sudah di-teardown saat on-down berjalan,
+  // sehingga server Arbill otomatis menghitung durasi uptime & sesi dari timestamp connect terakhir secara 100% presisi.
   const ondown =
-    `:local bIn $"bytes-in"; :local bOut $"bytes-out"; :local uptime $"uptime"; :local mac $"caller-id"; ` +
-    `:local url "${serverUrl}/api/ppp/events?action=logout&user=$user&mac=$mac&uptime=$uptime&bytes_in=$bIn&bytes_out=$bOut${rId}"; ` +
+    `:local mac $"caller-id"; ` +
+    `:local url "${serverUrl}/api/ppp/events?action=logout&user=$user&mac=$mac${rId}"; ` +
     `:do { /tool fetch url=$url ${fetchMode} keep-result=no; } on-error={};`;
 
   return { onup, ondown };

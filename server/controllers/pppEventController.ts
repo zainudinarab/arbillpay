@@ -46,7 +46,7 @@ export async function handlePppEvent(req: Request, res: Response) {
   try {
     // 1. Cari pelanggan berdasarkan pppoe_username
     const custRes = await pool.query(`
-      SELECT id, name, customer_code, package_id, status, is_online, router_id
+      SELECT id, name, customer_code, package_id, status, is_online, router_id, last_connected_at, current_ip
       FROM customers
       WHERE LOWER(pppoe_username) = LOWER($1)
       LIMIT 1
@@ -54,6 +54,30 @@ export async function handlePppEvent(req: Request, res: Response) {
 
     const customer = custRes.rows.length > 0 ? custRes.rows[0] : null;
     const effectiveRouterId = (routerId !== 'default' ? routerId : (customer?.router_id || 'default'));
+    const effectiveIp = ip || customer?.current_ip || null;
+
+    // Hitung Uptime otomatis di server jika interface RouterOS sudah di-teardown
+    let calculatedUptime = (uptime && uptime !== '$uptime') ? uptime : '';
+    let uptimeSeconds = 0;
+
+    if (!calculatedUptime && !isOnline && customer?.last_connected_at) {
+      const connTime = new Date(customer.last_connected_at).getTime();
+      const diffMs = now.getTime() - connTime;
+      if (diffMs > 0) {
+        uptimeSeconds = Math.floor(diffMs / 1000);
+        const days = Math.floor(uptimeSeconds / 86400);
+        const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+        const mins = Math.floor((uptimeSeconds % 3600) / 60);
+        const secs = uptimeSeconds % 60;
+
+        const parts: string[] = [];
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (mins > 0) parts.push(`${mins}m`);
+        parts.push(`${secs}s`);
+        calculatedUptime = parts.join('');
+      }
+    }
 
     // 2. Perbarui status live pelanggan di PostgreSQL
     if (customer) {
@@ -64,7 +88,7 @@ export async function handlePppEvent(req: Request, res: Response) {
               last_connected_at = $1,
               current_ip = COALESCE(NULLIF($2, ''), current_ip)
           WHERE id = $3
-        `, [now, ip, customer.id]);
+        `, [now, effectiveIp, customer.id]);
       } else {
         await pool.query(`
           UPDATE customers
@@ -79,17 +103,18 @@ export async function handlePppEvent(req: Request, res: Response) {
     await pool.query(`
       INSERT INTO pppoe_connection_logs (
         router_id, customer_id, pppoe_username, ip_address, mac_address,
-        service, event_type, session_id, uptime_str, bytes_in, bytes_out, recorded_at
-      ) VALUES ($1, $2, $3, $4, $5, 'pppoe', $6, $7, $8, $9, $10, $11)
+        service, event_type, session_id, uptime_str, uptime_seconds, bytes_in, bytes_out, recorded_at
+      ) VALUES ($1, $2, $3, $4, $5, 'pppoe', $6, $7, $8, $9, $10, $11, $12)
     `, [
       effectiveRouterId || 'default',
       customer ? customer.id : null,
       user,
-      ip || null,
+      effectiveIp,
       mac || null,
       isOnline ? 'connected' : 'disconnected',
       session || null,
-      uptime || null,
+      calculatedUptime || null,
+      uptimeSeconds || 0,
       bytesIn,
       bytesOut,
       now
