@@ -238,6 +238,7 @@ export default function CustomerDetailView({
       if (data && data.success && data.linked && data.device) {
         setTr069Device(data.device);
         setNewWifiSsid(data.device.wifi_ssid || '');
+        setWifiChannel(String(data.device.wifi_channel || '0'));
       } else {
         setTr069Device(null);
       }
@@ -245,6 +246,38 @@ export default function CustomerDetailView({
       console.warn('Failed to load TR-069 customer device:', err);
     } finally {
       setTr069Loading(false);
+    }
+  };
+
+  const [wifiChannel, setWifiChannel] = useState<string>('0');
+  const [showAdminPassModal, setShowAdminPassModal] = useState(false);
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [showConnectedClients, setShowConnectedClients] = useState(false);
+
+  const handleUpdateAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAdminPassword.trim()) return;
+    setTr069ActionLoading(true);
+    setTr069Msg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/genieacs/customer/${customer.id}/admin-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_password: newAdminPassword.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTr069Msg({ type: 'success', text: data.message || 'Password Web Modem berhasil diubah!' });
+        setShowAdminPassModal(false);
+        setNewAdminPassword('');
+      } else {
+        setTr069Msg({ type: 'error', text: data.message || 'Gagal mengubah password web modem.' });
+      }
+    } catch (err: any) {
+      setTr069Msg({ type: 'error', text: err.message });
+    } finally {
+      setTr069ActionLoading(false);
     }
   };
 
@@ -260,7 +293,8 @@ export default function CustomerDetailView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ssid: newWifiSsid.trim(),
-          password: newWifiPassword.trim() || undefined
+          password: newWifiPassword.trim() || undefined,
+          channel: parseInt(wifiChannel, 10) || 0
         })
       });
       const data = await res.json();
@@ -1343,18 +1377,22 @@ export default function CustomerDetailView({
                     <span className="text-sm font-bold text-white truncate pt-1 block" title={tr069Device.wifi_ssid}>
                       {tr069Device.wifi_ssid || 'Wi-Fi Rumah'}
                     </span>
+                    <span className="text-[10px] text-indigo-300/80 font-mono block">Ch: {tr069Device.wifi_channel || 'Auto'}</span>
                   </div>
 
                   <div className="bg-slate-800/80 border border-indigo-900/40 rounded-2xl p-3">
-                    <span className="text-[10px] uppercase font-bold text-indigo-300/70 block">Tipe / Model ONT</span>
-                    <span className="text-sm font-bold text-slate-300 truncate pt-1 block" title={`${tr069Device.manufacturer} ${tr069Device.product_class}`}>
+                    <span className="text-[10px] uppercase font-bold text-indigo-300/70 block">Perangkat Terhubung</span>
+                    <span className="text-sm font-black text-emerald-400 pt-1 block">
+                      {tr069Device.total_connected_hosts || 0} Perangkat
+                    </span>
+                    <span className="text-[10px] text-slate-400 truncate block">
                       {tr069Device.manufacturer} {tr069Device.product_class}
                     </span>
                   </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-2.5 pt-2">
                   <button
                     type="button"
                     onClick={() => setShowWifiModal(true)}
@@ -1362,6 +1400,27 @@ export default function CustomerDetailView({
                   >
                     <Wifi size={15} />
                     <span>Ganti Nama (SSID) & Sandi Wi-Fi</span>
+                  </button>
+
+                  {tr069Device.connected_hosts && tr069Device.connected_hosts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowConnectedClients(!showConnectedClients)}
+                      className="py-2.5 px-3.5 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <User size={14} />
+                      <span>{showConnectedClients ? 'Sembunyikan Perangkat' : `Lihat Klien (${tr069Device.total_connected_hosts})`}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassModal(true)}
+                    className="py-2.5 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-indigo-300 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+                    title="Ubah password akun admin web GUI modem"
+                  >
+                    <ShieldCheck size={14} />
+                    <span>Kunci Web GUI Modem</span>
                   </button>
 
                   <button
@@ -1374,6 +1433,53 @@ export default function CustomerDetailView({
                     <span>Reboot Modem via TR-069</span>
                   </button>
                 </div>
+
+                {/* Drawer Daftar Klien Terhubung ke ONT */}
+                {showConnectedClients && tr069Device.connected_hosts && (
+                  <div className="mt-3 bg-black/60 rounded-2xl p-4 border border-indigo-900/40 space-y-3">
+                    <div className="flex items-center justify-between border-b border-indigo-900/60 pb-2 text-xs">
+                      <span className="font-bold text-indigo-200 flex items-center gap-2">
+                        <Activity size={14} className="text-emerald-400" />
+                        <span>Daftar Perangkat Terhubung ke Wi-Fi / LAN Modem</span>
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">{tr069Device.connected_hosts.length} Klien Terdeteksi</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-indigo-950 text-[10px] text-slate-400 uppercase font-mono">
+                            <th className="py-2 px-2.5">Nama Perangkat / Host</th>
+                            <th className="py-2 px-2.5">IP Address</th>
+                            <th className="py-2 px-2.5">MAC Address</th>
+                            <th className="py-2 px-2.5">Media</th>
+                            <th className="py-2 px-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-indigo-950/60">
+                          {tr069Device.connected_hosts.map((host: any, hIdx: number) => (
+                            <tr key={hIdx} className="hover:bg-white/5 transition-colors">
+                              <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <span>{host.hostname || 'Client Tanpa Nama'}</span>
+                              </td>
+                              <td className="py-2 px-2.5 font-mono text-indigo-300">{host.ip || '-'}</td>
+                              <td className="py-2 px-2.5 font-mono text-slate-400 text-[11px]">{host.mac || '-'}</td>
+                              <td className="py-2 px-2.5">
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                  {host.interface_type || 'Wi-Fi'}
+                                </span>
+                              </td>
+                              <td className="py-2 px-2.5">
+                                <span className="text-[11px] text-emerald-400 font-bold">Online</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-slate-800/50 border border-dashed border-indigo-900/60 rounded-2xl p-5 text-center space-y-2">
@@ -1860,6 +1966,32 @@ export default function CustomerDetailView({
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Saluran (Channel)
+                  </label>
+                  <select
+                    value={wifiChannel}
+                    onChange={(e) => setWifiChannel(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="0">Auto Channel</option>
+                    <option value="1">Channel 1 (2.412 GHz)</option>
+                    <option value="6">Channel 6 (2.437 GHz)</option>
+                    <option value="11">Channel 11 (2.462 GHz)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                    Frekuensi Wi-Fi
+                  </label>
+                  <div className="px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700">
+                    2.4 GHz B/G/N
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
                   Sandi Baru (WPA Keypassphrase)
@@ -1892,6 +2024,69 @@ export default function CustomerDetailView({
                 >
                   {tr069ActionLoading ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
                   <span>{tr069ActionLoading ? 'Menerapkan...' : 'Terapkan ke Modem'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ubah Password Admin Web Modem */}
+      {showAdminPassModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-slate-800">Kunci Password Web GUI Modem</h3>
+                  <p className="text-[11px] text-slate-400">Amankan akses IP 192.168.1.1 dari pelanggan</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminPassModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateAdminPassword} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Password Baru Web Modem
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newAdminPassword}
+                  onChange={(e) => setNewAdminPassword(e.target.value)}
+                  placeholder="Contoh: ispAdmin@2026!"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+                <span className="text-[10px] text-slate-400 block pt-1">
+                  Password ini akan diterapkan pada akun login Web GUI modem (ZTE/Huawei/XPON) via TR-069.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminPassModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={tr069ActionLoading || !newAdminPassword.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  {tr069ActionLoading ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  <span>{tr069ActionLoading ? 'Menyimpan...' : 'Kunci Password'}</span>
                 </button>
               </div>
             </form>

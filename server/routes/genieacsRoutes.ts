@@ -15,7 +15,10 @@ import {
   linkCustomerToDevice,
   getCustomerGenieAcsDevice,
   updateCustomerWifi,
-  rebootCustomerOnt
+  rebootCustomerOnt,
+  updateCustomerModemAdminPassword,
+  provisionCustomerOnt,
+  runCustomerPingDiagnostics
 } from '../controllers/genieacsController.js';
 
 const router = Router();
@@ -27,6 +30,9 @@ router.post('/sync-customers', syncCustomersLaser);
 router.get('/customer/:customer_id/device', getCustomerGenieAcsDevice);
 router.post('/customer/:customer_id/wifi', updateCustomerWifi);
 router.post('/customer/:customer_id/reboot', rebootCustomerOnt);
+router.post('/customer/:customer_id/admin-password', updateCustomerModemAdminPassword);
+router.post('/customer/:customer_id/provision', provisionCustomerOnt);
+router.post('/customer/:customer_id/ping', runCustomerPingDiagnostics);
 router.get('/devices/:device_id/detail', getDeviceDetail);
 router.post('/devices/:device_id/reboot', rebootDevice);
 router.post('/devices/:device_id/wifi', updateDeviceWifi);

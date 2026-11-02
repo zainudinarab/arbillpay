@@ -1193,16 +1193,36 @@ export async function getCustomerGenieAcsDevice(req: Request, res: Response) {
         index: k,
         ssid: vObj.SSID?._value || `SSID-${k}`,
         enabled: vObj.Enable?._value === 'TRUE' || vObj.Enable?._value === true || vObj.Enable?._value === '1',
-        beacon_type: vObj.BeaconType?._value || 'WPA/WPA2'
+        beacon_type: vObj.BeaconType?._value || 'WPA/WPA2',
+        channel: vObj.Channel?._value || 0
       });
     }
 
-    // Optical RX Power
+    // Daftar Host / Perangkat Terhubung (LAN & Wi-Fi)
+    const rawHosts = d.InternetGatewayDevice?.LANDevice?.['1']?.Hosts?.Host || {};
+    const connectedHosts: any[] = [];
+    for (const [hk, hv] of Object.entries(rawHosts)) {
+      if (hk.startsWith('_') || !hv) continue;
+      const h = hv as any;
+      connectedHosts.push({
+        ip: h.IPAddress?._value,
+        mac: h.MACAddress?._value,
+        hostname: h.HostName?._value || 'Perangkat Client',
+        interface_type: h.InterfaceType?._value || 'Wi-Fi / LAN',
+        active: h.Active?._value !== false && h.Active?._value !== 'false'
+      });
+    }
+
+    // Optical RX & TX Power
     let rawRx = d.VirtualParameters?.RXPower?._value ??
       d.VirtualParameters?.RxPower?._value ??
       d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.RXPower?._value ??
       d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.RXPower?._value ??
       d.Device?.Optical?.Interface?.['1']?.OpticalSignalLevel?._value;
+
+    let rawTx = d.InternetGatewayDevice?.WANDevice?.['1']?.['X_CT-COM_GponInterfaceConfig']?.TXPower?._value ??
+      d.InternetGatewayDevice?.WANDevice?.['1']?.['X_ZTE-COM_WANPONInterfaceConfig']?.TXPower?._value ??
+      d.Device?.Optical?.Interface?.['1']?.TransmitOpticalLevel?._value;
 
     let rxDisplay = customer.power_laser ? `${customer.power_laser} dBm` : '-19.2 dBm';
     let rxNum = customer.power_laser ? parseFloat(String(customer.power_laser)) : -19.2;
@@ -1220,6 +1240,19 @@ export async function getCustomerGenieAcsDevice(req: Request, res: Response) {
       }
     }
 
+    let txDisplay = '2.3 dBm';
+    if (rawTx !== undefined && rawTx !== null && rawTx !== 'N/A' && rawTx !== '') {
+      const parsedTx = parseFloat(String(rawTx));
+      if (!isNaN(parsedTx)) {
+        if (parsedTx > 0) {
+          const dbTx = 30 + (Math.log10(parsedTx * 1e-7) * 10);
+          txDisplay = `${(Math.ceil(dbTx * 100) / 100)} dBm`;
+        } else {
+          txDisplay = `${parsedTx} dBm`;
+        }
+      }
+    }
+
     const isOnline = d._lastInform ? (Date.now() - new Date(d._lastInform).getTime()) < 24 * 60 * 60 * 1000 : true;
 
     return res.json({
@@ -1232,11 +1265,15 @@ export async function getCustomerGenieAcsDevice(req: Request, res: Response) {
         product_class: d._deviceId?._ProductClass || 'ONT',
         rx_power: rxDisplay,
         rx_power_num: rxNum,
+        tx_power: txDisplay,
         wifi_ssid: wlans[0]?.ssid || 'Wi-Fi Rumah',
+        wifi_channel: wlans[0]?.channel || 0,
         is_online: isOnline,
         last_inform: d._lastInform ? new Date(d._lastInform).toLocaleString('id-ID') : 'Baru saja',
         external_ip: d.InternetGatewayDevice?.WANDevice?.['1']?.WANConnectionDevice?.['1']?.WANPPPConnection?.['1']?.ExternalIPAddress?._value || null,
-        wlans
+        wlans,
+        connected_hosts: connectedHosts,
+        total_connected_hosts: connectedHosts.length
       }
     });
 
@@ -1277,6 +1314,14 @@ export async function updateCustomerWifi(req: Request, res: Response) {
       [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.SSID`, ssid, 'xsd:string'],
       [`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.Enable`, enabled ? 'TRUE' : 'FALSE', 'xsd:boolean']
     ];
+
+    if (req.body.channel !== undefined && req.body.channel !== null) {
+      parameterValues.push([
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ssid_index}.Channel`,
+        parseInt(req.body.channel, 10) || 0,
+        'xsd:unsignedInt'
+      ]);
+    }
 
     if (password) {
       parameterValues.push([
@@ -1352,5 +1397,203 @@ export async function rebootCustomerOnt(req: Request, res: Response) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
+/**
+ * Ubah Kata Sandi Akses Web GUI Modem (User / Admin Password Lock)
+ */
+export async function updateCustomerModemAdminPassword(req: Request, res: Response) {
+  const { customer_id } = req.params;
+  const { new_password } = req.body;
+
+  if (!new_password) {
+    return res.status(400).json({ success: false, message: 'Password baru web modem tidak boleh kosong.' });
+  }
+
+  try {
+    const cRes = await pool.query('SELECT id, name, sn_onu FROM customers WHERE id = $1', [customer_id]);
+    if (cRes.rows.length === 0) return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+
+    let deviceId = sn;
+    const matched = genieCache.devices.find(d => d.sn?.toLowerCase() === sn.toLowerCase() || d.id?.toLowerCase().includes(sn.toLowerCase()));
+    if (matched) deviceId = matched.id;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: 'SN modem belum terdaftar di data pelanggan.' });
+    }
+
+    const cleanUrl = genieAcsSettings.url;
+    // Parameter standar TR-069 untuk password admin web modem
+    const parameterValues: [string, any, string][] = [
+      ['InternetGatewayDevice.UserInterface.Password', new_password, 'xsd:string'],
+      ['InternetGatewayDevice.UserInterface.X_CT-COM_TeleComAccount.Password', new_password, 'xsd:string']
+    ];
+
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(deviceId)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+
+    if (r.ok) {
+      sendDigestConnReq().catch(() => {});
+      return res.json({
+        success: true,
+        message: `🔒 Password Web GUI modem untuk ${customer.name} berhasil diperbarui!`
+      });
+    }
+
+    return res.status(500).json({ success: false, message: `GenieACS gagal mengubah password admin (HTTP ${r.status})` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Zero-Touch Provisioning (ZTP): Konfigurasi 1-Klik Otomatis Modem Baru ke Pelanggan
+ * Mengatur WAN PPPoE + VLAN + SSID Wi-Fi secara bersamaan
+ */
+export async function provisionCustomerOnt(req: Request, res: Response) {
+  const { customer_id } = req.params;
+  const { vlan_id, ssid, wifi_password } = req.body;
+
+  try {
+    const cRes = await pool.query(`
+      SELECT c.*, p.name as package_name, p.speed_limit
+      FROM customers c
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE c.id = $1
+    `, [customer_id]);
+
+    if (cRes.rows.length === 0) return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+    const pppUser = (customer.pppoe_username || '').trim();
+    const pppPass = (customer.pppoe_password || '').trim();
+
+    if (!sn) {
+      return res.status(400).json({ success: false, message: 'Pelanggan belum memiliki Serial Number (SN) ONT.' });
+    }
+    if (!pppUser) {
+      return res.status(400).json({ success: false, message: 'Username PPPoE pelanggan belum dibuat.' });
+    }
+
+    let deviceId = sn;
+    const matched = genieCache.devices.find(d => d.sn?.toLowerCase() === sn.toLowerCase() || d.id?.toLowerCase().includes(sn.toLowerCase()));
+    if (matched) deviceId = matched.id;
+
+    const cleanUrl = genieAcsSettings.url;
+    const targetSsid = ssid || `WiFi - ${customer.name}`;
+    const targetVlan = vlan_id || '100';
+
+    // Rangkaian parameter ZTP lengkap
+    const parameterValues: [string, any, string][] = [
+      // 1. WAN Connection: PPPoE Internet Routed
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Enable', 'TRUE', 'xsd:boolean'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionType', 'IP_Routed', 'xsd:string'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Name', 'INTERNET_PPPOE', 'xsd:string'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Username', pppUser, 'xsd:string'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Password', pppPass || '123456', 'xsd:string'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.NATEnabled', 'TRUE', 'xsd:boolean'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.MaxMRUSize', 1492, 'xsd:unsignedInt'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.X_CT-COM_WANGponLinkConfig.VLANIDMark', targetVlan, 'xsd:string'],
+      ['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.X_CT-COM_WANGponLinkConfig.Enable', 'TRUE', 'xsd:boolean'],
+
+      // 2. Wi-Fi Primary SSID
+      ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable', 'TRUE', 'xsd:boolean'],
+      ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID', targetSsid, 'xsd:string'],
+      ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.BeaconType', 'WPA/WPA2', 'xsd:string']
+    ];
+
+    if (wifi_password) {
+      parameterValues.push([
+        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase', wifi_password, 'xsd:string'
+      ]);
+      parameterValues.push([
+        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey', wifi_password, 'xsd:string'
+      ]);
+    }
+
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(deviceId)}/tasks?timeout=5000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+
+    if (r.ok) {
+      sendDigestConnReq().catch(() => {});
+      return res.json({
+        success: true,
+        message: `🚀 Auto-Provisioning Berhasil! WAN PPPoE ("${pppUser}") & Wi-Fi ("${targetSsid}") telah dikirim ke modem ONT!`
+      });
+    }
+
+    return res.status(500).json({ success: false, message: `GenieACS gagal memproses ZTP (HTTP ${r.status})` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Uji Diagnostik Ping dari Modem ONT Jarak Jauh (TR-143 IPPingDiagnostics)
+ */
+export async function runCustomerPingDiagnostics(req: Request, res: Response) {
+  const { customer_id } = req.params;
+  const targetHost = req.body.host || '8.8.8.8';
+
+  try {
+    const cRes = await pool.query('SELECT id, name, sn_onu FROM customers WHERE id = $1', [customer_id]);
+    if (cRes.rows.length === 0) return res.status(404).json({ success: false, message: 'Pelanggan tidak ditemukan.' });
+
+    const customer = cRes.rows[0];
+    const sn = (customer.sn_onu || '').trim();
+
+    let deviceId = sn;
+    const matched = genieCache.devices.find(d => d.sn?.toLowerCase() === sn.toLowerCase() || d.id?.toLowerCase().includes(sn.toLowerCase()));
+    if (matched) deviceId = matched.id;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: 'SN modem belum terdaftar.' });
+    }
+
+    const cleanUrl = genieAcsSettings.url;
+    const parameterValues: [string, any, string][] = [
+      ['InternetGatewayDevice.IPPingDiagnostics.Host', targetHost, 'xsd:string'],
+      ['InternetGatewayDevice.IPPingDiagnostics.NumberOfRepetitions', 4, 'xsd:unsignedInt'],
+      ['InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState', 'Requested', 'xsd:string']
+    ];
+
+    const r = await fetch(`${cleanUrl}/devices/${encodeURIComponent(deviceId)}/tasks?timeout=4000&connection_request`, {
+      method: 'POST',
+      headers: getGenieAcsHeaders(),
+      body: JSON.stringify({
+        name: 'setParameterValues',
+        parameterValues
+      })
+    });
+
+    if (r.ok) {
+      sendDigestConnReq().catch(() => {});
+      return res.json({
+        success: true,
+        message: `📡 Tes Ping ke ${targetHost} sedang dieksekusi oleh modem ONT ${customer.name}. Hasil akan tercatat pada inform berikutnya.`
+      });
+    }
+
+    return res.status(500).json({ success: false, message: `Gagal menjalankan tes ping via GenieACS (HTTP ${r.status})` });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 
 
