@@ -123,6 +123,196 @@ function extractSenderAndMessage(body: any): { sender: string; text: string; fro
 }
 
 /**
+ * ==============================================================
+ * ENGINE KECERDASAN BUATAN (AI NLU CUSTOMER ASSISTANT)
+ * Mendukung Google Gemini, OpenAI, & Groq
+ * ==============================================================
+ */
+export interface AiWaConfig {
+  enabled: boolean;
+  provider: 'gemini' | 'openai' | 'groq';
+  apiKey: string;
+  model: string;
+}
+
+export async function getAiConfig(): Promise<AiWaConfig> {
+  let enabled = process.env.AI_WA_ENABLED === 'true';
+  let provider: any = process.env.AI_WA_PROVIDER || 'gemini';
+  let apiKey = process.env.GEMINI_API_KEY || process.env.AI_WA_API_KEY || '';
+  let model = process.env.AI_WA_MODEL || 'gemini-1.5-flash';
+
+  try {
+    const res = await pool.query(
+      "SELECT key, value FROM system_settings WHERE key IN ('ai_wa_enabled', 'ai_wa_provider', 'ai_wa_api_key', 'ai_wa_model')"
+    );
+    for (const r of res.rows) {
+      if (r.key === 'ai_wa_enabled') enabled = r.value === 'true' || r.value === '1';
+      if (r.key === 'ai_wa_provider' && r.value) provider = r.value;
+      if (r.key === 'ai_wa_api_key' && r.value) apiKey = r.value.trim();
+      if (r.key === 'ai_wa_model' && r.value) model = r.value.trim();
+    }
+  } catch (_) {}
+
+  return { enabled, provider, apiKey, model };
+}
+
+async function queryGemini(apiKey: string, prompt: string, systemPrompt: string, model = 'gemini-1.5-flash'): Promise<string | null> {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: { temperature: 0.7, maxOutputTokens: 600 }
+      }),
+      signal: AbortSignal.timeout(9000)
+    });
+    if (!res.ok) {
+      console.warn('[GEMINI AI WARNING] Status:', res.status);
+      return null;
+    }
+    const data: any = await res.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  } catch (err: any) {
+    console.warn('[GEMINI AI FETCH ERROR]', err.message);
+    return null;
+  }
+}
+
+async function queryOpenAi(apiKey: string, prompt: string, systemPrompt: string, model = 'gpt-4o-mini', baseUrl = 'https://api.openai.com/v1'): Promise<string | null> {
+  try {
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 600
+      }),
+      signal: AbortSignal.timeout(9000)
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    return data?.choices?.[0]?.message?.content || null;
+  } catch (err: any) {
+    console.warn('[OPENAI AI FETCH ERROR]', err.message);
+    return null;
+  }
+}
+
+/**
+ * Menjawab pertanyaan pelanggan dengan kecerdasan buatan berbasis konteks data riil ISP
+ */
+async function askAiCustomerAssistant(customer: any, biz: BusinessInfo, userMessage: string): Promise<string | null> {
+  const aiCfg = await getAiConfig();
+  if (!aiCfg.enabled || !aiCfg.apiKey) return null;
+
+  const customerName = customer.name || 'Pelanggan';
+  const customerCode = customer.customer_code || customer.pppoe_username || '-';
+  const packageName = customer.package_name || 'Internet PPPoE';
+  const speed = customer.speed_limit || 'Normal';
+  const status = customer.status || 'active';
+  const expiredAt = customer.expired_at ? new Date(customer.expired_at).toLocaleDateString('id-ID') : 'Aktif';
+
+  // 1. Cek ringkasan tagihan riil
+  let invoiceSummary = 'Seluruh tagihan sudah lunas. Tidak ada tagihan tertunggak.';
+  try {
+    const invRes = await pool.query(
+      "SELECT * FROM invoices WHERE customer_id = $1 AND status IN ('unpaid', 'pending', 'overdue') ORDER BY due_date ASC LIMIT 1",
+      [customer.id]
+    );
+    if (invRes.rows.length > 0) {
+      const inv = invRes.rows[0];
+      const amount = Number(inv.amount || 0);
+      const dueDate = inv.due_date ? new Date(inv.due_date).toLocaleDateString('id-ID') : 'Segera';
+      const payUrl = `${biz.portalUrl}/portal/pay/${inv.id}`;
+      invoiceSummary = `Ada tagihan BELUM LUNAS sebesar Rp ${amount.toLocaleString('id-ID')} (Jatuh tempo: ${dueDate}). Tautan bayar instan QRIS/VA: ${payUrl}`;
+    }
+  } catch (_) {}
+
+  // 2. Cek kuota FUP bulan berjalan
+  let usageSummary = 'Normal';
+  try {
+    const now = new Date();
+    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const usageRes = await pool.query(
+      "SELECT total_bytes, is_fup FROM customer_monthly_usages WHERE customer_id = $1 AND year_month = $2 LIMIT 1",
+      [customer.id, currentYm]
+    );
+    if (usageRes.rows.length > 0) {
+      const u = usageRes.rows[0];
+      const gb = (Number(u.total_bytes || 0) / (1024 * 1024 * 1024)).toFixed(2);
+      usageSummary = `Terpakai ${gb} GB bulan ini. ${u.is_fup ? 'Peringatan: Melebihi kuota FUP (kecepatan disesuaikan)' : 'Kecepatan normal'}`;
+    }
+  } catch (_) {}
+
+  const systemInstruction = 
+    `Anda adalah Asisten Virtual Pintar dan Ramah (Customer Service AI) untuk penyedia layanan internet "${biz.name}".\n\n` +
+    `Konteks Data Pelanggan yang sedang berkomunikasi dengan Anda:\n` +
+    `- Nama Pelanggan: ${customerName}\n` +
+    `- ID / Username: ${customerCode}\n` +
+    `- Paket Internet: ${packageName} (${speed})\n` +
+    `- Status Akun: ${status}\n` +
+    `- Masa Aktif: ${expiredAt}\n` +
+    `- Status Tagihan: ${invoiceSummary}\n` +
+    `- Kuota & FUP: ${usageSummary}\n` +
+    `- Kontak Admin / CS: ${biz.phone}\n` +
+    `- Portal Layanan: ${biz.portalUrl}\n\n` +
+    `Panduan Gaya & Tanggapan:\n` +
+    `1. Balas dengan bahasa Indonesia yang ramah, sopan, santun, dan solutif layaknya Customer Service profesional ISP.\n` +
+    `2. Jika pelanggan menanyakan tagihan atau cara bayar, sampaikan status tagihannya dan sertakan tautan bayar QRIS jika ada tagihan tertunggak.\n` +
+    `3. Jika pelanggan mengeluhkan koneksi lemot / macet / ingin refresh, jelaskan dengan tenang dan cantumkan kode [ACTION:RESTART] di akhir balasan Anda agar sistem kami otomatis mereset sesi MikroTik & modem pelanggan.\n` +
+    `4. Jika pelanggan mengeluhkan lampu modem LOS merah (kabel putus) atau kerusakan fisik yang membutuhkan kunjungan teknisi, beri tahu bahwa tiket telah dibuat dan cantumkan kode [ACTION:ESCALATE_CS] di akhir balasan Anda.\n` +
+    `5. Gunakan format WhatsApp (*tebal*, _miring_).\n` +
+    `6. Jangan pernah mengarang data yang tidak ada di konteks. Jawaban harus padat, informatif, dan tidak bertele-tele.`;
+
+  let aiReply: string | null = null;
+  if (aiCfg.provider === 'gemini') {
+    aiReply = await queryGemini(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'gemini-1.5-flash');
+  } else if (aiCfg.provider === 'groq') {
+    aiReply = await queryOpenAi(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'llama-3.3-70b-versatile', 'https://api.groq.com/openai/v1');
+  } else {
+    aiReply = await queryOpenAi(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'gpt-4o-mini', 'https://api.openai.com/v1');
+  }
+
+  if (!aiReply) return null;
+
+  // Tangani Action Tag [ACTION:RESTART]
+  if (aiReply.includes('[ACTION:RESTART]')) {
+    aiReply = aiReply.replace(/\[ACTION:RESTART\]/g, '').trim();
+    if (customer.pppoe_username) {
+      kickMikrotikPppUser(customer.router_id, customer.pppoe_username).catch(() => {});
+    }
+  }
+
+  // Tangani Action Tag [ACTION:ESCALATE_CS]
+  if (aiReply.includes('[ACTION:ESCALATE_CS]')) {
+    aiReply = aiReply.replace(/\[ACTION:ESCALATE_CS\]/g, '').trim();
+    const tgMsg =
+      `🆘 <b>TIKET ESKALASI GANGGUAN (AI BOT WA)</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `👤 <b>Pelanggan:</b> ${customerName} (<code>${customerCode}</code>)\n` +
+      `📱 <b>No. WhatsApp:</b> <a href="https://wa.me/${customer.phone_number}">+${customer.phone_number}</a>\n` +
+      `📦 <b>Paket:</b> ${packageName}\n` +
+      `💬 <b>Keluhan Pelanggan:</b> <i>"${userMessage}"</i>\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `<i>AI mendeteksi kendala fisik/kabel LOS. Mohon tim teknisi segera merespons.</i>`;
+    sendTelegramMessage(tgMsg).catch(() => {});
+  }
+
+  return aiReply;
+}
+
+/**
  * Webhook Handler: Menerima pesan masuk WhatsApp dan membalas otomatis secara interaktif
  */
 export async function handleWhatsAppWebhook(req: Request, res: Response) {
@@ -178,6 +368,21 @@ export async function handleWhatsAppWebhook(req: Request, res: Response) {
     const customerName = customer.name;
     const customerCode = customer.customer_code || customer.pppoe_username || '-';
     const cleanCmd = text.toLowerCase().trim();
+
+    // 1. Jika pesan berupa kalimat bebas / percakapan, prioritaskan kecerdasan buatan AI NLU!
+    const isDirectMenuCmd = ['1', '2', '3', '4', '5', 'menu', 'bantuan', 'help'].includes(cleanCmd);
+    if (!isDirectMenuCmd && text.length > 3) {
+      try {
+        const aiResponse = await askAiCustomerAssistant(customer, biz, text);
+        if (aiResponse) {
+          console.log(`[WA BOT] 🧠 AI Assistant merespons chat dari "${customerName}"`);
+          await sendWhatsAppMessage(cleanPhone, aiResponse);
+          return;
+        }
+      } catch (aiErr: any) {
+        console.warn('[WA BOT] AI processing fallback notice:', aiErr.message);
+      }
+    }
 
     // ==========================================
     // MENU 1: CEK TAGIHAN & BAYAR (QRIS / LINK)
@@ -447,4 +652,95 @@ export async function sendDirectTestMessage(req: Request, res: Response) {
   const result = await sendWhatsAppMessage(phone, message);
   res.json(result);
 }
+
+/**
+ * Mengambil konfigurasi AI Assistant saat ini
+ */
+export async function getAiConfigEndpoint(req: Request, res: Response) {
+  const cfg = await getAiConfig();
+  // Mask API key for security
+  const maskedKey = cfg.apiKey ? `${cfg.apiKey.substring(0, 4)}••••${cfg.apiKey.slice(-4)}` : '';
+  res.json({
+    success: true,
+    config: {
+      enabled: cfg.enabled,
+      provider: cfg.provider,
+      apiKey: maskedKey,
+      hasKey: !!cfg.apiKey,
+      model: cfg.model
+    }
+  });
+}
+
+/**
+ * Menyimpan konfigurasi AI Assistant ke database PostgreSQL
+ */
+export async function saveAiConfigEndpoint(req: Request, res: Response) {
+  const { enabled, provider, apiKey, model } = req.body;
+
+  try {
+    const queries: { key: string; val: string }[] = [
+      { key: 'ai_wa_enabled', val: enabled ? 'true' : 'false' },
+      { key: 'ai_wa_provider', val: provider || 'gemini' },
+      { key: 'ai_wa_model', val: model || 'gemini-1.5-flash' }
+    ];
+
+    if (apiKey && !apiKey.includes('••••')) {
+      queries.push({ key: 'ai_wa_api_key', val: apiKey.trim() });
+    }
+
+    for (const q of queries) {
+      await pool.query(`
+        INSERT INTO system_settings (key, value, updated_at) 
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `, [q.key, q.val]);
+    }
+
+    res.json({
+      success: true,
+      message: '⚡ Pengaturan AI Customer Service Assistant berhasil disimpan!'
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Uji Coba Respons AI dari Dashboard Admin
+ */
+export async function testAiEndpoint(req: Request, res: Response) {
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ success: false, message: 'Pertanyaan prompt wajib diisi.' });
+
+  const biz = await getBusinessInfo();
+  const mockCustomer = {
+    name: 'Bpk Joko Santoso',
+    customer_code: 'CUST-007',
+    package_name: 'Paket Home 20 Mbps',
+    speed_limit: '20M/20M',
+    status: 'active',
+    expired_at: new Date(Date.now() + 15 * 86400000),
+    phone_number: '628123456789'
+  };
+
+  try {
+    const reply = await askAiCustomerAssistant(mockCustomer, biz, prompt);
+    if (!reply) {
+      return res.status(500).json({
+        success: false,
+        message: 'Gagal mendapatkan jawaban dari AI. Pastikan API Key valid dan terisi di pengaturan.'
+      });
+    }
+
+    res.json({
+      success: true,
+      prompt,
+      reply
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 

@@ -13,10 +13,14 @@ import {
   Globe, 
   Sparkles,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Bot,
+  Brain,
+  HelpCircle
 } from 'lucide-react';
 import { BusinessProfile } from '../types';
 import HeaderBar from './HeaderBar';
+import { getApiUrl } from '../config/api';
 import { getNotificationGatewaySettingsFromFirestore, saveNotificationGatewaySettingsToFirestore } from '../services/firebaseService';
 import { sendWhatsAppMessageDirect } from '../services/whatsappService';
 
@@ -67,6 +71,15 @@ export default function NotificationSettingsPage({
   const [autoSendReceipt, setAutoSendReceipt] = useState(true);
   const [autoSendReminder, setAutoSendReminder] = useState(true);
 
+  // AI WhatsApp Smart Customer Service Assistant States
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq'>('gemini');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiModel, setAiModel] = useState('gemini-1.5-flash');
+  const [aiTestPrompt, setAiTestPrompt] = useState('Halo min, internet rumah saya kok lemot ya?');
+  const [aiTestReply, setAiTestReply] = useState<string | null>(null);
+  const [aiTesting, setAiTesting] = useState(false);
+
   // Test Direct Dispatch States
   const [testPhone, setTestPhone] = useState(profile.phone || '');
   const [testMessage, setTestMessage] = useState('Halo! Ini adalah pesan uji coba integrasi WhatsApp Gateway ArbillPay.');
@@ -91,6 +104,20 @@ export default function NotificationSettingsPage({
         if (c.autoSendReminder !== undefined) setAutoSendReminder(c.autoSendReminder);
       }
     });
+
+    // Load AI Assistant Config from Backend
+    const apiUrl = getApiUrl();
+    fetch(`${apiUrl}/api/whatsapp/ai-config`)
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.success && d.config) {
+          setAiEnabled(d.config.enabled);
+          if (d.config.provider) setAiProvider(d.config.provider);
+          if (d.config.apiKey) setAiApiKey(d.config.apiKey);
+          if (d.config.model) setAiModel(d.config.model);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -111,6 +138,20 @@ export default function NotificationSettingsPage({
 
     try {
       const res = await saveNotificationGatewaySettingsToFirestore(config);
+      
+      // Save AI Assistant Settings to PostgreSQL
+      const apiUrl = getApiUrl();
+      await fetch(`${apiUrl}/api/whatsapp/ai-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: aiEnabled,
+          provider: aiProvider,
+          apiKey: aiApiKey,
+          model: aiModel
+        })
+      }).catch(() => {});
+
       if (res.success) {
         // Also sync active token to BusinessProfile for global fallback
         let activeToken = '';
@@ -126,7 +167,7 @@ export default function NotificationSettingsPage({
           waGatewayUrl: activeUrl
         });
 
-        setToastMsg({ type: 'success', text: `✅ Pengaturan WA Gateway (${activeEngine.toUpperCase()}) berhasil disimpan ke Cloud Database!` });
+        setToastMsg({ type: 'success', text: `✅ Pengaturan WA Gateway (${activeEngine.toUpperCase()}) & AI Assistant berhasil disimpan!` });
       } else {
         setToastMsg({ type: 'error', text: '⚠️ Gagal menyimpan ke cloud, tersimpan di browser.' });
       }
@@ -134,6 +175,30 @@ export default function NotificationSettingsPage({
       setToastMsg({ type: 'error', text: err?.message || 'Gagal menyimpan pengaturan.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestAi = async () => {
+    if (!aiTestPrompt.trim()) return;
+    setAiTesting(true);
+    setAiTestReply(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/whatsapp/ai-test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: aiTestPrompt.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiTestReply(data.reply);
+      } else {
+        setAiTestReply(`⚠️ ${data.message || 'Gagal mendapatkan jawaban AI'}`);
+      }
+    } catch (e: any) {
+      setAiTestReply(`❌ Error: ${e.message}`);
+    } finally {
+      setAiTesting(false);
     }
   };
 
@@ -465,7 +530,138 @@ export default function NotificationSettingsPage({
               </label>
             </div>
           </div>
+
+          {/* 4. AI WhatsApp Smart Customer Service Assistant */}
+          <div className="bg-slate-950/80 border border-indigo-900/60 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-900/40 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Brain size={18} className="text-indigo-400" />
+                <span>4. Asisten AI Customer Service Pintar (Natural Language Chatbot)</span>
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                Google Gemini / OpenAI / Groq
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Mengaktifkan kecerdasan buatan untuk membaca dan merespons keluhan pelanggan secara santun & solutif berdasarkan konteks riil (status paket, tagihan, kuota FUP, & reboot otomatis).
+            </p>
+
+            <div className="space-y-4 text-xs">
+              <label className="flex items-center gap-3 p-3.5 bg-indigo-950/30 border border-indigo-900/50 rounded-2xl cursor-pointer hover:bg-indigo-950/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={aiEnabled}
+                  onChange={(e) => setAiEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded text-indigo-500 focus:ring-0 cursor-pointer"
+                />
+                <div>
+                  <p className="font-bold text-white flex items-center gap-2">
+                    <span>Aktifkan Asisten AI WhatsApp</span>
+                    {aiEnabled ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300">Aktif</span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">Nonaktif</span>
+                    )}
+                  </p>
+                  <p className="text-[11px] text-indigo-200/70">
+                    Jika aktif, pesan santai atau keluhan bebas dari pelanggan akan dijawab cerdas oleh AI sebelum jatuh ke menu tombol.
+                  </p>
+                </div>
+              </label>
+
+              {aiEnabled && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 animate-fade-in">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">Penyedia AI (Provider) *</label>
+                    <select
+                      value={aiProvider}
+                      onChange={(e: any) => {
+                        const prov = e.target.value;
+                        setAiProvider(prov);
+                        if (prov === 'gemini') setAiModel('gemini-1.5-flash');
+                        else if (prov === 'groq') setAiModel('llama-3.3-70b-versatile');
+                        else setAiModel('gpt-4o-mini');
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="gemini">Google Gemini (Disarankan, Cepat & Cerdas)</option>
+                      <option value="openai">OpenAI (ChatGPT gpt-4o-mini)</option>
+                      <option value="groq">Groq Cloud (Llama 3.3 Ultra Fast)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">API Key *</label>
+                    <input
+                      type="password"
+                      value={aiApiKey}
+                      onChange={(e) => setAiApiKey(e.target.value)}
+                      placeholder="Masukkan API Key (AI Studio / OpenAI / Groq)"
+                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">Model Name</label>
+                    <input
+                      type="text"
+                      value={aiModel}
+                      onChange={(e) => setAiModel(e.target.value)}
+                      placeholder="gemini-1.5-flash / gpt-4o-mini"
+                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </form>
+
+        {/* 5. Uji Coba Chat Asisten AI */}
+        {aiEnabled && (
+          <div className="bg-slate-950/80 border border-indigo-900/60 rounded-3xl p-6 shadow-xl space-y-4">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Bot size={18} className="text-indigo-400" />
+              <span>5. Uji Coba Simulasi Chat AI Customer Service</span>
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Simulasi Chat Pelanggan</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={aiTestPrompt}
+                    onChange={(e) => setAiTestPrompt(e.target.value)}
+                    placeholder="Contoh: Min internet saya mati lampu los merah gimana ya?"
+                    className="flex-1 px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTestAi}
+                    disabled={aiTesting || !aiTestPrompt.trim()}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all"
+                  >
+                    {aiTesting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                    <span>{aiTesting ? 'AI Menjawab...' : 'Tes Respons AI'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {aiTestReply && (
+                <div className="p-4 bg-slate-900/90 border border-indigo-900/60 rounded-2xl text-xs space-y-1.5 animate-fade-in">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider block">
+                    💬 Simulasi Jawaban WhatsApp Bot AI:
+                  </span>
+                  <div className="text-slate-200 whitespace-pre-wrap leading-relaxed">
+                    {aiTestReply}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 4. Test Gateway Connection Tool */}
         <div className="bg-slate-950/80 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
