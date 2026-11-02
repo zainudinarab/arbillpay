@@ -415,9 +415,51 @@ export async function payCustomerBill(req: Request, res: Response) {
 
     await pool.query(`
       UPDATE customers 
-      SET expired_at = $1, grace_until = $2, status = 'active' 
+      SET expired_at = $1, grace_until = $2, status = 'active',
+          total_bytes_used = 0, last_queue_bytes = 0, is_fup = false, fup_at = NULL
       WHERE id = $3
     `, [formattedExp, formattedGrace, id]);
+
+    // Jika pelanggan sebelumnya dalam status FUP / kuota habis, kembalikan profil PPP ke normal
+    if (c.is_fup && c.router_id && c.pppoe_username) {
+      try {
+        const { RouterOSAPI } = await import('node-routeros');
+        const rRes = await pool.query('SELECT ip_address, api_port, username, password FROM routers WHERE id = $1', [c.router_id]);
+        if (rRes.rows.length > 0) {
+          const rtr = rRes.rows[0];
+          const conn = new RouterOSAPI({
+            host: rtr.ip_address,
+            port: rtr.api_port || 8728,
+            user: rtr.username || 'admin',
+            password: rtr.password || '',
+            timeout: 5
+          });
+          await conn.connect();
+          let targetProfile = 'default';
+          if (c.router_profile_id) {
+            const profRes = await pool.query('SELECT name FROM router_profiles WHERE id = $1', [c.router_profile_id]);
+            if (profRes.rows.length > 0) targetProfile = profRes.rows[0].name;
+          }
+          const secrets: any = await conn.write('/ppp/secret/print', [`?name=${c.pppoe_username}`]);
+          if (Array.isArray(secrets) && secrets.length > 0) {
+            await conn.write('/ppp/secret/set', [
+              `=.id=${secrets[0]['.id']}`,
+              `=profile=${targetProfile}`,
+              `=comment=AKTIF - Masa Aktif s/d ${formattedExp}`
+            ]);
+            const actives: any = await conn.write('/ppp/active/print', [`?name=${c.pppoe_username}`]);
+            if (Array.isArray(actives)) {
+              for (const act of actives) {
+                await conn.write('/ppp/active/remove', [`=.id=${act['.id']}`]);
+              }
+            }
+          }
+          await conn.close().catch(() => {});
+        }
+      } catch (rErr: any) {
+        console.warn('[PAY BILL] Gagal restore PPP profile:', rErr.message);
+      }
+    }
 
     // Invalidate Redis cache
     redisDel('mikrotik:active_users:all').catch(() => {});

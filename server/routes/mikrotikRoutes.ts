@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { 
-  listRouters, testConnection, testSnmp, enableSnmpOnMikrotik, addRouter, editRouter, toggleRouterTrafficSampling, deleteRouter,
+  listRouters, testConnection, testSnmp, enableSnmpOnMikrotik, addRouter, editRouter, toggleRouterTrafficSampling, toggleRouterQuotaSync, triggerRouterQuotaSync, deleteRouter,
   listProfiles, addProfile, editProfile, deleteProfile, toggleProfileStatus, pushProfileToMikrotik, getRouterProfiles, linkPackage, syncProfilesFromMikrotik,
   listIpPools, addIpPool, editIpPool, deleteIpPool, syncIpPoolsFromMikrotik, pushIpPoolToMikrotik,
   getPppActiveUsers, getPppoeConnectionLogs, importPppSecrets, importHotspotUsers,
@@ -20,6 +20,8 @@ router.post('/routers/:id/enable-snmp', enableSnmpOnMikrotik);
 router.post('/routers', addRouter);
 router.put('/routers/:id', editRouter);
 router.post('/routers/:id/toggle-traffic-sampling', toggleRouterTrafficSampling);
+router.post('/routers/:id/toggle-quota-sync', toggleRouterQuotaSync);
+router.post('/routers/:id/sync-ppp-quota', triggerRouterQuotaSync);
 router.delete('/routers/:id', deleteRouter);
 
 // Router Live Interface Monitoring & Inspection

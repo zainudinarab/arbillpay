@@ -47,6 +47,14 @@ initDatabaseSchema().then(async () => {
   } catch (err: any) {
     console.warn('[TRAFFIC SAMPLING WORKER NOTICE]', err.message);
   }
+
+  // Start PPPoE Quota Sync Worker
+  try {
+    const { processPppQuotaBackgroundWorker } = await import('./server/services/pppQuotaSyncService.js');
+    processPppQuotaBackgroundWorker().catch(() => {});
+  } catch (err: any) {
+    console.warn('[PPP QUOTA WORKER NOTICE]', err.message);
+  }
 });
 
 // Mount all API endpoints under /api

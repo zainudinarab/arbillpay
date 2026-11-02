@@ -32,6 +32,9 @@ export async function listRouters(req: Request, res: Response) {
              COALESCE(r.dns_name, 'arab.net') as dns_name,
              COALESCE(r.hotspot_ip, '10.0.0.1') as hotspot_ip,
              COALESCE(r.traffic_sampling_enabled, true) as traffic_sampling_enabled,
+             COALESCE(r.sync_ppp_quota_enabled, false) as sync_ppp_quota_enabled,
+             COALESCE(r.sync_ppp_quota_interval, 10) as sync_ppp_quota_interval,
+             r.last_ppp_quota_synced_at,
              COALESCE(r.snmp_enabled, false) as snmp_enabled,
              COALESCE(r.snmp_port, 161) as snmp_port,
              COALESCE(r.snmp_community, 'public') as snmp_community,
@@ -45,7 +48,7 @@ export async function listRouters(req: Request, res: Response) {
              COUNT(rp.id)::int as profile_count
       FROM routers r
       LEFT JOIN router_profiles rp ON r.id = rp.router_id
-      GROUP BY r.id, r.dns_name, r.hotspot_ip, r.traffic_sampling_enabled, r.snmp_enabled, r.snmp_port, r.snmp_community, r.snmp_version, r.snmp_username, r.snmp_auth_proto, r.snmp_auth_pass, r.snmp_priv_proto, r.snmp_priv_pass
+      GROUP BY r.id, r.dns_name, r.hotspot_ip, r.traffic_sampling_enabled, r.sync_ppp_quota_enabled, r.sync_ppp_quota_interval, r.last_ppp_quota_synced_at, r.snmp_enabled, r.snmp_port, r.snmp_community, r.snmp_version, r.snmp_username, r.snmp_auth_proto, r.snmp_auth_pass, r.snmp_priv_proto, r.snmp_priv_pass
       ORDER BY r.created_at DESC
     `);
     res.json({ success: true, routers: result.rows });
@@ -412,7 +415,7 @@ export async function enableSnmpOnMikrotik(req: Request, res: Response) {
 export async function addRouter(req: Request, res: Response) {
   const { 
     name, ip_address, api_port, username, password, dns_name, hotspot_ip, 
-    traffic_sampling_enabled,
+    traffic_sampling_enabled, sync_ppp_quota_enabled, sync_ppp_quota_interval,
     snmp_enabled, snmp_port, snmp_community, snmp_version,
     snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
   } = req.body;
@@ -426,6 +429,8 @@ export async function addRouter(req: Request, res: Response) {
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
     const cleanTrafficSampling = traffic_sampling_enabled !== undefined ? Boolean(traffic_sampling_enabled) : true;
+    const cleanQuotaSync = sync_ppp_quota_enabled !== undefined ? Boolean(sync_ppp_quota_enabled) : false;
+    const cleanQuotaInterval = sync_ppp_quota_interval ? Math.max(1, parseInt(sync_ppp_quota_interval, 10)) : 10;
     const cleanSnmpEnabled = Boolean(snmp_enabled);
     const cleanSnmpPort = Number(snmp_port) || 161;
     const cleanSnmpCommunity = (snmp_community || 'public').trim();
@@ -439,19 +444,20 @@ export async function addRouter(req: Request, res: Response) {
     const result = await pool.query(`
       INSERT INTO routers (
         id, name, ip_address, api_port, username, password, status, dns_name, hotspot_ip,
-        traffic_sampling_enabled,
+        traffic_sampling_enabled, sync_ppp_quota_enabled, sync_ppp_quota_interval,
         snmp_enabled, snmp_port, snmp_community, snmp_version,
         snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES ($1, $2, $3, $4, $5, $6, 'online', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, 
-                traffic_sampling_enabled,
+                traffic_sampling_enabled, sync_ppp_quota_enabled, sync_ppp_quota_interval,
                 snmp_enabled, snmp_port, snmp_community, snmp_version,
                 snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass,
                 created_at
     `, [
       routerId, name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || '',
-      cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
+      cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanQuotaSync, cleanQuotaInterval,
+      cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
       cleanSnmpUser, cleanAuthProto, cleanAuthPass, cleanPrivProto, cleanPrivPass
     ]);
 
@@ -477,7 +483,7 @@ export async function editRouter(req: Request, res: Response) {
   const { id } = req.params;
   const { 
     name, ip_address, api_port, username, password, dns_name, hotspot_ip, status, 
-    traffic_sampling_enabled,
+    traffic_sampling_enabled, sync_ppp_quota_enabled, sync_ppp_quota_interval,
     snmp_enabled, snmp_port, snmp_community, snmp_version,
     snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass
   } = req.body;
@@ -490,6 +496,8 @@ export async function editRouter(req: Request, res: Response) {
     const cleanDns = (dns_name || 'arab.net').trim();
     const cleanHotspotIp = (hotspot_ip || '10.0.0.1').trim();
     const cleanTrafficSampling = traffic_sampling_enabled !== undefined ? Boolean(traffic_sampling_enabled) : undefined;
+    const cleanQuotaSync = sync_ppp_quota_enabled !== undefined ? Boolean(sync_ppp_quota_enabled) : undefined;
+    const cleanQuotaInterval = sync_ppp_quota_interval !== undefined ? Math.max(1, parseInt(sync_ppp_quota_interval, 10)) : undefined;
     const cleanSnmpEnabled = Boolean(snmp_enabled);
     const cleanSnmpPort = Number(snmp_port) || 161;
     const cleanSnmpCommunity = (snmp_community || 'public').trim();
@@ -511,24 +519,27 @@ export async function editRouter(req: Request, res: Response) {
           dns_name = $7,
           hotspot_ip = $8,
           traffic_sampling_enabled = COALESCE($9, traffic_sampling_enabled),
-          snmp_enabled = $10,
-          snmp_port = $11,
-          snmp_community = $12,
-          snmp_version = $13,
-          snmp_username = $14,
-          snmp_auth_proto = $15,
-          snmp_auth_pass = COALESCE($16, snmp_auth_pass),
-          snmp_priv_proto = $17,
-          snmp_priv_pass = COALESCE($18, snmp_priv_pass)
-      WHERE id = $19
+          sync_ppp_quota_enabled = COALESCE($10, sync_ppp_quota_enabled),
+          sync_ppp_quota_interval = COALESCE($11, sync_ppp_quota_interval),
+          snmp_enabled = $12,
+          snmp_port = $13,
+          snmp_community = $14,
+          snmp_version = $15,
+          snmp_username = $16,
+          snmp_auth_proto = $17,
+          snmp_auth_pass = COALESCE($18, snmp_auth_pass),
+          snmp_priv_proto = $19,
+          snmp_priv_pass = COALESCE($20, snmp_priv_pass)
+      WHERE id = $21
       RETURNING id, name, ip_address, api_port, username, status, dns_name, hotspot_ip, 
-                traffic_sampling_enabled,
+                traffic_sampling_enabled, sync_ppp_quota_enabled, sync_ppp_quota_interval,
                 snmp_enabled, snmp_port, snmp_community, snmp_version,
                 snmp_username, snmp_auth_proto, snmp_auth_pass, snmp_priv_proto, snmp_priv_pass,
                 last_synced
     `, [
       name.trim(), ip_address.trim(), parseInt(api_port) || 8728, username.trim(), password || null,
-      status || 'online', cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
+      status || 'online', cleanDns, cleanHotspotIp, cleanTrafficSampling, cleanQuotaSync, cleanQuotaInterval,
+      cleanSnmpEnabled, cleanSnmpPort, cleanSnmpCommunity, cleanSnmpVersion,
       cleanSnmpUser, cleanAuthProto, cleanAuthPass ?? null, cleanPrivProto, cleanPrivPass ?? null, id
     ]);
 
@@ -568,6 +579,48 @@ export async function toggleRouterTrafficSampling(req: Request, res: Response) {
       traffic_sampling_enabled: rtr.traffic_sampling_enabled,
       message: `Pengambilan data trafik router "${rtr.name}" berhasil ${rtr.traffic_sampling_enabled ? 'DIAKTIFKAN (Berjalan)' : 'DINONAKTIFKAN (Dijeda)'}.`
     });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function toggleRouterQuotaSync(req: Request, res: Response) {
+  const { id } = req.params;
+  const { enabled, interval } = req.body;
+  try {
+    const isEnabled = enabled !== undefined ? Boolean(enabled) : true;
+    const cleanInterval = interval ? Math.max(1, parseInt(interval, 10)) : undefined;
+
+    const result = await pool.query(`
+      UPDATE routers
+      SET sync_ppp_quota_enabled = $1,
+          sync_ppp_quota_interval = COALESCE($2, sync_ppp_quota_interval)
+      WHERE id = $3
+      RETURNING id, name, sync_ppp_quota_enabled, sync_ppp_quota_interval
+    `, [isEnabled, cleanInterval, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Router tidak ditemukan.' });
+    }
+
+    const rtr = result.rows[0];
+    return res.json({
+      success: true,
+      sync_ppp_quota_enabled: rtr.sync_ppp_quota_enabled,
+      sync_ppp_quota_interval: rtr.sync_ppp_quota_interval,
+      message: `Pemantauan kuota PPPoE router "${rtr.name}" berhasil ${rtr.sync_ppp_quota_enabled ? 'DIAKTIFKAN' : 'DINONAKTIFKAN'}.`
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function triggerRouterQuotaSync(req: Request, res: Response) {
+  const { id } = req.params;
+  try {
+    const { syncRouterPppQuota } = await import('../services/pppQuotaSyncService.js');
+    const result = await syncRouterPppQuota(id);
+    return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

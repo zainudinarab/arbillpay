@@ -22,7 +22,8 @@ import {
   EyeOff,
   Sparkles,
   Shield,
-  Lock
+  Lock,
+  Gauge
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -53,6 +54,9 @@ export interface RouterItem {
   snmp_priv_proto?: 'AES' | 'DES';
   snmp_priv_pass?: string;
   traffic_sampling_enabled?: boolean;
+  sync_ppp_quota_enabled?: boolean;
+  sync_ppp_quota_interval?: number;
+  last_ppp_quota_synced_at?: string;
   status: 'online' | 'offline' | 'testing';
   last_synced?: string;
   profile_count?: number;
@@ -111,6 +115,10 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
   const [testSnmpResult, setTestSnmpResult] = useState<{ success: boolean; message: string; sysName?: string; uptime?: string } | null>(null);
   const [trafficSamplingEnabled, setTrafficSamplingEnabled] = useState(true);
   const [togglingSamplingId, setTogglingSamplingId] = useState<string | null>(null);
+  const [syncPppQuotaEnabled, setSyncPppQuotaEnabled] = useState(false);
+  const [syncPppQuotaInterval, setSyncPppQuotaInterval] = useState('10');
+  const [togglingQuotaId, setTogglingQuotaId] = useState<string | null>(null);
+  const [syncingQuotaId, setSyncingQuotaId] = useState<string | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -228,6 +236,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setShowSnmpPasswords(false);
     setTestSnmpResult(null);
     setTrafficSamplingEnabled(true);
+    setSyncPppQuotaEnabled(false);
+    setSyncPppQuotaInterval('10');
   };
 
   const generateRandomSnmpV3Credentials = () => {
@@ -391,7 +401,9 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         snmp_auth_pass: snmpAuthPass.trim(),
         snmp_priv_proto: snmpPrivProto,
         snmp_priv_pass: snmpPrivPass.trim(),
-        traffic_sampling_enabled: trafficSamplingEnabled
+        traffic_sampling_enabled: trafficSamplingEnabled,
+        sync_ppp_quota_enabled: syncPppQuotaEnabled,
+        sync_ppp_quota_interval: parseInt(syncPppQuotaInterval) || 10
       };
 
       if (apiUrl) {
@@ -440,6 +452,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
     setUsername(rtr.username);
     setPassword('');
     setTrafficSamplingEnabled(rtr.traffic_sampling_enabled !== false);
+    setSyncPppQuotaEnabled(Boolean(rtr.sync_ppp_quota_enabled));
+    setSyncPppQuotaInterval((rtr.sync_ppp_quota_interval || 10).toString());
     setSnmpEnabled(Boolean(rtr.snmp_enabled));
     setSnmpPort((rtr.snmp_port || 161).toString());
     setSnmpCommunity(rtr.snmp_community || 'public');
@@ -478,6 +492,8 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
         username: username.trim(),
         password: password.trim() || undefined,
         traffic_sampling_enabled: trafficSamplingEnabled,
+        sync_ppp_quota_enabled: syncPppQuotaEnabled,
+        sync_ppp_quota_interval: parseInt(syncPppQuotaInterval) || 10,
         snmp_enabled: snmpEnabled,
         snmp_port: parseInt(snmpPort) || 161,
         snmp_community: snmpCommunity.trim() || 'public',
@@ -552,6 +568,60 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
       setToastMsg({ type: 'error', text: `Gagal toggle sampling: ${err.message}` });
     } finally {
       setTogglingSamplingId(null);
+    }
+  };
+
+  const handleToggleQuotaSync = async (rtr: RouterItem) => {
+    const nextState = rtr.sync_ppp_quota_enabled ? false : true;
+    setTogglingQuotaId(rtr.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/toggle-quota-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextState })
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: data.message || `Pemantauan kuota PPPoE ${nextState ? 'diaktifkan' : 'dinonaktifkan'}`
+        });
+        setRouters(prev => prev.map(item => item.id === rtr.id ? { ...item, sync_ppp_quota_enabled: nextState } : item));
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal mengubah status pemantauan kuota.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Gagal toggle kuota: ${err.message}` });
+    } finally {
+      setTogglingQuotaId(null);
+    }
+  };
+
+  const handleSyncQuotaNow = async (rtr: RouterItem) => {
+    setSyncingQuotaId(rtr.id);
+    setToastMsg(null);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/routers/${rtr.id}/sync-ppp-quota`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await parseJsonResponse(res);
+      if (data.success) {
+        setToastMsg({
+          type: 'success',
+          text: `✅ ${data.message || 'Sinkronisasi kuota selesai!'}`
+        });
+        fetchRouters();
+      } else {
+        setToastMsg({ type: 'error', text: data.message || 'Gagal sinkronisasi kuota.' });
+      }
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: `Error sinkronisasi kuota: ${err.message}` });
+    } finally {
+      setSyncingQuotaId(null);
     }
   };
 
@@ -844,6 +914,53 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                           <span>⏸️ Jeda</span>
                         ) : (
                           <span>▶️ Aktifkan</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60">
+                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                      <Gauge size={14} className={rtr.sync_ppp_quota_enabled ? 'text-indigo-600' : 'text-slate-400'} />
+                      Pantau Kuota PPPoE
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        rtr.sync_ppp_quota_enabled
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                          : 'bg-slate-100 text-slate-500 border border-slate-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${rtr.sync_ppp_quota_enabled ? 'bg-indigo-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                        <span>{rtr.sync_ppp_quota_enabled ? `${rtr.sync_ppp_quota_interval || 10}m` : 'Nonaktif'}</span>
+                      </span>
+
+                      {rtr.sync_ppp_quota_enabled && (
+                        <button
+                          onClick={() => handleSyncQuotaNow(rtr)}
+                          disabled={syncingQuotaId === rtr.id}
+                          className="px-2 py-0.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 flex items-center gap-1"
+                          title="Tarik data pemakaian kuota saat ini"
+                        >
+                          {syncingQuotaId === rtr.id ? <RefreshCw size={10} className="animate-spin" /> : '⚡ Tarik'}
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleToggleQuotaSync(rtr)}
+                        disabled={togglingQuotaId === rtr.id}
+                        className={`px-2 py-0.5 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer flex items-center gap-1 border ${
+                          rtr.sync_ppp_quota_enabled
+                            ? 'bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border-slate-200 hover:border-rose-200'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-2xs'
+                        }`}
+                        title={rtr.sync_ppp_quota_enabled ? 'Nonaktifkan pemantauan kuota PPPoE di router ini' : 'Aktifkan pemantauan kuota PPPoE di router ini'}
+                      >
+                        {togglingQuotaId === rtr.id ? (
+                          <RefreshCw size={10} className="animate-spin" />
+                        ) : rtr.sync_ppp_quota_enabled ? (
+                          <span>Matikan</span>
+                        ) : (
+                          <span>Aktifkan</span>
                         )}
                       </button>
                     </div>
@@ -1323,6 +1440,49 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                         </div>
                       )}
                     </div>
+
+                    {/* Pemantauan Kuota PPPoE */}
+                    <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/70 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Gauge size={16} className={syncPppQuotaEnabled ? 'text-indigo-600' : 'text-slate-400'} />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Pemantauan Kuota PPPoE (FUP)</span>
+                            <span className="text-[10px] text-slate-500">Ambil bytes dari Simple Queue & auto-isolir</span>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={syncPppQuotaEnabled}
+                            onChange={(e) => setSyncPppQuotaEnabled(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                      </div>
+
+                      {syncPppQuotaEnabled && (
+                        <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Interval Penarikan Trafik</label>
+                            <select
+                              value={syncPppQuotaInterval}
+                              onChange={(e) => setSyncPppQuotaInterval(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                            >
+                              <option value="5">Setiap 5 Menit</option>
+                              <option value="10">Setiap 10 Menit (Direkomendasikan)</option>
+                              <option value="15">Setiap 15 Menit</option>
+                              <option value="30">Setiap 30 Menit</option>
+                            </select>
+                          </div>
+                          <p className="text-[10px] text-slate-500 leading-relaxed">
+                            💡 Mengambil total bytes dari Simple Queue MikroTik router ini, menghitung selisih pemakaian (delta), dan otomatis memindahkan pelanggan ke profil Isolir saat kuota habis.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1746,6 +1906,49 @@ export default function RouterManagement({ profile, t, onLogout }: RouterManagem
                       ) : (
                         <div className="p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl text-[11px] text-amber-700">
                           SNMP dinonaktifkan. Pengambilan trafik akan menggunakan fallback polling API standar.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pemantauan Kuota PPPoE */}
+                    <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/70 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Gauge size={16} className={syncPppQuotaEnabled ? 'text-indigo-600' : 'text-slate-400'} />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Pemantauan Kuota PPPoE (FUP)</span>
+                            <span className="text-[10px] text-slate-500">Ambil bytes dari Simple Queue & auto-isolir</span>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={syncPppQuotaEnabled}
+                            onChange={(e) => setSyncPppQuotaEnabled(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                      </div>
+
+                      {syncPppQuotaEnabled && (
+                        <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Interval Penarikan Trafik</label>
+                            <select
+                              value={syncPppQuotaInterval}
+                              onChange={(e) => setSyncPppQuotaInterval(e.target.value)}
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                            >
+                              <option value="5">Setiap 5 Menit</option>
+                              <option value="10">Setiap 10 Menit (Direkomendasikan)</option>
+                              <option value="15">Setiap 15 Menit</option>
+                              <option value="30">Setiap 30 Menit</option>
+                            </select>
+                          </div>
+                          <p className="text-[10px] text-slate-500 leading-relaxed">
+                            💡 Mengambil total bytes dari Simple Queue MikroTik router ini, menghitung selisih pemakaian (delta), dan otomatis memindahkan pelanggan ke profil Isolir saat kuota habis.
+                          </p>
                         </div>
                       )}
                     </div>

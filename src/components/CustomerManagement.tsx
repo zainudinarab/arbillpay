@@ -178,6 +178,9 @@ export interface CustomerItem {
   is_online?: boolean;
   is_in_database?: boolean;
   uptime?: string;
+  total_bytes_used?: number;
+  quota_mb?: number;
+  is_fup?: boolean;
   created_at?: string;
 }
 
@@ -3223,6 +3226,23 @@ export default function CustomerManagement({ profile, t, onLogout }: CustomerMan
                     <span className="font-bold text-rose-600">
                       {formatDateSafe(billingCustomer.expired_at)}
                     </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">PEMAKAIAN KUOTA</span>
+                    {billingCustomer.quota_mb ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`font-mono font-bold text-xs ${billingCustomer.is_fup ? 'text-rose-600' : 'text-slate-800'}`}>
+                          {((billingCustomer.total_bytes_used || 0) / (1024 * 1024)).toFixed(0)} / {billingCustomer.quota_mb} MB
+                        </span>
+                        {billingCustomer.is_fup && (
+                          <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-rose-100 text-rose-700 border border-rose-300">
+                            HABIS (FUP)
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="font-bold text-slate-500">Unlimited</span>
+                    )}
                   </div>
                 </div>
 

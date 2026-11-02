@@ -326,7 +326,10 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS snmp_auth_pass VARCHAR(128),
       ADD COLUMN IF NOT EXISTS snmp_priv_proto VARCHAR(16) DEFAULT 'AES',
       ADD COLUMN IF NOT EXISTS snmp_priv_pass VARCHAR(128),
-      ADD COLUMN IF NOT EXISTS traffic_sampling_enabled BOOLEAN DEFAULT true;
+      ADD COLUMN IF NOT EXISTS traffic_sampling_enabled BOOLEAN DEFAULT true,
+      ADD COLUMN IF NOT EXISTS sync_ppp_quota_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS sync_ppp_quota_interval INT DEFAULT 10,
+      ADD COLUMN IF NOT EXISTS last_ppp_quota_synced_at TIMESTAMP WITH TIME ZONE;
 
       -- Pastikan default validity_iso dan grace_period_iso terisi jika masih NULL
       UPDATE packages SET validity_iso = 'P1M' WHERE validity_iso IS NULL;
@@ -400,7 +403,11 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS current_ip VARCHAR(64),
       ADD COLUMN IF NOT EXISTS olt_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS pon_port VARCHAR(64),
-      ADD COLUMN IF NOT EXISTS onu_id INT;
+      ADD COLUMN IF NOT EXISTS onu_id INT,
+      ADD COLUMN IF NOT EXISTS total_bytes_used BIGINT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS last_queue_bytes BIGINT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS is_fup BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS fup_at TIMESTAMP WITH TIME ZONE;
     `).catch((err) => console.warn('Patch customers notice:', err.message));
     console.log('✅ customers schema (mikrotik_id, is_synced, online tracking, address fields) patched successfully!');
 
