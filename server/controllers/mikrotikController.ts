@@ -667,7 +667,19 @@ export async function listProfiles(req: Request, res: Response) {
 
 
 export async function addProfile(req: Request, res: Response) {
-  const { router_id, name, type, rate_limit, package_id, local_address_mode, local_address, remote_address, parent_queue, dns_server } = req.body;
+  const { 
+    router_id, 
+    name, 
+    type, 
+    rate_limit, 
+    package_id, 
+    local_address_mode, 
+    local_address, 
+    remote_address, 
+    parent_queue, 
+    dns_server,
+    auto_push = true 
+  } = req.body;
 
   if (!router_id || !name || !type) {
     return res.status(400).json({ success: false, message: 'Router, Nama profile, dan Tipe (pppoe/hotspot) wajib diisi.' });
@@ -707,6 +719,31 @@ export async function addProfile(req: Request, res: Response) {
       dns_server?.trim() || null
     ]);
 
+    // Jika auto_push aktif (default true): langsung sinkronkan profile & buat/pastikan scheduler di MikroTik
+    if (auto_push) {
+      try {
+        const billingServerUrl = getBillingServerUrl(req);
+        const pushRes = await executePushProfileToMikrotik(profileId, billingServerUrl);
+        if (pushRes.success) {
+          return res.json({
+            success: true,
+            message: `✅ Profile "${name}" dan Scheduler Monitor Otomatis (${type === 'hotspot' ? 'monitor-hotspot-arbill 2m' : 'monitor-ppp-arbil 10m'}) berhasil dibuat & aktif di MikroTik!`,
+            profile: { ...result.rows[0], is_synced: true, on_router: true, synced_at: pushRes.synced_at },
+            details: pushRes.message
+          });
+        } else {
+          return res.json({
+            success: true,
+            message: `Profile "${name}" berhasil disimpan di database! Namun router belum dapat dijangkau: ${pushRes.message}. Anda dapat mengklik tombol "⚡ Singkron ke Mikrotik" saat router sudah online.`,
+            profile: result.rows[0],
+            warning: pushRes.message
+          });
+        }
+      } catch (pushErr: any) {
+        console.warn('Auto-push router profile notice:', pushErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: `Profile "${name}" berhasil dibuat secara lokal! Klik "⚡ Singkron ke Mikrotik" untuk menerbitkan ke Router.`,
@@ -719,7 +756,18 @@ export async function addProfile(req: Request, res: Response) {
 
 export async function editProfile(req: Request, res: Response) {
   const { id } = req.params;
-  const { name, type, rate_limit, package_id, local_address_mode, local_address, remote_address, parent_queue, dns_server } = req.body;
+  const { 
+    name, 
+    type, 
+    rate_limit, 
+    package_id, 
+    local_address_mode, 
+    local_address, 
+    remote_address, 
+    parent_queue, 
+    dns_server,
+    auto_push = true 
+  } = req.body;
 
   if (!name || !type) {
     return res.status(400).json({ success: false, message: 'Nama profile dan Tipe wajib diisi.' });
@@ -775,6 +823,24 @@ export async function editProfile(req: Request, res: Response) {
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Profile Mikrotik tidak ditemukan.' });
+    }
+
+    // Jika auto_push aktif (default true): langsung sinkronkan pembaruan & pastikan scheduler di MikroTik
+    if (auto_push) {
+      try {
+        const billingServerUrl = getBillingServerUrl(req);
+        const pushRes = await executePushProfileToMikrotik(id, billingServerUrl);
+        if (pushRes.success) {
+          return res.json({
+            success: true,
+            message: `✅ Perubahan Profile "${name}" dan Scheduler berhasil disinkronkan ke Router MikroTik!`,
+            profile: { ...result.rows[0], is_synced: true, on_router: true, synced_at: pushRes.synced_at },
+            details: pushRes.message
+          });
+        }
+      } catch (pushErr: any) {
+        console.warn('Auto-push on edit router profile notice:', pushErr.message);
+      }
     }
 
     res.json({
@@ -1219,11 +1285,12 @@ export async function ensureMikrotikScheduler(conn: any, type: 'hotspot' | 'pppo
     const hsSchedName = 'monitor-hotspot-arbill';
     const hsScript = generateHotspotProfileOnLogin({}).cshglobal;
 
-    const matchHs = existingSchedulers.find((s: any) => s.name === hsSchedName);
+    const matchHs = existingSchedulers.find((s: any) => s.name === hsSchedName || s.name === 'monitor_arbill_hotspot');
     if (matchHs && matchHs['.id']) {
       try {
         await conn.write('/system/scheduler/set', [
           `=.id=${matchHs['.id']}`,
+          `=name=${hsSchedName}`,
           `=interval=2m`,
           `=on-event=${hsScript}`,
           `=comment=Monitor Otomatis Masa Aktif Voucher Hotspot (2 Menit) - Arbill`
@@ -1250,6 +1317,25 @@ export async function ensureMikrotikScheduler(conn: any, type: 'hotspot' | 'pppo
 
   // 2. PPPoE Scheduler: "monitor-ppp-arbil" (Interval 10 Menit)
   if (type === 'pppoe' || type === 'all') {
+    // Pastikan profile expired/isolir minimal sudah ada di MikroTik sebagai target fallback
+    try {
+      const pppProfs: any = await conn.write('/ppp/profile/print');
+      const profList = Array.isArray(pppProfs) ? pppProfs : [];
+      const hasExpiredProf = profList.some((p: any) => 
+        p.name === 'ppoe-expired' || p.name === 'EXPIRED' || p.name === 'isolir' || p.name === 'pppoe-expired'
+      );
+      if (!hasExpiredProf) {
+        await conn.write('/ppp/profile/add', [
+          '=name=ppoe-expired',
+          '=rate-limit=128k/128k',
+          '=comment=Profile Khusus Pelanggan Terisolir/Expired - Arbill'
+        ]);
+        notes.push('PPP Profile "ppoe-expired" (128k/128k) otomatis dibuat');
+      }
+    } catch (e: any) {
+      console.warn('Cek profile expired note:', e.message);
+    }
+
     const pppSchedName = 'monitor-ppp-arbil';
     const pppScript = 
       `:local expProfile "ppoe-expired";` +
@@ -1284,11 +1370,12 @@ export async function ensureMikrotikScheduler(conn: any, type: 'hotspot' | 'pppo
       `};` +
       `:if ($countIso > 0) do={ :log info ("Arbill PPPoE Monitor: " . $countIso . " user berhasil diisolir."); };`;
 
-    const matchPpp = existingSchedulers.find((s: any) => s.name === pppSchedName);
+    const matchPpp = existingSchedulers.find((s: any) => s.name === pppSchedName || s.name === 'monitor_arbill_ppp');
     if (matchPpp && matchPpp['.id']) {
       try {
         await conn.write('/system/scheduler/set', [
           `=.id=${matchPpp['.id']}`,
+          `=name=${pppSchedName}`,
           `=interval=10m`,
           `=start-time=startup`,
           `=on-event=${pppScript}`,
@@ -1318,215 +1405,228 @@ export async function ensureMikrotikScheduler(conn: any, type: 'hotspot' | 'pppo
 }
 
 
-export async function pushProfileToMikrotik(req: Request, res: Response) {
-  const { id } = req.params;
+/**
+ * Eksekusi Sinkronisasi Profile ke MikroTik Router (Hotspot / PPPoE)
+ * Sekaligus memasang/memperbarui On-Login / On-Up / On-Down script dan Global Monitor Scheduler.
+ */
+export async function executePushProfileToMikrotik(id: string, serverUrlOverride?: string): Promise<{ success: boolean; message: string; synced_at?: Date }> {
+  const profRes = await pool.query(`
+    SELECT rp.*, r.name as router_name, r.ip_address, r.api_port, r.username, r.password,
+           p.speed_limit as package_speed_limit, p.name as package_name,
+           p.validity_iso, p.price as package_price, p.shared_users as package_shared_users,
+           p.only_one_user as package_lock_user, p.lock_server as package_lock_server, p.expired_mode as package_expired_mode
+    FROM router_profiles rp
+    JOIN routers r ON rp.router_id = r.id
+    LEFT JOIN packages p ON rp.package_id = p.id
+    WHERE rp.id = $1
+  `, [id]);
+
+  if (profRes.rows.length === 0) {
+    return { success: false, message: 'Profile Mikrotik tidak ditemukan.' };
+  }
+
+  const prof = profRes.rows[0];
+  const effectiveRateLimit = prof.package_speed_limit || prof.rate_limit || '10M/10M';
+  const sharedUsersCount = (prof.package_shared_users || 1).toString();
+  const now = new Date();
+
+  // Hitung format validity untuk script on-login Mikrotik RouterOS langsung dari ISO-8601 Duration
+  const formattedValidity = isoDurationToMikrotikValidity(prof.validity_iso) || '1d';
+
+  const billingServerUrl = (serverUrlOverride || getBillingServerUrl()).toString().trim();
+
+  const hotspotScripts = generateHotspotProfileOnLogin({
+    profile_name: prof.name,
+    price: prof.package_price || 0,
+    reseller_price: STATIC_MIKROTIK_SCRIPT_CONFIG.reseller_price,
+    validity: formattedValidity,
+    lock_user: prof.package_lock_user !== null && prof.package_lock_user !== undefined ? Boolean(prof.package_lock_user) : STATIC_MIKROTIK_SCRIPT_CONFIG.lock_user,
+    lock_server: prof.package_lock_server !== null && prof.package_lock_server !== undefined ? Boolean(prof.package_lock_server) : STATIC_MIKROTIK_SCRIPT_CONFIG.lock_server,
+    support_by: STATIC_MIKROTIK_SCRIPT_CONFIG.support_by,
+    expired_mode: prof.package_expired_mode || STATIC_MIKROTIK_SCRIPT_CONFIG.expired_mode,
+    server_url: billingServerUrl,
+  });
+
+  const pppScripts = generatePppProfileOnUpDown({ serverUrl: billingServerUrl, routerId: prof.router_id });
+
+  let pushSuccess = false;
+  let pushDetailMessage = '';
+  let conn: any = null;
 
   try {
-    const profRes = await pool.query(`
-      SELECT rp.*, r.name as router_name, r.ip_address, r.api_port, r.username, r.password,
-             p.speed_limit as package_speed_limit, p.name as package_name,
-             p.validity_iso, p.price as package_price, p.shared_users as package_shared_users,
-             p.only_one_user as package_lock_user, p.lock_server as package_lock_server, p.expired_mode as package_expired_mode
-      FROM router_profiles rp
-      JOIN routers r ON rp.router_id = r.id
-      LEFT JOIN packages p ON rp.package_id = p.id
-      WHERE rp.id = $1
-    `, [id]);
-
-    if (profRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Profile Mikrotik tidak ditemukan.' });
-    }
-
-    const prof = profRes.rows[0];
-    const effectiveRateLimit = prof.package_speed_limit || prof.rate_limit || '10M/10M';
-    const sharedUsersCount = (prof.package_shared_users || 1).toString();
-    const now = new Date();
-
-    // Hitung format validity untuk script on-login Mikrotik RouterOS langsung dari ISO-8601 Duration
-    const formattedValidity = isoDurationToMikrotikValidity(prof.validity_iso) || '1d';
-
-    const billingServerUrl = (req.body?.server_url || req.query?.server_url || getBillingServerUrl(req)).toString().trim();
-
-    const hotspotScripts = generateHotspotProfileOnLogin({
-      profile_name: prof.name,
-      price: prof.package_price || 0,
-      reseller_price: STATIC_MIKROTIK_SCRIPT_CONFIG.reseller_price,
-      validity: formattedValidity,
-      lock_user: prof.package_lock_user !== null && prof.package_lock_user !== undefined ? Boolean(prof.package_lock_user) : STATIC_MIKROTIK_SCRIPT_CONFIG.lock_user,
-      lock_server: prof.package_lock_server !== null && prof.package_lock_server !== undefined ? Boolean(prof.package_lock_server) : STATIC_MIKROTIK_SCRIPT_CONFIG.lock_server,
-      support_by: STATIC_MIKROTIK_SCRIPT_CONFIG.support_by,
-      expired_mode: prof.package_expired_mode || STATIC_MIKROTIK_SCRIPT_CONFIG.expired_mode,
-      server_url: billingServerUrl,
+    conn = new RouterOSAPI({
+      host: prof.ip_address,
+      port: prof.api_port || 8728,
+      user: prof.username || 'admin',
+      password: prof.password || '',
+      timeout: 8
     });
 
-    const pppScripts = generatePppProfileOnUpDown({ serverUrl: billingServerUrl, routerId: prof.router_id });
+    await conn.connect();
 
-    let pushSuccess = false;
-    let pushDetailMessage = '';
-    let conn: any = null;
+    if (prof.type === 'hotspot') {
+      let allHsProfiles: any[] = [];
+      try {
+        allHsProfiles = await conn.write('/ip/hotspot/user/profile/print');
+      } catch (e) {
+        allHsProfiles = [];
+      }
 
-    try {
-      conn = new RouterOSAPI({
-        host: prof.ip_address,
-        port: prof.api_port || 8728,
-        user: prof.username || 'admin',
-        password: prof.password || '',
-        timeout: 8
-      });
+      const existingHs = Array.isArray(allHsProfiles)
+        ? allHsProfiles.find((p: any) => p.name === prof.name)
+        : null;
 
-      await conn.connect();
-
-      if (prof.type === 'hotspot') {
-        let allHsProfiles: any[] = [];
+      if (existingHs) {
         try {
-          allHsProfiles = await conn.write('/ip/hotspot/user/profile/print');
-        } catch (e) {
-          allHsProfiles = [];
-        }
-
-        const existingHs = Array.isArray(allHsProfiles)
-          ? allHsProfiles.find((p: any) => p.name === prof.name)
-          : null;
-
-        if (existingHs) {
-          try {
-            await conn.write('/ip/hotspot/user/profile/set', [
-              `=.id=${existingHs['.id']}`,
-              `=rate-limit=${effectiveRateLimit}`,
-              `=shared-users=${sharedUsersCount}`,
-              `=on-login=${hotspotScripts.onlogin}`
-            ]);
-            pushDetailMessage = `✅ Profile Hotspot "${prof.name}" sudah ada di Mikrotik → berhasil di-UPDATE (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
-            pushSuccess = true;
-          } catch (updateErr: any) {
-            pushDetailMessage = `⚠️ Profile ditemukan tapi gagal update: ${updateErr.message}`;
-            pushSuccess = false;
-          }
-        } else {
-          try {
-            await conn.write('/ip/hotspot/user/profile/add', [
-              `=name=${prof.name}`,
-              `=rate-limit=${effectiveRateLimit}`,
-              `=shared-users=${sharedUsersCount}`,
-              `=on-login=${hotspotScripts.onlogin}`
-            ]);
-            pushDetailMessage = `✅ Profile Hotspot "${prof.name}" belum ada di Mikrotik → berhasil DIBUAT BARU (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
-            pushSuccess = true;
-          } catch (addErr: any) {
-            pushDetailMessage = `❌ Gagal membuat profile baru: ${addErr.message}`;
-            pushSuccess = false;
-          }
+          await conn.write('/ip/hotspot/user/profile/set', [
+            `=.id=${existingHs['.id']}`,
+            `=rate-limit=${effectiveRateLimit}`,
+            `=shared-users=${sharedUsersCount}`,
+            `=on-login=${hotspotScripts.onlogin}`
+          ]);
+          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" di Mikrotik berhasil di-UPDATE (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
+          pushSuccess = true;
+        } catch (updateErr: any) {
+          pushDetailMessage = `⚠️ Profile ditemukan tapi gagal update: ${updateErr.message}`;
+          pushSuccess = false;
         }
       } else {
-        let allPppProfiles: any[] = [];
         try {
-          allPppProfiles = await conn.write('/ppp/profile/print');
-        } catch (e) {
-          allPppProfiles = [];
+          await conn.write('/ip/hotspot/user/profile/add', [
+            `=name=${prof.name}`,
+            `=rate-limit=${effectiveRateLimit}`,
+            `=shared-users=${sharedUsersCount}`,
+            `=on-login=${hotspotScripts.onlogin}`
+          ]);
+          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" berhasil DIBUAT BARU di Mikrotik (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
+          pushSuccess = true;
+        } catch (addErr: any) {
+          pushDetailMessage = `❌ Gagal membuat profile baru: ${addErr.message}`;
+          pushSuccess = false;
         }
+      }
+    } else {
+      let allPppProfiles: any[] = [];
+      try {
+        allPppProfiles = await conn.write('/ppp/profile/print');
+      } catch (e) {
+        allPppProfiles = [];
+      }
 
-        const existingPpp = Array.isArray(allPppProfiles)
-          ? allPppProfiles.find((p: any) => p.name === prof.name)
-          : null;
+      const existingPpp = Array.isArray(allPppProfiles)
+        ? allPppProfiles.find((p: any) => p.name === prof.name)
+        : null;
 
-        // Cek dan pastikan Parent Simple Queue sudah ada jika diisi oleh user
-        if (prof.parent_queue && prof.parent_queue !== 'none') {
-          try {
-            const allQueues = await conn.write('/queue/simple/print');
-            const queueFound = Array.isArray(allQueues) && allQueues.some((q: any) => q.name === prof.parent_queue);
-            if (!queueFound) {
-              await conn.write('/queue/simple/add', [
-                `=name=${prof.parent_queue}`,
-                '=target=0.0.0.0/0',
-                '=max-limit=0/0',
-                '=comment=Parent Queue Otomatis dibuat oleh Arbill'
-              ]);
-            }
-          } catch (qErr: any) {
-            console.warn(`[MikroTik Sync] Catatan cek/buat parent queue "${prof.parent_queue}":`, qErr.message);
-          }
-        }
-
-        const pppSetArgs: string[] = [
-          `=rate-limit=${effectiveRateLimit}`,
-          `=on-up=${pppScripts.onup}`,
-          `=on-down=${pppScripts.ondown}`
-        ];
-        if (prof.local_address) pppSetArgs.push(`=local-address=${prof.local_address}`);
-        if (prof.remote_address) pppSetArgs.push(`=remote-address=${prof.remote_address}`);
-        if (prof.parent_queue && prof.parent_queue !== 'none') pppSetArgs.push(`=parent-queue=${prof.parent_queue}`);
-        if (prof.dns_server) {
-          const cleanDns = prof.dns_server.split(',').map((s: string) => s.trim()).filter(Boolean).join(',');
-          if (cleanDns) pppSetArgs.push(`=dns-server=${cleanDns}`);
-        }
-
-        if (existingPpp) {
-          try {
-            await conn.write('/ppp/profile/set', [
-              `=.id=${existingPpp['.id']}`,
-              ...pppSetArgs
+      // Cek dan pastikan Parent Simple Queue sudah ada jika diisi oleh user
+      if (prof.parent_queue && prof.parent_queue !== 'none') {
+        try {
+          const allQueues = await conn.write('/queue/simple/print');
+          const queueFound = Array.isArray(allQueues) && allQueues.some((q: any) => q.name === prof.parent_queue);
+          if (!queueFound) {
+            await conn.write('/queue/simple/add', [
+              `=name=${prof.parent_queue}`,
+              '=target=0.0.0.0/0',
+              '=max-limit=0/0',
+              '=comment=Parent Queue Otomatis dibuat oleh Arbill'
             ]);
-            pushDetailMessage = `✅ PPP Profile "${prof.name}" sudah ada di Mikrotik → berhasil di-UPDATE (Rate: ${effectiveRateLimit}).`;
-            pushSuccess = true;
-          } catch (updateErr: any) {
-            pushDetailMessage = `⚠️ Profile ditemukan tapi gagal update: ${updateErr.message}`;
-            pushSuccess = false;
           }
-        } else {
-          try {
-            await conn.write('/ppp/profile/add', [
-              `=name=${prof.name}`,
-              ...pppSetArgs
-            ]);
-            pushDetailMessage = `✅ PPP Profile "${prof.name}" belum ada di Mikrotik → berhasil DIBUAT BARU (Rate: ${effectiveRateLimit}).`;
-            pushSuccess = true;
-          } catch (addErr: any) {
-            pushDetailMessage = `❌ Gagal membuat profile baru: ${addErr.message}`;
-            pushSuccess = false;
-          }
+        } catch (qErr: any) {
+          console.warn(`[MikroTik Sync] Catatan cek/buat parent queue "${prof.parent_queue}":`, qErr.message);
         }
       }
 
-      // Pastikan Global Scheduler ada di Router jika profile berhasil dipush
-      if (pushSuccess) {
-        try {
-          const schedNote = await ensureMikrotikScheduler(conn, prof.type as any);
-          if (schedNote) {
-            pushDetailMessage += ` [⚡ ${schedNote}]`;
-          }
-        } catch (schedErr: any) {
-          console.warn('Gagal memproses global scheduler:', schedErr.message);
-        }
+      const pppSetArgs: string[] = [
+        `=rate-limit=${effectiveRateLimit}`,
+        `=on-up=${pppScripts.onup}`,
+        `=on-down=${pppScripts.ondown}`
+      ];
+      if (prof.local_address) pppSetArgs.push(`=local-address=${prof.local_address}`);
+      if (prof.remote_address) pppSetArgs.push(`=remote-address=${prof.remote_address}`);
+      if (prof.parent_queue && prof.parent_queue !== 'none') pppSetArgs.push(`=parent-queue=${prof.parent_queue}`);
+      if (prof.dns_server) {
+        const cleanDns = prof.dns_server.split(',').map((s: string) => s.trim()).filter(Boolean).join(',');
+        if (cleanDns) pppSetArgs.push(`=dns-server=${cleanDns}`);
       }
 
-      try { conn.close(); } catch (e) {}
-    } catch (connErr: any) {
-      pushDetailMessage = `❌ Gagal terhubung ke Router "${prof.router_name}" (${prof.ip_address}:${prof.api_port || 8728}): ${connErr.message}`;
-      pushSuccess = false;
+      if (existingPpp) {
+        try {
+          await conn.write('/ppp/profile/set', [
+            `=.id=${existingPpp['.id']}`,
+            ...pppSetArgs
+          ]);
+          pushDetailMessage = `✅ PPP Profile "${prof.name}" di Mikrotik berhasil di-UPDATE (Rate: ${effectiveRateLimit}).`;
+          pushSuccess = true;
+        } catch (updateErr: any) {
+          pushDetailMessage = `⚠️ Profile ditemukan tapi gagal update: ${updateErr.message}`;
+          pushSuccess = false;
+        }
+      } else {
+        try {
+          await conn.write('/ppp/profile/add', [
+            `=name=${prof.name}`,
+            ...pppSetArgs
+          ]);
+          pushDetailMessage = `✅ PPP Profile "${prof.name}" berhasil DIBUAT BARU di Mikrotik (Rate: ${effectiveRateLimit}).`;
+          pushSuccess = true;
+        } catch (addErr: any) {
+          pushDetailMessage = `❌ Gagal membuat profile baru: ${addErr.message}`;
+          pushSuccess = false;
+        }
+      }
     }
 
-    if (!pushSuccess) {
-      return res.status(500).json({
-        success: false,
-        message: `Singkronisasi Gagal! ${pushDetailMessage}`
-      });
+    // Pastikan Global Scheduler ada di Router jika profile berhasil dipush
+    if (pushSuccess) {
+      try {
+        const schedNote = await ensureMikrotikScheduler(conn, prof.type as any);
+        if (schedNote) {
+          pushDetailMessage += ` [⚡ ${schedNote}]`;
+        }
+      } catch (schedErr: any) {
+        console.warn('Gagal memproses global scheduler:', schedErr.message);
+      }
     }
 
-    await pool.query(`
-      UPDATE router_profiles
-      SET is_synced = true,
-          on_router = true,
-          synced_at = $1
-      WHERE id = $2
-    `, [now, id]);
+    try { conn.close(); } catch (e) {}
+  } catch (connErr: any) {
+    pushDetailMessage = `❌ Gagal terhubung ke Router "${prof.router_name}" (${prof.ip_address}:${prof.api_port || 8728}): ${connErr.message}`;
+    pushSuccess = false;
+  }
 
-    res.json({
-      success: true,
-      message: `⚡ Singkronisasi Berhasil! ${pushDetailMessage} + Script Mikhmon otomatis terpasang di Router "${prof.router_name}".`,
-      synced_at: now
-    });
+  if (!pushSuccess) {
+    return {
+      success: false,
+      message: `Singkronisasi Gagal! ${pushDetailMessage}`
+    };
+  }
+
+  await pool.query(`
+    UPDATE router_profiles
+    SET is_synced = true,
+        on_router = true,
+        synced_at = $1
+    WHERE id = $2
+  `, [now, id]);
+
+  return {
+    success: true,
+    message: `⚡ Singkronisasi Berhasil! ${pushDetailMessage} + Script & Scheduler otomatis aktif di Router "${prof.router_name}".`,
+    synced_at: now
+  };
+}
+
+export async function pushProfileToMikrotik(req: Request, res: Response) {
+  const { id } = req.params;
+  const billingServerUrl = (req.body?.server_url || req.query?.server_url || getBillingServerUrl(req)).toString().trim();
+
+  try {
+    const result = await executePushProfileToMikrotik(id, billingServerUrl);
+    if (!result.success) {
+      return res.status(500).json(result);
+    }
+    return res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 }
 

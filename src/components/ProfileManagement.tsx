@@ -144,6 +144,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
   const [remoteAddressPool, setRemoteAddressPool] = useState<string>('');
   const [parentQueue, setParentQueue] = useState<string>('none');
   const [dnsServer, setDnsServer] = useState<string>('8.8.8.8, 8.8.4.4');
+  const [autoPushToRouter, setAutoPushToRouter] = useState<boolean>(true);
 
   const parseJsonResponse = async (res: Response) => {
     const contentType = res.headers.get('content-type') || '';
@@ -215,6 +216,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     setRemoteAddressPool('');
     setParentQueue('none');
     setDnsServer('8.8.8.8, 8.8.4.4');
+    setAutoPushToRouter(true);
     if (routers.length > 0) setSelectedRouterId(routers[0].id);
     setShowAddModal(true);
   };
@@ -282,7 +284,8 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
           local_address: type === 'pppoe' ? (finalLocalAddress || null) : null,
           remote_address: type === 'pppoe' ? (remoteAddressPool || null) : null,
           parent_queue: type === 'pppoe' ? (parentQueue || null) : null,
-          dns_server: type === 'pppoe' ? (dnsServer || null) : null
+          dns_server: type === 'pppoe' ? (dnsServer || null) : null,
+          auto_push: autoPushToRouter
         })
       });
 
@@ -313,6 +316,7 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
     setRemoteAddressPool(prof.remote_address || '');
     setParentQueue(prof.parent_queue || 'none');
     setDnsServer(prof.dns_server || '8.8.8.8, 8.8.4.4');
+    setAutoPushToRouter(true);
 
     setActiveTab('general');
     setShowEditModal(true);
@@ -351,7 +355,8 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
           local_address: type === 'pppoe' ? (finalLocalAddress || null) : null,
           remote_address: type === 'pppoe' ? (remoteAddressPool || null) : null,
           parent_queue: type === 'pppoe' ? (parentQueue || null) : null,
-          dns_server: type === 'pppoe' ? (dnsServer || null) : null
+          dns_server: type === 'pppoe' ? (dnsServer || null) : null,
+          auto_push: autoPushToRouter
         })
       });
 
@@ -626,12 +631,18 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {/* Sync Status Badge */}
                       {prof.is_synced ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                          <CheckCircle2 size={11} />
-                          <span>Sync</span>
-                        </span>
+                        <>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <CheckCircle2 size={11} />
+                            <span>Sync</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1" title={`Scheduler monitor ${prof.type === 'pppoe' ? 'monitor-ppp-arbil (10m)' : 'monitor-hotspot-arbill (2m)'} aktif di MikroTik`}>
+                            <Clock size={10} />
+                            <span>{prof.type === 'pppoe' ? 'Sched 10m' : 'Sched 2m'}</span>
+                          </span>
+                        </>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 animate-pulse">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 animate-pulse" title="Belum diterbitkan ke MikroTik">
                           <AlertCircle size={11} />
                           <span>Draft</span>
                         </span>
@@ -1342,6 +1353,9 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
                       <li>
                         <strong className="text-slate-800">• DNS Server:</strong> IP DNS server yang diberikan ke pelanggan PPPoE.
                       </li>
+                      <li>
+                        <strong className="text-slate-800">• Scheduler Monitor (10m):</strong> Otomatis membuat/memperbarui scheduler <code>monitor-ppp-arbil</code> di MikroTik untuk memonitor jatuh tempo & isolir pelanggan tiap 10 menit.
+                      </li>
                     </ul>
                   ) : (
                     <ul className="space-y-2.5 text-slate-600 text-[11px] leading-relaxed">
@@ -1354,8 +1368,36 @@ export default function ProfileManagement({ profile, t, onLogout }: ProfileManag
                       <li>
                         <strong className="text-slate-800">• Rate Limit:</strong> Otomatis mengikuti speed limit Paket Hotspot.
                       </li>
+                      <li>
+                        <strong className="text-slate-800">• Scheduler Monitor (2m):</strong> Otomatis membuat/memperbarui scheduler <code>monitor-hotspot-arbill</code> di MikroTik untuk memonitor masa aktif voucher & kick user expired tiap 2 menit.
+                      </li>
                     </ul>
                   )}
+                </div>
+              </div>
+
+              {/* Checkbox Auto-Sync to MikroTik & Scheduler */}
+              <div className={`p-4 rounded-2xl border flex items-start gap-3 transition-all ${
+                autoPushToRouter ? (type === 'pppoe' ? 'bg-indigo-50/80 border-indigo-200' : 'bg-amber-50/80 border-amber-200') : 'bg-slate-50 border-slate-200'
+              }`}>
+                <input
+                  type="checkbox"
+                  id="autoPushToRouter"
+                  checked={autoPushToRouter}
+                  onChange={(e) => setAutoPushToRouter(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer shrink-0"
+                />
+                <div className="flex-1">
+                  <label htmlFor="autoPushToRouter" className="text-xs font-bold text-slate-800 cursor-pointer select-none flex items-center gap-1.5">
+                    <Zap size={14} className={type === 'pppoe' ? 'text-indigo-600' : 'text-amber-600'} />
+                    <span>Langsung Terbitkan ke Router MikroTik & Aktifkan Scheduler Monitor</span>
+                  </label>
+                  <p className="text-[11px] text-slate-600 mt-0.5 leading-normal">
+                    {type === 'pppoe' 
+                      ? 'Otomatis membuat/memperbarui PPP Profile di MikroTik serta scheduler "monitor-ppp-arbil" (interval 10m) untuk cek jatuh tempo & isolir otomatis.'
+                      : 'Otomatis membuat/memperbarui Hotspot Profile di MikroTik serta scheduler "monitor-hotspot-arbill" (interval 2m) untuk monitor expired voucher.'
+                    }
+                  </p>
                 </div>
               </div>
 
