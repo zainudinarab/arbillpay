@@ -6,7 +6,7 @@ import {
   Star, Sparkles, Globe, Signal, Timer, ChevronRight, ChevronLeft, ChevronDown,
   Plus, CreditCard, ExternalLink, LogOut, RefreshCw, Banknote,
   QrCode, Copy, FileText, Search, Ticket, UserCheck, Info, Smartphone, Database,
-  MessageCircle, Megaphone, Flame, Home, Gauge
+  MessageCircle, Megaphone, Flame, Home, Gauge, LogIn, Hourglass, Calendar, XCircle
 } from 'lucide-react';
 import LoginModal from './LoginModal';
 import SpeedtestModal from './SpeedtestModal';
@@ -73,6 +73,75 @@ function getHotspotDomain(dns?: string | null, _ip?: string | null): string {
   return 'ar.net';
 }
 
+function formatDateTimeWib(dateStr?: string | Date | null): string {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }) + ' WIB';
+}
+
+function getVoucherRemainingTime(expiredAt?: string | Date | null): { text: string; isNearExpired: boolean; isExpired: boolean } {
+  if (!expiredAt) return { text: '', isNearExpired: false, isExpired: false };
+  const now = Date.now();
+  const expTime = new Date(expiredAt).getTime();
+  const diffMs = expTime - now;
+  if (diffMs <= 0) return { text: 'Masa aktif telah berakhir', isNearExpired: true, isExpired: true };
+
+  const diffSec = Math.floor(diffMs / 1000);
+  const days = Math.floor(diffSec / 86400);
+  const hours = Math.floor((diffSec % 86400) / 3600);
+  const minutes = Math.floor((diffSec % 3600) / 60);
+
+  if (days > 0) {
+    return { text: `Sisa ${days} hari ${hours} jam`, isNearExpired: false, isExpired: false };
+  }
+  if (hours > 0) {
+    return { text: `Sisa ${hours} jam ${minutes} mnt`, isNearExpired: hours < 2, isExpired: false };
+  }
+  return { text: `Sisa ${minutes} menit`, isNearExpired: true, isExpired: false };
+}
+
+function classifyVoucherState(v: any): 'ready' | 'used_active' | 'used_expired' {
+  if (v.usage_state === 'ready') return 'ready';
+  if (v.usage_state === 'used_active') return 'used_active';
+  if (v.usage_state === 'used_expired') return 'used_expired';
+
+  const now = Date.now();
+  const rawStatus = (v.raw_status || v.status || '').toLowerCase();
+  const firstLogin = v.first_login_at || v.first_login;
+  const expiredAt = v.expired_at;
+
+  if (rawStatus === 'expired' || (expiredAt && new Date(expiredAt).getTime() <= now)) {
+    return 'used_expired';
+  }
+
+  if (firstLogin) {
+    if (expiredAt && new Date(expiredAt).getTime() > now) {
+      return 'used_active';
+    }
+    if (!expiredAt) {
+      return 'used_active';
+    }
+    return 'used_expired';
+  }
+
+  if (rawStatus === 'used' || v.is_used || v.used_at) {
+    if (expiredAt && new Date(expiredAt).getTime() > now) {
+      return 'used_active';
+    }
+    return 'used_expired';
+  }
+
+  return 'ready';
+}
+
 interface CustomerPortalProps {
   currentUser: UserAccount | null;
   onLoginSuccess: (user: UserAccount) => void;
@@ -109,7 +178,8 @@ export default function CustomerPortal({
   const [durationFilter, setDurationFilter] = useState<'all' | '1h' | '3h' | '1d' | '7d' | '30d'>('all');
   const [showVoucherSayaModal, setShowVoucherSayaModal] = useState(false);
   const [showSpeedtestModal, setShowSpeedtestModal] = useState(false);
-  const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'active' | 'used'>('all');
+  const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'ready' | 'used_active' | 'used_expired' | 'active' | 'used'>('all');
+  const [voucherHistoryFilter, setVoucherHistoryFilter] = useState<'all' | 'ready' | 'used_active' | 'used_expired'>('all');
   const [showLanggananModal, setShowLanggananModal] = useState(false);
   const [showTagihanModal, setShowTagihanModal] = useState(false);
   const [tagihanModalTab, setTagihanModalTab] = useState<'all' | 'unpaid' | 'paid'>('all');
@@ -1951,7 +2021,8 @@ export default function CustomerPortal({
   // --- 4 STAT CARDS (Dashboard Stats terhubung ke database riil) ---
   const renderDashboardStats = () => {
     const balance = currentUser?.arabpay_balance ?? 0;
-    const voucherCount = localPurchasedVouchers.length;
+    const readyVoucherCount = localPurchasedVouchers.filter(v => classifyVoucherState(v) === 'ready').length;
+    const activeUsedVoucherCount = localPurchasedVouchers.filter(v => classifyVoucherState(v) === 'used_active').length;
     const regCount = allRegs.length;
 
     return (
@@ -1991,11 +2062,24 @@ export default function CustomerPortal({
           </div>
           <div className="min-w-0">
             <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
-              <span>Voucher Aktif</span>
+              <span>Voucher Saya</span>
               <span className="text-[9px] px-1 rounded bg-indigo-500/20 text-indigo-300">Lihat</span>
             </p>
             <strong className="font-heading font-bold text-sm sm:text-base text-indigo-400 block truncate">
-              {voucherCount > 0 ? `${voucherCount} Voucher` : '0 Voucher'}
+              {readyVoucherCount > 0 ? (
+                <>
+                  <span>{readyVoucherCount} Siap</span>
+                  {activeUsedVoucherCount > 0 && (
+                    <span className="text-[11px] text-cyan-400 font-semibold ml-1">({activeUsedVoucherCount} Aktif)</span>
+                  )}
+                </>
+              ) : activeUsedVoucherCount > 0 ? (
+                <span className="text-cyan-400">{activeUsedVoucherCount} Masih Aktif</span>
+              ) : localPurchasedVouchers.length > 0 ? (
+                <span className="text-slate-400">{localPurchasedVouchers.length} Voucher</span>
+              ) : (
+                '0 Voucher'
+              )}
             </strong>
           </div>
         </div>
@@ -3578,107 +3662,293 @@ export default function CustomerPortal({
         )}
 
         {/* ==================== TAB 2: VOUCHER HISTORY (Persis arbiljs) ==================== */}
-        {activeTab === 'history' && currentUser && (
-          <div className="space-y-6">
-            {renderPortalNavigationTabs()}
-            <div className="flex items-center justify-between bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-              <div>
-                <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
-                  <Ticket className="w-4 h-4 text-amber-400" />
-                  <span>Daftar Voucher Saya</span>
-                </h3>
-                <p className="text-[11px] text-slate-400">Tersimpan di database PostgreSQL & siap digunakan</p>
-              </div>
-              <button
-                onClick={fetchMyPurchasedVouchers}
-                className="p-2 text-slate-400 hover:text-amber-400 rounded-xl hover:bg-slate-800 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-                title="Muat Ulang Voucher"
-              >
-                <RefreshCw size={14} />
-                <span>Segarkan</span>
-              </button>
-            </div>
+        {activeTab === 'history' && currentUser && (() => {
+          const readyHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'ready');
+          const activeHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_active');
+          const expiredHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_expired');
 
-            {localPurchasedVouchers.length === 0 ? (
-              <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
-                <Clock className="w-12 h-12 text-slate-600 mx-auto" />
-                <h3 className="text-lg font-bold text-slate-300">Belum Ada Transaksi Voucher</h3>
-                <p className="text-sm text-slate-500 max-w-sm mx-auto">
-                  Voucher yang Anda beli menggunakan ArabPay akan tercatat otomatis di sini.
-                </p>
+          let displayedHistory: any[] = [];
+          if (voucherHistoryFilter === 'ready') displayedHistory = readyHistory;
+          else if (voucherHistoryFilter === 'used_active') displayedHistory = activeHistory;
+          else if (voucherHistoryFilter === 'used_expired') displayedHistory = expiredHistory;
+          else displayedHistory = [...readyHistory, ...activeHistory, ...expiredHistory];
+
+          return (
+            <div className="space-y-6">
+              {renderPortalNavigationTabs()}
+              
+              {/* Header Box */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 p-4 sm:p-5 rounded-2xl border border-slate-800">
+                <div>
+                  <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
+                    <Ticket className="w-5 h-5 text-amber-400" />
+                    <span>Daftar Voucher Saya</span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                      {localPurchasedVouchers.length} Total
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Riwayat voucher lengkap dengan waktu login perdana, masa aktif, dan status kedaluwarsa</p>
+                </div>
                 <button
-                  onClick={() => setActiveTab('buy')}
-                  className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  onClick={fetchMyPurchasedVouchers}
+                  className="px-3.5 py-2 text-slate-300 hover:text-amber-400 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold shrink-0 self-start sm:self-auto"
+                  title="Muat Ulang Voucher"
                 >
-                  Beli Voucher Pertama
+                  <RefreshCw size={14} />
+                  <span>Segarkan</span>
                 </button>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {localPurchasedVouchers.map((item: any) => (
-                  <div
-                    key={item.id}
-                    className="bg-slate-900 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition space-y-4 shadow-md"
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">{item.id}</span>
-                        <p className="text-xs text-slate-400 mt-0.5">{item.date}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {item.is_flash_sale && (
-                          <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-500/30">
-                            <Flame className="w-3 h-3 text-rose-400" /> Flash Sale
-                          </span>
-                        )}
-                        <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full flex items-center gap-1 border border-emerald-500/20">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Berhasil
-                        </span>
-                      </div>
-                    </div>
 
-                    {/* Package Info */}
-                    <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] text-slate-500 uppercase font-bold">Nama Paket</p>
-                        <h4 className="font-bold text-slate-200 text-sm mt-0.5">{item.packageName}</h4>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-slate-500 uppercase font-bold">Nominal</p>
-                        <p className="font-mono text-sm font-bold text-emerald-400 mt-0.5">{formatRupiah(item.price)}</p>
-                      </div>
-                    </div>
-
-                    {/* Credentials & Connect Link */}
-                    <div className="bg-indigo-950/20 border border-indigo-900/30 rounded-xl p-3.5 space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-400">Kode Username:</span>
-                        <span className="font-mono font-bold text-amber-400 select-all">{item.username}</span>
-                      </div>
-                      {item.password && (
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-slate-400">Password:</span>
-                          <span className="font-mono font-bold text-amber-400 select-all">{item.password}</span>
-                        </div>
-                      )}
-                      <a
-                        href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2"
-                      >
-                        <Wifi size={14} />
-                        <span>Hubungkan ke WiFi Hotspot Sekarang</span>
-                      </a>
-                    </div>
-                  </div>
-                ))}
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setVoucherHistoryFilter('all')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherHistoryFilter === 'all'
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <span>Semua ({localPurchasedVouchers.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVoucherHistoryFilter('ready')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherHistoryFilter === 'ready'
+                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20'
+                      : 'bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Belum Terpakai ({readyHistory.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVoucherHistoryFilter('used_active')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherHistoryFilter === 'used_active'
+                      ? 'bg-cyan-600 border-cyan-500 text-white shadow-md shadow-cyan-600/20'
+                      : 'bg-slate-900 border-slate-800 text-cyan-400 hover:text-cyan-300'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  <span>Terpakai (Masih Aktif) ({activeHistory.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVoucherHistoryFilter('used_expired')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherHistoryFilter === 'used_expired'
+                      ? 'bg-rose-900/80 border-rose-700 text-rose-200'
+                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Terpakai (Expired) ({expiredHistory.length})</span>
+                </button>
               </div>
-            )}
-          </div>
-        )}
 
+              {localPurchasedVouchers.length === 0 ? (
+                <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-3xl space-y-3">
+                  <Clock className="w-12 h-12 text-slate-600 mx-auto" />
+                  <h3 className="text-lg font-bold text-slate-300">Belum Ada Transaksi Voucher</h3>
+                  <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                    Voucher yang Anda beli menggunakan ArabPay akan tercatat otomatis di sini.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('buy')}
+                    className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Beli Voucher Pertama
+                  </button>
+                </div>
+              ) : displayedHistory.length === 0 ? (
+                <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-3xl space-y-2 text-slate-400">
+                  <Ticket className="w-10 h-10 text-slate-600 mx-auto" />
+                  <p className="text-sm font-bold text-slate-300">Tidak ada voucher pada kategori ini</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {displayedHistory.map((item: any) => {
+                    const st = classifyVoucherState(item);
+                    const rem = getVoucherRemainingTime(item.expired_at);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl p-5 transition space-y-4 shadow-md border ${
+                          st === 'ready'
+                            ? 'bg-slate-900 border-emerald-500/30 hover:border-emerald-500/60'
+                            : st === 'used_active'
+                            ? 'bg-slate-900 border-cyan-500/40 hover:border-cyan-400/60 shadow-cyan-950/20'
+                            : 'bg-slate-950/70 border-slate-800/80 opacity-70 hover:opacity-90'
+                        }`}
+                      >
+                        {/* Header Card */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block truncate">{item.id}</span>
+                            <h4 className="font-bold text-slate-200 text-sm mt-0.5 truncate">{item.packageName}</h4>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {item.is_flash_sale && (
+                              <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full flex items-center gap-1 border border-rose-500/30">
+                                <Flame className="w-3 h-3 text-rose-400" /> Promo
+                              </span>
+                            )}
+                            {st === 'ready' ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/40 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Siap Pakai
+                              </span>
+                            ) : st === 'used_active' ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-cyan-500/15 text-cyan-300 border-cyan-400/40 flex items-center gap-1 animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Masih Aktif
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-rose-500/10 text-rose-300 border-rose-500/30 flex items-center gap-1">
+                                <XCircle className="w-3.5 h-3.5 text-rose-400" /> Expired
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Remaining Time Banner for Active Vouchers */}
+                        {st === 'used_active' && rem.text && (
+                          <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-between text-xs text-cyan-300">
+                            <span className="flex items-center gap-1.5 font-semibold">
+                              <Timer size={14} className="text-cyan-400" /> Sisa Masa Aktif:
+                            </span>
+                            <span className="font-mono font-bold text-cyan-200">{rem.text}</span>
+                          </div>
+                        )}
+
+                        {/* Login & Expired Details Box */}
+                        <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                          st === 'used_active'
+                            ? 'bg-cyan-950/20 border-cyan-500/20 text-slate-300'
+                            : st === 'used_expired'
+                            ? 'bg-slate-950 border-slate-800 text-slate-400'
+                            : 'bg-slate-950/80 border-slate-800/80 text-slate-400'
+                        }`}>
+                          {item.first_login_at ? (
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <LogIn size={12} className={st === 'used_active' ? 'text-cyan-400' : 'text-slate-500'} />
+                                <span>Login Perdana:</span>
+                              </span>
+                              <span className={`font-mono font-bold ${st === 'used_active' ? 'text-cyan-300' : 'text-slate-300'}`}>
+                                {formatDateTimeWib(item.first_login_at)}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <Calendar size={12} className="text-emerald-400" />
+                                <span>Waktu Pembelian:</span>
+                              </span>
+                              <span className="font-mono text-slate-300">
+                                {formatDateTimeWib(item.date || item.sold_at)}
+                              </span>
+                            </div>
+                          )}
+
+                          {item.expired_at ? (
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <Hourglass size={12} className={st === 'used_active' ? 'text-amber-400' : 'text-rose-400'} />
+                                <span>Kedaluwarsa (Expired):</span>
+                              </span>
+                              <span className={`font-mono font-bold ${st === 'used_active' ? 'text-amber-300' : 'text-rose-300'}`}>
+                                {formatDateTimeWib(item.expired_at)}
+                              </span>
+                            </div>
+                          ) : st === 'ready' ? (
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <Timer size={12} className="text-slate-500" />
+                                <span>Masa Berlaku:</span>
+                              </span>
+                              <span className="font-mono text-emerald-400 font-semibold">
+                                {item.validity_iso ? formatValidityDisplay(item.validity_iso) : 'Mulai saat pertama login'}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {/* Credentials */}
+                        <div className="bg-indigo-950/20 border border-indigo-900/30 rounded-xl p-3.5 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-400">Kode Username:</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono font-bold text-sm tracking-wider select-all ${
+                                st === 'used_expired' ? 'text-slate-500 line-through' : 'text-amber-400'
+                              }`}>
+                                {item.username}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(item.username);
+                                  setCopiedVoucherCode(item.username);
+                                  setTimeout(() => setCopiedVoucherCode(null), 2000);
+                                }}
+                                className="p-1 text-slate-400 hover:text-white rounded bg-slate-800 transition cursor-pointer"
+                                title="Salin kode"
+                              >
+                                <Copy size={12} />
+                              </button>
+                            </div>
+                          </div>
+                          {item.password && item.password !== item.username && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-slate-400">Password:</span>
+                              <span className="font-mono font-bold text-amber-400 select-all">{item.password}</span>
+                            </div>
+                          )}
+                          
+                          {/* Action Button */}
+                          {st === 'ready' ? (
+                            <a
+                              href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2 shadow-sm"
+                            >
+                              <Wifi size={14} />
+                              <span>Hubungkan ke WiFi Hotspot Sekarang</span>
+                            </a>
+                          ) : st === 'used_active' ? (
+                            <a
+                              href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2 shadow-sm"
+                            >
+                              <Wifi size={14} />
+                              <span>Login Ulang ke WiFi Hotspot</span>
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('buy')}
+                              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2"
+                            >
+                              <ShoppingCart size={14} />
+                              <span>Beli Voucher Baru</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        
         {/* ==================== TAB 3: BROADBAND INVOICES ==================== */}
         {activeTab === 'invoices' && (
           <div className="space-y-6">
@@ -5256,14 +5526,23 @@ export default function CustomerPortal({
 
       {/* ==================== MODAL VOUCHER SAYA (RESPONSIF & BESAR: 3 KOLOM PC, 1 KOLOM HP) ==================== */}
       {showVoucherSayaModal && (() => {
-        const isVoucherUsed = (v: any) => {
-          const st = (v.status || '').toLowerCase();
-          return st === 'used' || st === 'expired' || st === 'terpakai' || Boolean(v.is_used) || Boolean(v.used_at) || Boolean(v.expired_at && new Date(v.expired_at).getTime() < Date.now());
-        };
+        const readyList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'ready');
+        const usedActiveList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_active');
+        const usedExpiredList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_expired');
 
-        const activeList = localPurchasedVouchers.filter((v: any) => !isVoucherUsed(v));
-        const usedList = localPurchasedVouchers.filter((v: any) => isVoucherUsed(v));
-        const displayedList = voucherModalTab === 'active' ? activeList : voucherModalTab === 'used' ? usedList : [...activeList, ...usedList];
+        let displayedList: any[] = [];
+        if (voucherModalTab === 'ready' || voucherModalTab === 'active') {
+          displayedList = readyList;
+        } else if (voucherModalTab === 'used_active') {
+          displayedList = usedActiveList;
+        } else if (voucherModalTab === 'used_expired') {
+          displayedList = usedExpiredList;
+        } else if (voucherModalTab === 'used') {
+          displayedList = [...usedActiveList, ...usedExpiredList];
+        } else {
+          // 'all': Siap Pakai -> Masih Aktif -> Expired
+          displayedList = [...readyList, ...usedActiveList, ...usedExpiredList];
+        }
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
@@ -5283,7 +5562,7 @@ export default function CustomerPortal({
                         {localPurchasedVouchers.length} Total
                       </span>
                     </h3>
-                    <p className="text-xs text-slate-400">Pilih dan gunakan kode voucher untuk terhubung ke jaringan hotspot</p>
+                    <p className="text-xs text-slate-400">Pilih kode voucher untuk login WiFi. Informasi waktu login & masa aktif ditampilkan detail.</p>
                   </div>
                 </div>
                 <button
@@ -5295,65 +5574,72 @@ export default function CustomerPortal({
                 </button>
               </div>
 
-              {/* Filter Tabs: Semua, Aktif/Belum Pakai, Sudah Terpakai */}
-              <div className="px-4 sm:px-6 pt-3 pb-1 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto">
+              {/* Filter Tabs: Semua, Belum Terpakai, Terpakai (Masih Aktif), Terpakai (Expired) */}
+              <div className="px-4 sm:px-6 pt-3 pb-2 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto scrollbar-none">
                 <button
                   type="button"
                   onClick={() => setVoucherModalTab('all')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
                     voucherModalTab === 'all'
                       ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
                       : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <span>Semua Voucher</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
-                    {localPurchasedVouchers.length}
-                  </span>
+                  <span>Semua ({localPurchasedVouchers.length})</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setVoucherModalTab('active')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
-                    voucherModalTab === 'active'
+                  onClick={() => setVoucherModalTab('ready')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherModalTab === 'ready' || voucherModalTab === 'active'
                       ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20'
                       : 'bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300'
                   }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Belum Terpakai (Siap Pakai)</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
-                    {activeList.length}
-                  </span>
+                  <span>Belum Terpakai ({readyList.length})</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setVoucherModalTab('used')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
-                    voucherModalTab === 'used'
-                      ? 'bg-slate-700 border-slate-600 text-white'
+                  onClick={() => setVoucherModalTab('used_active')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherModalTab === 'used_active'
+                      ? 'bg-cyan-600 border-cyan-500 text-white shadow-md shadow-cyan-600/20'
+                      : 'bg-slate-900 border-slate-800 text-cyan-400 hover:text-cyan-300'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                  <span>Terpakai (Masih Aktif) ({usedActiveList.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setVoucherModalTab('used_expired')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherModalTab === 'used_expired'
+                      ? 'bg-rose-900/80 border-rose-700 text-rose-200'
                       : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
                   }`}
                 >
-                  <span>Sudah Terpakai</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/30 font-mono">
-                    {usedList.length}
-                  </span>
+                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Terpakai (Expired) ({usedExpiredList.length})</span>
                 </button>
               </div>
 
-              {/* Voucher Cards Grid (3 Kolom di PC, 2 di Tablet, 1 di HP) */}
+              {/* Voucher Cards Grid */}
               <div className="p-4 sm:p-6 overflow-y-auto flex-1">
                 {displayedList.length === 0 ? (
                   <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80">
                     <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
                     <p className="text-sm text-slate-300 font-bold">Tidak Ada Voucher Pada Kategori Ini</p>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      {voucherModalTab === 'active'
-                        ? 'Semua voucher yang Anda miliki telah digunakan. Silakan beli voucher baru di katalog!'
-                        : 'Belum ada riwayat voucher terpakai.'}
+                      {voucherModalTab === 'ready'
+                        ? 'Semua voucher yang Anda miliki telah dipakai. Silakan beli voucher baru di katalog!'
+                        : voucherModalTab === 'used_active'
+                        ? 'Tidak ada voucher yang sedang aktif berjalan saat ini.'
+                        : 'Belum ada riwayat voucher expired.'}
                     </p>
                   </div>
                 ) : (
@@ -5361,16 +5647,19 @@ export default function CustomerPortal({
                     {displayedList.map((v: any, idx: number) => {
                       const code = v.code || v.voucher_code || v.username;
                       const pass = v.password;
-                      const used = isVoucherUsed(v);
+                      const st = classifyVoucherState(v);
                       const isCopied = copiedVoucherCode === code;
+                      const rem = getVoucherRemainingTime(v.expired_at);
 
                       return (
                         <div
                           key={v.id || idx}
                           className={`rounded-2xl p-4 flex flex-col justify-between transition border relative overflow-hidden ${
-                            used
-                              ? 'bg-slate-950/40 border-slate-800/80 opacity-60 hover:opacity-85'
-                              : 'bg-gradient-to-b from-slate-900/90 to-slate-950 border-emerald-500/30 hover:border-emerald-500/60 shadow-lg shadow-emerald-950/20'
+                            st === 'ready'
+                              ? 'bg-gradient-to-b from-slate-900/90 to-slate-950 border-emerald-500/30 hover:border-emerald-500/60 shadow-lg shadow-emerald-950/20'
+                              : st === 'used_active'
+                              ? 'bg-gradient-to-b from-cyan-950/40 via-slate-900 to-slate-950 border-cyan-500/40 hover:border-cyan-400/70 shadow-lg shadow-cyan-950/20'
+                              : 'bg-slate-950/60 border-slate-800/80 opacity-70 hover:opacity-90'
                           }`}
                         >
                           {/* Top Header Card */}
@@ -5378,42 +5667,58 @@ export default function CustomerPortal({
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <span className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
-                                  used ? 'text-slate-500' : 'text-emerald-400'
+                                  st === 'ready' ? 'text-emerald-400' : st === 'used_active' ? 'text-cyan-400' : 'text-slate-500'
                                 }`}>
-                                  {used ? 'Riwayat Voucher' : 'Voucher Aktif'}
+                                  {st === 'ready' ? 'Voucher Siap Pakai' : st === 'used_active' ? 'Terpakai (Masih Aktif)' : 'Terpakai (Expired)'}
                                 </span>
                                 <h4 className={`font-heading font-bold text-sm truncate ${
-                                  used ? 'text-slate-400' : 'text-white'
+                                  st === 'ready' ? 'text-white' : st === 'used_active' ? 'text-cyan-100' : 'text-slate-400'
                                 }`}>
                                   {v.package_name || v.profile_name || 'Voucher Hotspot'}
                                 </h4>
                               </div>
 
-                              <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
-                                used
-                                  ? 'bg-slate-800 text-slate-400 border-slate-700'
-                                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-xs'
+                              <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
+                                st === 'ready'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-xs'
+                                  : st === 'used_active'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40 shadow-xs animate-pulse'
+                                  : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
                               }`}>
-                                {used ? (
-                                  <><span>✓</span> SUDAH TERPAKAI</>
-                                ) : (
+                                {st === 'ready' ? (
                                   <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> SIAP PAKAI</>
+                                ) : st === 'used_active' ? (
+                                  <><span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> MASIH AKTIF</>
+                                ) : (
+                                  <><XCircle className="w-3 h-3 text-rose-400" /> EXPIRED</>
                                 )}
                               </span>
                             </div>
 
+                            {/* Remaining Time Banner for Active Vouchers */}
+                            {st === 'used_active' && rem.text && (
+                              <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-between text-[11px] text-cyan-300">
+                                <span className="flex items-center gap-1 font-semibold">
+                                  <Timer size={13} className="text-cyan-400" /> Sisa Masa Aktif:
+                                </span>
+                                <span className="font-mono font-bold text-cyan-200">{rem.text}</span>
+                              </div>
+                            )}
+
                             {/* Kode Voucher & Copy */}
                             <div className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
-                              used
-                                ? 'bg-slate-900/50 border-slate-800'
-                                : 'bg-slate-950 border-dashed border-emerald-500/40'
+                              st === 'ready'
+                                ? 'bg-slate-950 border-dashed border-emerald-500/40'
+                                : st === 'used_active'
+                                ? 'bg-cyan-950/20 border-cyan-500/30'
+                                : 'bg-slate-900/50 border-slate-800'
                             }`}>
                               <div className="min-w-0">
                                 <span className="text-[9px] text-slate-500 uppercase font-semibold block">
                                   {pass && pass !== code ? 'Username' : 'Kode Voucher'}
                                 </span>
                                 <span className={`font-mono font-black text-sm tracking-wider truncate block ${
-                                  used ? 'text-slate-500 line-through' : 'text-emerald-300'
+                                  st === 'ready' ? 'text-emerald-300' : st === 'used_active' ? 'text-cyan-300' : 'text-slate-500 line-through'
                                 }`}>
                                   {code}
                                 </span>
@@ -5422,14 +5727,16 @@ export default function CustomerPortal({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(code);
+                                  navigator.clipboard?.writeText(code);
                                   setCopiedVoucherCode(code);
                                   setTimeout(() => setCopiedVoucherCode(null), 2000);
                                 }}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
-                                  used
-                                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-400'
-                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/30'
+                                  st === 'ready'
+                                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/30'
+                                    : st === 'used_active'
+                                    ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm shadow-cyan-600/30'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
                                 }`}
                                 title="Salin kode voucher"
                               >
@@ -5445,12 +5752,66 @@ export default function CustomerPortal({
                                 <strong className="font-mono text-slate-200">{pass}</strong>
                               </div>
                             )}
+
+                            {/* Waktu Login & Expired Details Box */}
+                            <div className={`p-2.5 rounded-xl border text-[11px] space-y-1.5 ${
+                              st === 'used_active'
+                                ? 'bg-cyan-950/30 border-cyan-500/20 text-slate-300'
+                                : st === 'used_expired'
+                                ? 'bg-slate-900/80 border-slate-800 text-slate-400'
+                                : 'bg-slate-950/50 border-slate-800/80 text-slate-400'
+                            }`}>
+                              {v.first_login_at ? (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-1 text-slate-400">
+                                    <LogIn size={11} className={st === 'used_active' ? 'text-cyan-400' : 'text-slate-500'} />
+                                    <span>Login Pertama:</span>
+                                  </span>
+                                  <span className={`font-mono font-bold truncate ${st === 'used_active' ? 'text-cyan-300' : 'text-slate-300'}`}>
+                                    {formatDateTimeWib(v.first_login_at)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-1 text-slate-400">
+                                    <Calendar size={11} className="text-emerald-400" />
+                                    <span>Waktu Pembelian:</span>
+                                  </span>
+                                  <span className="font-mono text-slate-300 truncate">
+                                    {formatDateTimeWib(v.date || v.sold_at)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {v.expired_at ? (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-1 text-slate-400">
+                                    <Hourglass size={11} className={st === 'used_active' ? 'text-amber-400' : 'text-rose-400'} />
+                                    <span>Expired Pada:</span>
+                                  </span>
+                                  <span className={`font-mono font-bold truncate ${st === 'used_active' ? 'text-amber-300' : 'text-rose-300'}`}>
+                                    {formatDateTimeWib(v.expired_at)}
+                                  </span>
+                                </div>
+                              ) : st === 'ready' ? (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-1 text-slate-400">
+                                    <Timer size={11} className="text-slate-500" />
+                                    <span>Masa Berlaku:</span>
+                                  </span>
+                                  <span className="font-mono text-emerald-400 font-semibold truncate">
+                                    {v.validity_iso ? formatValidityDisplay(v.validity_iso) : 'Mulai saat pertama login'}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
 
                           {/* Footer Card */}
                           <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
                             <span className="truncate">DNS: <strong className="text-slate-300">{v.dns_name || 'ar.net'}</strong></span>
-                            {!used ? (
+                            
+                            {st === 'ready' ? (
                               <div className="flex items-center gap-2.5">
                                 <button
                                   type="button"
@@ -5466,20 +5827,56 @@ export default function CustomerPortal({
                                   href={`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
+                                  className="text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
                                   title="Buka halaman login hotspot dan langsung masuk otomatis"
                                 >
                                   <span>Login WiFi</span>
                                   <ExternalLink className="w-3 h-3" />
                                 </a>
                               </div>
+                            ) : st === 'used_active' ? (
+                              <div className="flex items-center gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedQrVoucherId(expandedQrVoucherId === v.id ? null : v.id)}
+                                  className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
+                                  title="Tampilkan QR code untuk scan kamera"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  <span>{expandedQrVoucherId === v.id ? 'Tutup QR' : 'Lihat QR'}</span>
+                                </button>
+
+                                <a
+                                  href={`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-cyan-400 hover:text-cyan-300 hover:underline flex items-center gap-1 font-bold cursor-pointer shrink-0"
+                                  title="Masuk kembali ke jaringan hotspot"
+                                >
+                                  <span>Login Ulang</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              </div>
                             ) : (
-                              <span className="text-slate-500 italic">Hangus</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-500 italic text-[10px]">Hangus</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowVoucherSayaModal(false);
+                                    setActiveTab('buy');
+                                  }}
+                                  className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition cursor-pointer flex items-center gap-1"
+                                >
+                                  <span>Beli Lagi</span>
+                                  <ArrowRight size={12} />
+                                </button>
+                              </div>
                             )}
                           </div>
 
                           {/* Expanded QR Code Display */}
-                          {!used && expandedQrVoucherId === v.id && (
+                          {st !== 'used_expired' && expandedQrVoucherId === v.id && (
                             <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-cyan-500/30 flex flex-col items-center animate-in zoom-in-95 duration-150">
                               <div className="bg-white p-2 rounded-xl shadow-lg border border-slate-200 inline-block">
                                 <VoucherQrCode

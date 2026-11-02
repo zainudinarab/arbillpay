@@ -877,8 +877,28 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       LIMIT 100
     `, [cleanUserId, cleanPhone]);
 
+    const now = Date.now();
     const formatted = result.rows.map(row => {
-      const isUsed = row.status === 'used' || row.status === 'expired' || Boolean(row.expired_at && new Date(row.expired_at).getTime() < Date.now());
+      let firstLoginAt = row.first_login_at;
+      let expiredAt = row.expired_at;
+      if (firstLoginAt && !expiredAt && row.validity_iso) {
+        expiredAt = addIsoDurationToDate(new Date(firstLoginAt), row.validity_iso);
+      }
+
+      const hasLoggedIn = Boolean(firstLoginAt);
+      const isExpired = Boolean(row.status === 'expired' || (expiredAt && new Date(expiredAt).getTime() <= now));
+      const isUsedActive = Boolean(hasLoggedIn && !isExpired);
+      const isUsedExpired = Boolean(row.status === 'expired' || (hasLoggedIn && isExpired) || (row.status === 'used' && isExpired));
+
+      let usageState: 'ready' | 'used_active' | 'used_expired' = 'ready';
+      if (isUsedExpired) {
+        usageState = 'used_expired';
+      } else if (isUsedActive || (row.status === 'used' && !isExpired)) {
+        usageState = 'used_active';
+      } else {
+        usageState = 'ready';
+      }
+
       return {
         id: row.invoice_number || row.voucher_id,
         voucher_id: row.voucher_id,
@@ -891,11 +911,16 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         password: row.password,
         hotspot_ip: row.hotspot_ip || '10.0.0.1',
         dns_name: row.dns_name || 'ar.net',
-        status: isUsed ? 'used' : (row.status === 'sold' || row.status === 'active' ? 'active' : row.status),
+        status: usageState === 'ready' ? (row.status === 'sold' || row.status === 'active' ? 'active' : row.status) : (usageState === 'used_active' ? 'active_used' : 'expired'),
         raw_status: row.status,
-        is_used: isUsed,
-        first_login_at: row.first_login_at,
-        expired_at: row.expired_at,
+        usage_state: usageState, // 'ready' | 'used_active' | 'used_expired'
+        is_used: usageState !== 'ready',
+        is_expired: isUsedExpired,
+        is_active_used: isUsedActive,
+        first_login_at: firstLoginAt,
+        expired_at: expiredAt,
+        validity_iso: row.validity_iso,
+        rate_limit: row.rate_limit,
         paymentChannel: row.payment_channel,
         flash_sale_id: row.flash_sale_id || null,
         is_flash_sale: Boolean(row.flash_sale_id || (row.invoice_notes && String(row.invoice_notes).toUpperCase().includes('FLASH SALE')) || (row.comment && String(row.comment).toUpperCase().includes('FLASH SALE')))
