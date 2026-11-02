@@ -73,9 +73,9 @@ export default function NotificationSettingsPage({
 
   // AI WhatsApp Smart Customer Service Assistant States
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq'>('gemini');
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'deepseek' | 'openai' | 'groq'>('deepseek');
   const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-1.5-flash');
+  const [aiModel, setAiModel] = useState('deepseek-chat');
   const [aiTestPrompt, setAiTestPrompt] = useState('Halo min, internet rumah saya kok lemot ya?');
   const [aiTestReply, setAiTestReply] = useState<string | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
@@ -539,7 +539,7 @@ export default function NotificationSettingsPage({
                 <span>4. Asisten AI Customer Service Pintar (Natural Language Chatbot)</span>
               </h3>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                Google Gemini / OpenAI / Groq
+                DeepSeek / Google Gemini / OpenAI / Groq
               </span>
             </div>
 
@@ -579,13 +579,15 @@ export default function NotificationSettingsPage({
                       onChange={(e: any) => {
                         const prov = e.target.value;
                         setAiProvider(prov);
-                        if (prov === 'gemini') setAiModel('gemini-1.5-flash');
+                        if (prov === 'deepseek') setAiModel('deepseek-chat');
+                        else if (prov === 'gemini') setAiModel('gemini-1.5-flash');
                         else if (prov === 'groq') setAiModel('llama-3.3-70b-versatile');
                         else setAiModel('gpt-4o-mini');
                       }}
                       className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-indigo-500"
                     >
-                      <option value="gemini">Google Gemini (Disarankan, Cepat & Cerdas)</option>
+                      <option value="deepseek">DeepSeek AI (deepseek-chat / V3 - Sangat Murah & Pintar)</option>
+                      <option value="gemini">Google Gemini (Cepat & Cerdas)</option>
                       <option value="openai">OpenAI (ChatGPT gpt-4o-mini)</option>
                       <option value="groq">Groq Cloud (Llama 3.3 Ultra Fast)</option>
                     </select>
@@ -597,7 +599,7 @@ export default function NotificationSettingsPage({
                       type="password"
                       value={aiApiKey}
                       onChange={(e) => setAiApiKey(e.target.value)}
-                      placeholder="Masukkan API Key (AI Studio / OpenAI / Groq)"
+                      placeholder="Masukkan API Key (DeepSeek / Gemini / OpenAI / Groq)"
                       className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -608,7 +610,7 @@ export default function NotificationSettingsPage({
                       type="text"
                       value={aiModel}
                       onChange={(e) => setAiModel(e.target.value)}
-                      placeholder="gemini-1.5-flash / gpt-4o-mini"
+                      placeholder="deepseek-chat / gemini-1.5-flash / gpt-4o-mini"
                       className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white font-mono focus:outline-none focus:border-indigo-500"
                     />
                   </div>

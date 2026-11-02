@@ -125,12 +125,12 @@ function extractSenderAndMessage(body: any): { sender: string; text: string; fro
 /**
  * ==============================================================
  * ENGINE KECERDASAN BUATAN (AI NLU CUSTOMER ASSISTANT)
- * Mendukung Google Gemini, OpenAI, & Groq
+ * Mendukung Google Gemini, DeepSeek, OpenAI, & Groq
  * ==============================================================
  */
 export interface AiWaConfig {
   enabled: boolean;
-  provider: 'gemini' | 'openai' | 'groq';
+  provider: 'gemini' | 'deepseek' | 'openai' | 'groq';
   apiKey: string;
   model: string;
 }
@@ -278,6 +278,8 @@ async function askAiCustomerAssistant(customer: any, biz: BusinessInfo, userMess
   let aiReply: string | null = null;
   if (aiCfg.provider === 'gemini') {
     aiReply = await queryGemini(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'gemini-1.5-flash');
+  } else if (aiCfg.provider === 'deepseek') {
+    aiReply = await queryOpenAi(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'deepseek-chat', 'https://api.deepseek.com');
   } else if (aiCfg.provider === 'groq') {
     aiReply = await queryOpenAi(aiCfg.apiKey, userMessage, systemInstruction, aiCfg.model || 'llama-3.3-70b-versatile', 'https://api.groq.com/openai/v1');
   } else {
