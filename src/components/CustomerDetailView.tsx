@@ -34,7 +34,9 @@ import {
   Navigation,
   Terminal,
   RotateCcw,
-  Power
+  Power,
+  Gauge,
+  HardDrive
 } from 'lucide-react';
 import { CustomerItem } from './CustomerManagement';
 import { BusinessProfile } from '../types';
@@ -82,10 +84,12 @@ export default function CustomerDetailView({
   const [invoices, setInvoices] = useState<any[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
-  // Connection logs state
+  // Connection logs & monthly usage state
   const [logs, setLogs] = useState<any[]>([]);
   const [logsStats, setLogsStats] = useState<{ total_bytes_in: number; total_bytes_out: number; login_count: number; logout_count: number } | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [monthlyUsages, setMonthlyUsages] = useState<any[]>([]);
+  const [usagesLoading, setUsagesLoading] = useState(false);
 
   // Copy helper
   const copyToClipboard = (text: string, field: string) => {
@@ -175,28 +179,41 @@ export default function CustomerDetailView({
     fetchInvoices();
   }, [customer.id]);
 
-  // Fetch connection logs
+  // Fetch connection logs & monthly usages
   useEffect(() => {
-    const fetchLogs = async () => {
+    const fetchLogsAndUsages = async () => {
       setLogsLoading(true);
+      setUsagesLoading(true);
       try {
         const apiUrl = getApiUrl();
         if (apiUrl) {
-          const res = await fetch(`${apiUrl}/api/customers/${customer.id}/logs`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.success) {
+          const [logsRes, usagesRes] = await Promise.all([
+            fetch(`${apiUrl}/api/customers/${customer.id}/logs`).catch(() => null),
+            fetch(`${apiUrl}/api/customers/${customer.id}/monthly-usages`).catch(() => null)
+          ]);
+
+          if (logsRes && logsRes.ok) {
+            const data = await logsRes.json().catch(() => null);
+            if (data && data.success) {
               setLogs(data.logs || []);
               setLogsStats(data.stats || null);
+            }
+          }
+
+          if (usagesRes && usagesRes.ok) {
+            const data = await usagesRes.json().catch(() => null);
+            if (data && data.success && Array.isArray(data.usages)) {
+              setMonthlyUsages(data.usages);
             }
           }
         }
       } catch (e) {}
       setLogsLoading(false);
+      setUsagesLoading(false);
     };
 
     if (activeTab === 'logs') {
-      fetchLogs();
+      fetchLogsAndUsages();
     }
   }, [customer.id, activeTab]);
 
@@ -620,8 +637,8 @@ export default function CustomerDetailView({
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Activity size={15} />
-          <span>Log Sesi PPP</span>
+          <Gauge size={15} />
+          <span>Pemakaian Kuota & Log</span>
         </button>
       </div>
 
@@ -1394,102 +1411,212 @@ export default function CustomerDetailView({
         </div>
       )}
 
-      {/* Tab Content 5: Connection Logs & Sessions */}
+      {/* Tab Content 5: Connection Logs & Sessions & Monthly Usages */}
       {activeTab === 'logs' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                <Activity size={18} className="text-emerald-600" />
-                <span>Log Sesi Koneksi PPPoE Mikrotik</span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Riwayat login, logout, IP session, dan ringkasan pemakaian bandwidth.
-              </p>
+        <div className="space-y-6">
+          {/* CARD 1: RIWAYAT PEMAKAIAN KUOTA TIAP BULAN (MONTHLY USAGE & FUP) */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <Gauge size={18} className="text-emerald-600" />
+                  <span>Riwayat Pemakaian Kuota Tiap Bulan (Monthly Usage & FUP)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Akumulasi pemakaian kuota tiap bulan, status batas FUP, dan pencatatan riwayat pemakaian.
+                </p>
+              </div>
             </div>
+
+            {usagesLoading ? (
+              <div className="p-8 text-center text-slate-400 flex flex-col items-center gap-2">
+                <RefreshCw size={24} className="animate-spin text-emerald-600" />
+                <span className="text-xs font-semibold">Memuat rekap pemakaian bulanan...</span>
+              </div>
+            ) : monthlyUsages.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                <Gauge size={28} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-600">Belum ada catatan akumulasi bulanan.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Sistem otomatis menyinkronkan pemakaian kuota pelanggan PPPoE setiap menit.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[10px] uppercase font-black tracking-wider text-slate-400 bg-slate-50/50">
+                      <th className="py-2.5 px-3">Periode Bulan</th>
+                      <th className="py-2.5 px-3">Total Pemakaian</th>
+                      <th className="py-2.5 px-3">Download (Rx)</th>
+                      <th className="py-2.5 px-3">Upload (Tx)</th>
+                      <th className="py-2.5 px-3">Batas FUP Paket</th>
+                      <th className="py-2.5 px-3 text-center">Status FUP</th>
+                      <th className="py-2.5 px-3 text-right">Terakhir Sinkron</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                    {monthlyUsages.map((usage: any) => {
+                      const totalBytes = Number(usage.total_bytes || 0);
+                      const quotaMb = Number(usage.quota_mb || 0);
+                      const quotaBytes = quotaMb * 1024 * 1024;
+                      const percent = quotaBytes > 0 ? Math.min(100, Math.round((totalBytes / quotaBytes) * 100)) : 0;
+                      return (
+                        <tr key={usage.id || usage.year_month} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                            {usage.year_month}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="space-y-1">
+                              <span className="font-mono font-black text-slate-900 block">
+                                {formatBytes(totalBytes)}
+                              </span>
+                              {quotaBytes > 0 && (
+                                <div className="w-28 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      usage.is_fup ? 'bg-rose-500' : percent > 80 ? 'bg-amber-500' : 'bg-emerald-500'
+                                    }`}
+                                    style={{ width: `${percent}%` }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-indigo-600 font-bold">
+                            {formatBytes(Number(usage.download_bytes || 0))}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-emerald-600 font-bold">
+                            {formatBytes(Number(usage.upload_bytes || 0))}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-slate-700">
+                            {quotaMb > 0 ? `${Math.round(quotaMb / 1024)} GB` : <span className="text-slate-400 font-normal">Unlimited</span>}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {usage.is_fup ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-rose-100 text-rose-800 border border-rose-200 inline-flex items-center gap-1">
+                                <Zap size={11} className="text-rose-600" />
+                                <span>FUP Tercapai</span>
+                              </span>
+                            ) : quotaMb > 0 ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                                <CheckCircle2 size={11} className="text-emerald-600" />
+                                <span>Normal ({percent}%)</span>
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-500 bg-slate-100">
+                                Unlimited
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-400 text-right">
+                            {usage.last_synced_at ? formatDate(usage.last_synced_at) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
-          {/* Stats Bar */}
-          {logsStats && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase">Total Download</span>
-                <span className="font-mono text-sm font-black text-indigo-600">{formatBytes(logsStats.total_bytes_out)}</span>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase">Total Upload</span>
-                <span className="font-mono text-sm font-black text-emerald-600">{formatBytes(logsStats.total_bytes_in)}</span>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase">Jumlah Login</span>
-                <span className="font-mono text-sm font-black text-slate-800">{logsStats.login_count || 0}</span>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase">Jumlah Logout</span>
-                <span className="font-mono text-sm font-black text-slate-800">{logsStats.logout_count || 0}</span>
+          {/* CARD 2: LOG SESI KONEKSI PPPOE MIKROTIK */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <Activity size={18} className="text-indigo-600" />
+                  <span>Log Sesi Koneksi PPPoE Mikrotik</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Riwayat login, logout, IP session, dan ringkasan pemakaian bandwidth.
+                </p>
               </div>
             </div>
-          )}
 
-          {logsLoading ? (
-            <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-2">
-              <RefreshCw size={24} className="animate-spin text-emerald-600" />
-              <span className="text-xs font-semibold">Memuat riwayat log sesi...</span>
-            </div>
-          ) : logs.length === 0 ? (
-            <div className="p-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
-              <Activity size={28} className="text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-600">Belum ada catatan log koneksi untuk pelanggan ini.</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Log akan dicatat secara otomatis ketika pelanggan terhubung / terputus dari Mikrotik.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-[10px] uppercase font-black tracking-wider text-slate-400 bg-slate-50/50">
-                    <th className="py-2.5 px-3">Waktu</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3">IP Address</th>
-                    <th className="py-2.5 px-3">MAC / Caller ID</th>
-                    <th className="py-2.5 px-3">Uptime / Durasi</th>
-                    <th className="py-2.5 px-3">Trafik (DL / UL)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-sans">
-                  {logs.map((log: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                        {formatDate(log.created_at || log.timestamp)}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
-                          log.action === 'login' || log.status === 'online'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}>
-                          {log.action || log.status || 'event'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        {log.ip_address || '-'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]">
-                        {log.caller_id || log.mac_address || '-'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">
-                        {log.uptime || '-'}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
-                        {formatBytes(log.bytes_out || 0)} / {formatBytes(log.bytes_in || 0)}
-                      </td>
+            {/* Stats Bar */}
+            {logsStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Total Download</span>
+                  <span className="font-mono text-sm font-black text-indigo-600">{formatBytes(logsStats.total_bytes_out)}</span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Total Upload</span>
+                  <span className="font-mono text-sm font-black text-emerald-600">{formatBytes(logsStats.total_bytes_in)}</span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Jumlah Login</span>
+                  <span className="font-mono text-sm font-black text-slate-800">{logsStats.login_count || 0}</span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                  <span className="text-[10px] text-slate-400 font-bold block uppercase">Jumlah Logout</span>
+                  <span className="font-mono text-sm font-black text-slate-800">{logsStats.logout_count || 0}</span>
+                </div>
+              </div>
+            )}
+
+            {logsLoading ? (
+              <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-2">
+                <RefreshCw size={24} className="animate-spin text-emerald-600" />
+                <span className="text-xs font-semibold">Memuat riwayat log sesi...</span>
+              </div>
+            ) : logs.length === 0 ? (
+              <div className="p-12 text-center bg-slate-50 border border-dashed border-slate-200 rounded-2xl">
+                <Activity size={28} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-600">Belum ada catatan log koneksi untuk pelanggan ini.</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Log akan dicatat secara otomatis ketika pelanggan terhubung / terputus dari Mikrotik.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[10px] uppercase font-black tracking-wider text-slate-400 bg-slate-50/50">
+                      <th className="py-2.5 px-3">Waktu</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">IP Address</th>
+                      <th className="py-2.5 px-3">MAC / Caller ID</th>
+                      <th className="py-2.5 px-3">Uptime / Durasi</th>
+                      <th className="py-2.5 px-3">Trafik (DL / UL)</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                    {logs.map((log: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                          {formatDate(log.created_at || log.timestamp)}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                            log.action === 'login' || log.status === 'online'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {log.action || log.status || 'event'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-700">
+                          {log.ip_address || '-'}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]">
+                          {log.caller_id || log.mac_address || '-'}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          {log.uptime || '-'}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600 text-[11px]">
+                          {formatBytes(log.bytes_out || 0)} / {formatBytes(log.bytes_in || 0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

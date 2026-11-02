@@ -24,7 +24,8 @@ import {
   ToggleRight,
   Users,
   Server,
-  ShieldAlert
+  ShieldAlert,
+  Gauge
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -50,6 +51,10 @@ export interface PackageItem {
   expired_mode?: string;
   uptime_limit?: string;
   quota_mb?: number;
+  fup_enabled?: boolean;
+  fup_action?: 'speed' | 'profile' | 'isolir' | string;
+  fup_profile?: string;
+  fup_speed?: string;
   mikrotik_profile?: string;
   shared_users?: number;
   is_active?: boolean;
@@ -97,6 +102,14 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
   const [uptimeLimit, setUptimeLimit] = useState<string>('3h');
   const [quotaMb, setQuotaMb] = useState<string>('');
   const [sharedUsers, setSharedUsers] = useState<string>('1');
+
+  // FUP Settings (PPPoE)
+  const [fupEnabled, setFupEnabled] = useState<boolean>(false);
+  const [fupQuotaGb, setFupQuotaGb] = useState<string>('100');
+  const [fupAction, setFupAction] = useState<'speed' | 'profile' | 'isolir'>('speed');
+  const [fupProfile, setFupProfile] = useState<string>('');
+  const [fupSpeed, setFupSpeed] = useState<string>('1M/1M');
+  const [availableProfiles, setAvailableProfiles] = useState<string[]>([]);
 
   // Validation States for Durations
   const [validityValid, setValidityValid] = useState<boolean>(true);
@@ -147,9 +160,23 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     }
   };
 
-
   useEffect(() => {
     fetchPackages();
+    // Ambil daftar profil dari router untuk opsi FUP profile
+    const fetchProfiles = async () => {
+      try {
+        const apiUrl = getApiUrl();
+        if (apiUrl) {
+          const res = await fetch(`${apiUrl}/api/router-profiles`);
+          const data = await parseJsonResponse(res);
+          if (data.success && Array.isArray(data.profiles)) {
+            const names = Array.from(new Set(data.profiles.map((p: any) => p.name))).filter(Boolean) as string[];
+            setAvailableProfiles(names);
+          }
+        }
+      } catch (_) {}
+    };
+    fetchProfiles();
   }, []);
 
   // Sync ISO-8601 live when standard inputs change
@@ -185,6 +212,11 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setUptimeLimit('');
     setQuotaMb('');
     setSharedUsers('1');
+    setFupEnabled(false);
+    setFupQuotaGb('100');
+    setFupAction('speed');
+    setFupProfile('');
+    setFupSpeed('1M/1M');
     setValidityValid(true);
     setGracePeriodValid(true);
     setUptimeValid(true);
@@ -255,6 +287,10 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setSubmitLoading(true);
     setToastMsg(null);
 
+    const finalQuotaMb = (type === 'pppoe' && fupEnabled && fupQuotaGb)
+      ? Math.round(parseFloat(fupQuotaGb) * 1024)
+      : (quotaMb ? parseInt(quotaMb) : null);
+
     try {
       const apiUrl = getApiUrl();
       if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
@@ -272,8 +308,12 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           lock_server: lockServer,
           expired_mode: expiredMode,
           uptime_limit: cleanUptime,
-          quota_mb: quotaMb ? parseInt(quotaMb) : null,
-          shared_users: parseInt(sharedUsers) || 1
+          quota_mb: finalQuotaMb,
+          shared_users: parseInt(sharedUsers) || 1,
+          fup_enabled: type === 'pppoe' ? fupEnabled : false,
+          fup_action: type === 'pppoe' ? fupAction : 'speed',
+          fup_profile: (type === 'pppoe' && fupProfile) ? fupProfile.trim() : null,
+          fup_speed: (type === 'pppoe' && fupSpeed) ? fupSpeed.trim() : '1M/1M'
         })
       });
 
@@ -310,6 +350,13 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setQuotaMb(pkg.quota_mb ? pkg.quota_mb.toString() : '');
     setSharedUsers((pkg.shared_users || 1).toString());
 
+    // FUP Settings
+    setFupEnabled(Boolean(pkg.fup_enabled));
+    setFupQuotaGb(pkg.quota_mb ? (Math.round((pkg.quota_mb / 1024) * 10) / 10).toString() : '100');
+    setFupAction(pkg.fup_action || 'speed');
+    setFupProfile(pkg.fup_profile || '');
+    setFupSpeed(pkg.fup_speed || '1M/1M');
+
     setValidityValid(true);
     setGracePeriodValid(true);
     setUptimeValid(true);
@@ -343,6 +390,10 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
     setSubmitLoading(true);
     setToastMsg(null);
 
+    const finalQuotaMb = (type === 'pppoe' && fupEnabled && fupQuotaGb)
+      ? Math.round(parseFloat(fupQuotaGb) * 1024)
+      : (quotaMb ? parseInt(quotaMb) : null);
+
     try {
       const apiUrl = getApiUrl();
       if (!apiUrl) throw new Error('Fitur ini memerlukan koneksi API Server.');
@@ -360,8 +411,12 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
           lock_server: lockServer,
           expired_mode: expiredMode,
           uptime_limit: cleanUptime,
-          quota_mb: quotaMb ? parseInt(quotaMb) : null,
-          shared_users: parseInt(sharedUsers) || 1
+          quota_mb: finalQuotaMb,
+          shared_users: parseInt(sharedUsers) || 1,
+          fup_enabled: type === 'pppoe' ? fupEnabled : false,
+          fup_action: type === 'pppoe' ? fupAction : 'speed',
+          fup_profile: (type === 'pppoe' && fupProfile) ? fupProfile.trim() : null,
+          fup_speed: (type === 'pppoe' && fupSpeed) ? fupSpeed.trim() : '1M/1M'
         })
       });
 
@@ -585,6 +640,27 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                       </div>
                     )}
 
+                    {/* FUP Kuota Bulanan Info for PPPoE */}
+                    {pkg.type === 'pppoe' && (
+                      <div className="flex items-center justify-between text-emerald-800 bg-emerald-50/80 px-2.5 py-1.5 rounded-xl border border-emerald-200/80">
+                        <span className="flex items-center gap-1.5 font-bold">
+                          <Gauge size={14} className="text-emerald-600" />
+                          FUP Kuota Bulanan
+                        </span>
+                        <span className="font-mono font-extrabold text-emerald-900 text-right">
+                          {pkg.fup_enabled ? (
+                            <span>
+                              {pkg.quota_mb ? `${Math.round(pkg.quota_mb / 1024)} GB` : 'Aktif'}
+                              {' → '}
+                              {pkg.fup_action === 'speed' ? (pkg.fup_speed || '1M/1M') : pkg.fup_action === 'profile' ? (pkg.fup_profile || 'Profil Baru') : 'Isolir'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">Unlimited (Tanpa FUP)</span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Uptime Limit, Quota & Shared Users for Hotspot */}
                     {(pkg.type === 'hotspot_voucher' || pkg.type === 'hotspot_monthly') && (
                       <>
@@ -789,6 +865,158 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                     setGracePeriodValid(valid);
                   }}
                 />
+              )}
+
+              {/* FUP (FAIR USAGE POLICY) UNTUK PPPOE */}
+              {type === 'pppoe' && (
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        <Gauge size={16} className="text-emerald-600" />
+                        FUP (Fair Usage Policy / Batas Kuota Bulanan)
+                      </span>
+                      <p className="text-[11px] text-emerald-700">
+                        Ketika pemakaian pelanggan mencapai batas kuota bulanan, sistem otomatis menurunkan kecepatan atau ganti profil.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFupEnabled(!fupEnabled)}
+                      className={`p-1 transition-colors rounded-xl cursor-pointer ${fupEnabled ? 'text-emerald-600' : 'text-slate-300'}`}
+                    >
+                      {fupEnabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                    </button>
+                  </div>
+
+                  {fupEnabled && (
+                    <div className="space-y-3 pt-2 border-t border-emerald-200/70 animate-fade-in">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                            <HardDrive size={13} className="text-emerald-700" />
+                            Batas Kuota FUP (GB) *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              step="any"
+                              required={fupEnabled}
+                              placeholder="100"
+                              value={fupQuotaGb}
+                              onChange={(e) => setFupQuotaGb(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all pr-12"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">GB</span>
+                          </div>
+                          <span className="text-[10px] text-emerald-700 mt-1 block">
+                            = {Math.round((parseFloat(fupQuotaGb) || 0) * 1024)} MB (dihitung tiap awal bulan)
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                            <Zap size={13} className="text-emerald-700" />
+                            Aksi Jika Mencapai Batas FUP *
+                          </label>
+                          <select
+                            value={fupAction}
+                            onChange={(e) => setFupAction(e.target.value as any)}
+                            className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          >
+                            <option value="speed">⚡ Turunkan Kecepatan (Rate-Limit Throttle)</option>
+                            <option value="profile">🔄 Pindah ke Profil PPPoE Tertentu</option>
+                            <option value="isolir">🔒 Langsung Isolir (Profil Isolir)</option>
+                          </select>
+                          <span className="text-[10px] text-emerald-700 mt-1 block">
+                            {fupAction === 'speed' && 'Internet tetap aktif, kecepatan dibatasi langsung di secret'}
+                            {fupAction === 'profile' && 'Mengubah profile PPPoE pelanggan di MikroTik'}
+                            {fupAction === 'isolir' && 'Pelanggan diarahkan ke profile isolir ketika kuota habis'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Jika Aksi: Turunkan Kecepatan */}
+                      {fupAction === 'speed' && (
+                        <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-1.5 animate-fade-in">
+                          <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                            <span>Kecepatan Setelah FUP (Rx/Tx) *</span>
+                            <span className="text-[10px] font-normal text-slate-500">Pilih cepat atau ketik sendiri</span>
+                          </label>
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {['512k/512k', '1M/1M', '2M/2M', '3M/3M', '5M/5M'].map((spd) => (
+                              <button
+                                key={spd}
+                                type="button"
+                                onClick={() => setFupSpeed(spd)}
+                                className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border transition-all cursor-pointer ${
+                                  fupSpeed === spd
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {spd}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            required={fupEnabled && fupAction === 'speed'}
+                            placeholder="Contoh: 1M/1M atau 512k/512k"
+                            value={fupSpeed}
+                            onChange={(e) => setFupSpeed(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          />
+                        </div>
+                      )}
+
+                      {/* Jika Aksi: Pindah Profil */}
+                      {fupAction === 'profile' && (
+                        <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-1.5 animate-fade-in">
+                          <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                            <span>Pilih Profil PPPoE Tujuan *</span>
+                            <span className="text-[10px] font-normal text-slate-500">Dari MikroTik atau ketik manual</span>
+                          </label>
+                          {availableProfiles.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {availableProfiles.slice(0, 8).map((pName) => (
+                                <button
+                                  key={pName}
+                                  type="button"
+                                  onClick={() => setFupProfile(pName)}
+                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                    fupProfile === pName
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {pName}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input
+                            type="text"
+                            required={fupEnabled && fupAction === 'profile'}
+                            placeholder="Contoh: profile-fup-1mbps"
+                            value={fupProfile}
+                            onChange={(e) => setFupProfile(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          />
+                        </div>
+                      )}
+
+                      {/* Jika Aksi: Profil Isolir */}
+                      {fupAction === 'isolir' && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 animate-fade-in flex items-center gap-2">
+                          <ShieldAlert size={16} className="text-amber-600 shrink-0" />
+                          <span>Pelanggan akan dialihkan ke profile <b>isolir</b> (halaman blokir / internet terputus) saat kuota bulanan habis.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ONLY ONE USER LOCK OPTION */}
@@ -1003,6 +1231,158 @@ export default function PackageManagement({ profile, t, onLogout }: PackageManag
                     setGracePeriodValid(valid);
                   }}
                 />
+              )}
+
+              {/* FUP (FAIR USAGE POLICY) UNTUK PPPOE */}
+              {type === 'pppoe' && (
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        <Gauge size={16} className="text-emerald-600" />
+                        FUP (Fair Usage Policy / Batas Kuota Bulanan)
+                      </span>
+                      <p className="text-[11px] text-emerald-700">
+                        Ketika pemakaian pelanggan mencapai batas kuota bulanan, sistem otomatis menurunkan kecepatan atau ganti profil.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFupEnabled(!fupEnabled)}
+                      className={`p-1 transition-colors rounded-xl cursor-pointer ${fupEnabled ? 'text-emerald-600' : 'text-slate-300'}`}
+                    >
+                      {fupEnabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                    </button>
+                  </div>
+
+                  {fupEnabled && (
+                    <div className="space-y-3 pt-2 border-t border-emerald-200/70 animate-fade-in">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                            <HardDrive size={13} className="text-emerald-700" />
+                            Batas Kuota FUP (GB) *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              step="any"
+                              required={fupEnabled}
+                              placeholder="100"
+                              value={fupQuotaGb}
+                              onChange={(e) => setFupQuotaGb(e.target.value)}
+                              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all pr-12"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">GB</span>
+                          </div>
+                          <span className="text-[10px] text-emerald-700 mt-1 block">
+                            = {Math.round((parseFloat(fupQuotaGb) || 0) * 1024)} MB (dihitung tiap awal bulan)
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-emerald-900 mb-1 flex items-center gap-1">
+                            <Zap size={13} className="text-emerald-700" />
+                            Aksi Jika Mencapai Batas FUP *
+                          </label>
+                          <select
+                            value={fupAction}
+                            onChange={(e) => setFupAction(e.target.value as any)}
+                            className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-sans font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          >
+                            <option value="speed">⚡ Turunkan Kecepatan (Rate-Limit Throttle)</option>
+                            <option value="profile">🔄 Pindah ke Profil PPPoE Tertentu</option>
+                            <option value="isolir">🔒 Langsung Isolir (Profil Isolir)</option>
+                          </select>
+                          <span className="text-[10px] text-emerald-700 mt-1 block">
+                            {fupAction === 'speed' && 'Internet tetap aktif, kecepatan dibatasi langsung di secret'}
+                            {fupAction === 'profile' && 'Mengubah profile PPPoE pelanggan di MikroTik'}
+                            {fupAction === 'isolir' && 'Pelanggan diarahkan ke profile isolir ketika kuota habis'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Jika Aksi: Turunkan Kecepatan */}
+                      {fupAction === 'speed' && (
+                        <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-1.5 animate-fade-in">
+                          <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                            <span>Kecepatan Setelah FUP (Rx/Tx) *</span>
+                            <span className="text-[10px] font-normal text-slate-500">Pilih cepat atau ketik sendiri</span>
+                          </label>
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {['512k/512k', '1M/1M', '2M/2M', '3M/3M', '5M/5M'].map((spd) => (
+                              <button
+                                key={spd}
+                                type="button"
+                                onClick={() => setFupSpeed(spd)}
+                                className={`px-2.5 py-1 text-[11px] font-mono font-bold rounded-lg border transition-all cursor-pointer ${
+                                  fupSpeed === spd
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {spd}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            required={fupEnabled && fupAction === 'speed'}
+                            placeholder="Contoh: 1M/1M atau 512k/512k"
+                            value={fupSpeed}
+                            onChange={(e) => setFupSpeed(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          />
+                        </div>
+                      )}
+
+                      {/* Jika Aksi: Pindah Profil */}
+                      {fupAction === 'profile' && (
+                        <div className="p-3 bg-white/90 border border-emerald-300 rounded-xl space-y-1.5 animate-fade-in">
+                          <label className="block text-xs font-bold text-slate-700 flex items-center justify-between">
+                            <span>Pilih Profil PPPoE Tujuan *</span>
+                            <span className="text-[10px] font-normal text-slate-500">Dari MikroTik atau ketik manual</span>
+                          </label>
+                          {availableProfiles.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                              {availableProfiles.slice(0, 8).map((pName) => (
+                                <button
+                                  key={pName}
+                                  type="button"
+                                  onClick={() => setFupProfile(pName)}
+                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                    fupProfile === pName
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {pName}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input
+                            type="text"
+                            required={fupEnabled && fupAction === 'profile'}
+                            placeholder="Contoh: profile-fup-1mbps"
+                            value={fupProfile}
+                            onChange={(e) => setFupProfile(e.target.value)}
+                            className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all"
+                          />
+                        </div>
+                      )}
+
+                      {/* Jika Aksi: Profil Isolir */}
+                      {fupAction === 'isolir' && (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 animate-fade-in flex items-center gap-2">
+                          <ShieldAlert size={16} className="text-amber-600 shrink-0" />
+                          <span>Pelanggan akan dialihkan ke profile <b>isolir</b> (halaman blokir / internet terputus) saat kuota bulanan habis.</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* ONLY ONE USER LOCK OPTION */}

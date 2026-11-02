@@ -1023,3 +1023,37 @@ export async function rebootCustomerOnt(req: Request, res: Response) {
   }
 }
 
+/**
+ * Mengambil histori pemakaian kuota bulanan per pelanggan dari tabel customer_monthly_usages
+ */
+export async function getCustomerMonthlyUsages(req: Request, res: Response) {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT year_month, total_bytes, upload_bytes, download_bytes, quota_mb, is_fup, fup_at, last_synced_at
+      FROM customer_monthly_usages
+      WHERE customer_id = $1
+      ORDER BY year_month DESC
+      LIMIT 12
+    `, [id]);
+
+    const usages = result.rows.map((row: any) => ({
+      year_month: row.year_month,
+      total_bytes: Number(row.total_bytes) || 0,
+      total_mb: parseFloat(((Number(row.total_bytes) || 0) / (1024 * 1024)).toFixed(2)),
+      total_gb: parseFloat(((Number(row.total_bytes) || 0) / (1024 * 1024 * 1024)).toFixed(2)),
+      upload_mb: parseFloat(((Number(row.upload_bytes) || 0) / (1024 * 1024)).toFixed(2)),
+      download_mb: parseFloat(((Number(row.download_bytes) || 0) / (1024 * 1024)).toFixed(2)),
+      quota_mb: row.quota_mb || 0,
+      quota_gb: row.quota_mb ? parseFloat((row.quota_mb / 1024).toFixed(1)) : 0,
+      is_fup: Boolean(row.is_fup),
+      fup_at: row.fup_at,
+      last_synced_at: row.last_synced_at
+    }));
+
+    return res.json({ success: true, usages });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+

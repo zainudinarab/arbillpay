@@ -15,6 +15,10 @@ export interface Package {
   expired_mode?: string;
   uptime_limit?: string;
   quota_mb?: number;
+  fup_enabled?: boolean;
+  fup_action?: 'speed' | 'profile' | 'isolir' | string;
+  fup_profile?: string;
+  fup_speed?: string;
   mikrotik_profile?: string;
   shared_users?: number;
   is_active?: boolean;
@@ -36,7 +40,7 @@ export async function getAllPackages(): Promise<Package[]> {
     }
   }
 
-  const result = await pool.query('SELECT id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, mikrotik_profile, shared_users, COALESCE(lock_server, false) as lock_server, COALESCE(expired_mode, \'rem\') as expired_mode, COALESCE(is_active, true) as is_active, created_at FROM packages ORDER BY type ASC, price ASC');
+  const result = await pool.query('SELECT id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, COALESCE(fup_enabled, false) as fup_enabled, COALESCE(fup_action, \'speed\') as fup_action, fup_profile, COALESCE(fup_speed, \'1M/1M\') as fup_speed, mikrotik_profile, shared_users, COALESCE(lock_server, false) as lock_server, COALESCE(expired_mode, \'rem\') as expired_mode, COALESCE(is_active, true) as is_active, created_at FROM packages ORDER BY type ASC, price ASC');
   return result.rows;
 }
 
@@ -68,6 +72,10 @@ export async function createPackage(data: any) {
     expired_mode: expMode,
     uptime_limit: uptimeIso,
     quota_mb: data.quota_mb ? parseInt(data.quota_mb) : null,
+    fup_enabled: Boolean(data.fup_enabled),
+    fup_action: data.fup_action || 'speed',
+    fup_profile: data.fup_profile ? data.fup_profile.trim() : null,
+    fup_speed: data.fup_speed ? data.fup_speed.trim() : '1M/1M',
     mikrotik_profile: data.mikrotik_profile?.trim() || 'default',
     shared_users: sUsers,
     created_at: new Date().toISOString()
@@ -82,9 +90,13 @@ export async function createPackage(data: any) {
   }
 
   const result = await pool.query(`
-    INSERT INTO packages (id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, mikrotik_profile, shared_users, lock_server, expired_mode)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    RETURNING id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, mikrotik_profile, shared_users, lock_server, expired_mode, created_at
+    INSERT INTO packages (
+      id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user,
+      uptime_limit, quota_mb, fup_enabled, fup_action, fup_profile, fup_speed,
+      mikrotik_profile, shared_users, lock_server, expired_mode
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    RETURNING id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, fup_enabled, fup_action, fup_profile, fup_speed, mikrotik_profile, shared_users, lock_server, expired_mode, created_at
   `, [
     pkgId, 
     pkgObj.name, 
@@ -96,6 +108,10 @@ export async function createPackage(data: any) {
     isOnlyOne,
     pkgObj.uptime_limit,
     pkgObj.quota_mb,
+    pkgObj.fup_enabled,
+    pkgObj.fup_action,
+    pkgObj.fup_profile,
+    pkgObj.fup_speed,
     pkgObj.mikrotik_profile,
     sUsers,
     isLockServer,
@@ -132,6 +148,10 @@ export async function updatePackage(id: string, data: any) {
     expired_mode: expMode,
     uptime_limit: uptimeIso,
     quota_mb: data.quota_mb ? parseInt(data.quota_mb) : null,
+    fup_enabled: Boolean(data.fup_enabled),
+    fup_action: data.fup_action || 'speed',
+    fup_profile: data.fup_profile ? data.fup_profile.trim() : null,
+    fup_speed: data.fup_speed ? data.fup_speed.trim() : '1M/1M',
     mikrotik_profile: data.mikrotik_profile?.trim() || 'default',
     shared_users: sUsers
   };
@@ -155,12 +175,16 @@ export async function updatePackage(id: string, data: any) {
         only_one_user = $7,
         uptime_limit = $8,
         quota_mb = $9,
-        mikrotik_profile = $10,
-        shared_users = $11,
-        lock_server = $12,
-        expired_mode = $13
-    WHERE id = $14
-    RETURNING id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, mikrotik_profile, shared_users, lock_server, expired_mode, created_at
+        fup_enabled = $10,
+        fup_action = $11,
+        fup_profile = $12,
+        fup_speed = $13,
+        mikrotik_profile = $14,
+        shared_users = $15,
+        lock_server = $16,
+        expired_mode = $17
+    WHERE id = $18
+    RETURNING id, name, type, price, speed_limit, validity_iso, grace_period_iso, only_one_user, uptime_limit, quota_mb, fup_enabled, fup_action, fup_profile, fup_speed, mikrotik_profile, shared_users, lock_server, expired_mode, created_at
   `, [
     pkgObj.name,
     pkgObj.type,
@@ -171,6 +195,10 @@ export async function updatePackage(id: string, data: any) {
     isOnlyOne,
     pkgObj.uptime_limit,
     pkgObj.quota_mb,
+    pkgObj.fup_enabled,
+    pkgObj.fup_action,
+    pkgObj.fup_profile,
+    pkgObj.fup_speed,
     pkgObj.mikrotik_profile,
     sUsers,
     isLockServer,

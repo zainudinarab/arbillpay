@@ -45,6 +45,10 @@ export async function initDatabaseSchema() {
         only_one_user BOOLEAN DEFAULT false,
         uptime_limit VARCHAR(64),
         quota_mb INT,
+        fup_enabled BOOLEAN DEFAULT false,
+        fup_action VARCHAR(32) DEFAULT 'speed',
+        fup_profile VARCHAR(64),
+        fup_speed VARCHAR(64) DEFAULT '1M/1M',
         mikrotik_profile VARCHAR(64) DEFAULT 'default',
         shared_users INT DEFAULT 1,
         lock_server BOOLEAN DEFAULT false,
@@ -729,6 +733,34 @@ export async function initDatabaseSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_offline_queue_user_status ON customer_offline_queue (LOWER(pppoe_username), status);
       CREATE INDEX IF NOT EXISTS idx_offline_queue_due ON customer_offline_queue (alert_due_at) WHERE status = 'PENDING';
+
+      -- 10.9 FUP Packages Settings & Customer Monthly Usage History
+      ALTER TABLE packages
+      ADD COLUMN IF NOT EXISTS fup_enabled BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS fup_action VARCHAR(32) DEFAULT 'speed',
+      ADD COLUMN IF NOT EXISTS fup_profile VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS fup_speed VARCHAR(64) DEFAULT '1M/1M';
+
+      CREATE TABLE IF NOT EXISTS customer_monthly_usages (
+        id BIGSERIAL PRIMARY KEY,
+        customer_id VARCHAR(64) REFERENCES customers(id) ON DELETE CASCADE,
+        router_id VARCHAR(64),
+        pppoe_username VARCHAR(128) NOT NULL,
+        year_month VARCHAR(7) NOT NULL,
+        total_bytes BIGINT DEFAULT 0,
+        upload_bytes BIGINT DEFAULT 0,
+        download_bytes BIGINT DEFAULT 0,
+        quota_mb INT DEFAULT 0,
+        is_fup BOOLEAN DEFAULT false,
+        fup_at TIMESTAMP WITH TIME ZONE,
+        last_synced_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (customer_id, year_month)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_monthly_usages_cust ON customer_monthly_usages (customer_id, year_month DESC);
+      CREATE INDEX IF NOT EXISTS idx_monthly_usages_router ON customer_monthly_usages (router_id, year_month DESC);
+      CREATE INDEX IF NOT EXISTS idx_monthly_usages_username ON customer_monthly_usages (pppoe_username, year_month DESC);
     `).catch(() => {});
 
     // 11. Smart Migration for Flash Sales

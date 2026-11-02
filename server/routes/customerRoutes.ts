@@ -3,7 +3,7 @@ import {
   listCustomers, addCustomer, editCustomer, updateLocation, 
   createUserAccount, payCustomerBill, removeCustomer, 
   checkPhone, linkPhone, syncCustomerToMikrotik, syncAllCustomersToMikrotik, disconnectCustomerPpp,
-  checkMyStatus, rebootCustomerOnt
+  checkMyStatus, rebootCustomerOnt, getCustomerMonthlyUsages
 } from '../controllers/customerController.js';
 
 import { listInvoices } from '../controllers/invoiceController.js';
@@ -22,6 +22,7 @@ router.get('/:id/logs', (req, res) => {
   req.query.customer_id = req.params.id;
   return listPppLogs(req, res);
 });
+router.get('/:id/monthly-usages', getCustomerMonthlyUsages);
 router.put('/:id', editCustomer);
 router.delete('/:id', removeCustomer);
 router.put('/:id/location', updateLocation);

@@ -12,8 +12,14 @@ export interface UserQuotaUpdateResult {
   delta_mb: number;
   total_bytes_used: number;
   total_mb: number;
+  monthly_total_bytes: number;
+  monthly_total_mb: number;
+  year_month: string;
   is_fup: boolean;
   newly_fup: boolean;
+  fup_action?: string;
+  fup_speed?: string;
+  fup_profile?: string;
 }
 
 export interface RouterQuotaSyncResult {
@@ -30,7 +36,8 @@ export interface RouterQuotaSyncResult {
 /**
  * Melakukan sinkronisasi pemakaian kuota PPPoE untuk satu router tertentu.
  * Mengambil data dari Simple Queue MikroTik, menghitung delta pemakaian,
- * dan mengupdate database customers secara presisi.
+ * mengakumulasikan ke tabel bulanan `customer_monthly_usages`,
+ * dan mengeksekusi tindakan FUP (Turun Kecepatan / Ganti Profil / Isolir).
  */
 export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaSyncResult> {
   const routerRes = await pool.query(
@@ -109,6 +116,11 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
       }
     } catch (_) {}
 
+    // Periode bulan berjalan (Format: 'YYYY-MM', misal '2026-11')
+    const now = new Date();
+    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayStr = now.toISOString().slice(0, 10);
+
     // 3. Iterasi setiap antrean
     for (const q of queueList) {
       if (!q.name) continue;
@@ -123,25 +135,33 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
 
       if (!rawUsername) continue;
 
-      // Parsing total bytes dari antrean
+      // Parsing bytes (upload / download)
+      let currUpload = 0;
+      let currDownload = 0;
       let currBytes = 0;
+
       if (q.bytes && typeof q.bytes === 'string') {
         const parts = q.bytes.split('/');
-        const upload = parseInt(parts[0], 10) || 0;
-        const download = parseInt(parts[1], 10) || 0;
-        currBytes = upload + download;
+        currUpload = parseInt(parts[0], 10) || 0;
+        currDownload = parseInt(parts[1], 10) || 0;
+        currBytes = currUpload + currDownload;
       } else if (q['total-bytes']) {
         currBytes = parseInt(q['total-bytes'], 10) || 0;
       }
 
-      // Ambil data pelanggan dari database
+      // Ambil data pelanggan & paket dari database
       const custRes = await pool.query(
         `SELECT c.id, c.name, c.pppoe_username, 
                 COALESCE(c.total_bytes_used, 0)::bigint as total_bytes_used,
                 COALESCE(c.last_queue_bytes, 0)::bigint as last_queue_bytes,
                 COALESCE(c.is_fup, false) as is_fup,
                 c.package_id, c.router_id,
-                p.name as package_name, COALESCE(p.quota_mb, 0) as quota_mb
+                p.name as package_name, 
+                COALESCE(p.quota_mb, 0) as quota_mb,
+                COALESCE(p.fup_enabled, false) as fup_enabled,
+                COALESCE(p.fup_action, 'speed') as fup_action,
+                p.fup_profile,
+                COALESCE(p.fup_speed, '1M/1M') as fup_speed
          FROM customers c
          LEFT JOIN packages p ON c.package_id = p.id
          WHERE LOWER(c.pppoe_username) = LOWER($1)
@@ -156,30 +176,59 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
       const prevTotal = Number(cust.total_bytes_used) || 0;
       const lastQueue = Number(cust.last_queue_bytes) || 0;
 
-      // Hitung delta (selisih) pemakaian
+      // Hitung delta (selisih) pemakaian sejak pengecekan sebelumnya
       let delta = 0;
+      let deltaUp = 0;
+      let deltaDown = 0;
+
       if (currBytes >= lastQueue) {
         // Sesi yang sama masih berjalan
         delta = currBytes - lastQueue;
+        if (currBytes > 0) {
+          deltaUp = Math.round(delta * (currUpload / currBytes));
+          deltaDown = delta - deltaUp;
+        }
       } else {
         // Router klien sempat restart / sesi baru dimulai
         delta = currBytes;
+        deltaUp = currUpload;
+        deltaDown = currDownload;
       }
 
-      // Hindari update jika tidak ada perubahan sama sekali
+      // Jika tidak ada trafik baru sama sekali, lewati
       if (delta === 0 && currBytes === lastQueue) {
         continue;
       }
 
       const newTotal = prevTotal + delta;
-      let isFup = cust.is_fup;
+      const quotaMb = Number(cust.quota_mb) || 0;
+      const isFupActiveForPkg = Boolean(cust.fup_enabled) || quotaMb > 0;
+
+      // 4. Akumulasikan ke Tabel Rekap Bulanan `customer_monthly_usages`
+      const monthlyRes = await pool.query(
+        `INSERT INTO customer_monthly_usages 
+         (customer_id, router_id, pppoe_username, year_month, total_bytes, upload_bytes, download_bytes, quota_mb, is_fup, last_synced_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         ON CONFLICT (customer_id, year_month) 
+         DO UPDATE SET 
+           total_bytes = customer_monthly_usages.total_bytes + EXCLUDED.total_bytes,
+           upload_bytes = customer_monthly_usages.upload_bytes + EXCLUDED.upload_bytes,
+           download_bytes = customer_monthly_usages.download_bytes + EXCLUDED.download_bytes,
+           quota_mb = EXCLUDED.quota_mb,
+           last_synced_at = NOW()
+         RETURNING total_bytes, is_fup`,
+        [cust.id, router.id, cust.pppoe_username, currentYearMonth, delta, deltaUp, deltaDown, quotaMb, cust.is_fup]
+      );
+
+      const monthlyRow = monthlyRes.rows[0];
+      const monthlyTotalBytes = Number(monthlyRow?.total_bytes || newTotal);
+      let isFup = Boolean(monthlyRow?.is_fup || cust.is_fup);
       let newlyFup = false;
 
-      // Cek apakah paket memiliki kuota (quota_mb > 0)
-      const quotaMb = Number(cust.quota_mb) || 0;
-      if (quotaMb > 0) {
+      // Cek apakah pemakaian bulan ini sudah melebihi kuota FUP
+      if (isFupActiveForPkg && quotaMb > 0) {
         const maxQuotaBytes = quotaMb * 1024 * 1024;
-        if (newTotal >= maxQuotaBytes && !isFup) {
+        if (monthlyTotalBytes >= maxQuotaBytes && !isFup) {
           isFup = true;
           newlyFup = true;
         }
@@ -197,6 +246,16 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
         [newTotal, currBytes, isFup, newlyFup, cust.id]
       );
 
+      // Tandai juga FUP di tabel bulanan
+      if (newlyFup) {
+        await pool.query(
+          `UPDATE customer_monthly_usages 
+           SET is_fup = true, fup_at = NOW() 
+           WHERE customer_id = $1 AND year_month = $2`,
+          [cust.id, currentYearMonth]
+        ).catch(() => {});
+      }
+
       const updateInfo: UserQuotaUpdateResult = {
         customer_id: cust.id,
         name: cust.name,
@@ -207,55 +266,88 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
         delta_mb: parseFloat((delta / (1024 * 1024)).toFixed(2)),
         total_bytes_used: newTotal,
         total_mb: parseFloat((newTotal / (1024 * 1024)).toFixed(2)),
+        monthly_total_bytes: monthlyTotalBytes,
+        monthly_total_mb: parseFloat((monthlyTotalBytes / (1024 * 1024)).toFixed(2)),
+        year_month: currentYearMonth,
         is_fup: isFup,
-        newly_fup: newlyFup
+        newly_fup: newlyFup,
+        fup_action: cust.fup_action,
+        fup_speed: cust.fup_speed,
+        fup_profile: cust.fup_profile
       };
 
       updatedUsers.push(updateInfo);
 
-      // Jika baru saja habis kuota (FUP), eksekusi isolir di MikroTik & kirim notifikasi
+      // 5. Jika baru saja tembus FUP, eksekusi tindakan sesuai konfigurasi Paket!
       if (newlyFup) {
         fupTriggeredUsers.push(updateInfo);
 
-        // Ubah profile di /ppp/secret ke isolir
+        const fupAction = cust.fup_action || 'speed';
+        let actionDesc = '';
+
         try {
           const secrets: any = await conn.write('/ppp/secret/print', [`?name=${cust.pppoe_username}`]);
           if (Array.isArray(secrets) && secrets.length > 0) {
-            await conn.write('/ppp/secret/set', [
-              `=.id=${secrets[0]['.id']}`,
-              `=profile=${isolirProfileName}`,
-              `=comment=KUOTA HABIS (FUP) - ${new Date().toISOString().slice(0, 10)}`
-            ]);
+            const secId = secrets[0]['.id'];
+
+            if (fupAction === 'speed') {
+              // Aksi 1: Turunkan Kecepatan (FUP Throttle)
+              const throttledSpeed = cust.fup_speed || '1M/1M';
+              await conn.write('/ppp/secret/set', [
+                `=.id=${secId}`,
+                `=rate-limit=${throttledSpeed}`,
+                `=comment=FUP THROTTLE ${throttledSpeed} - ${todayStr}`
+              ]);
+              actionDesc = `Kecepatan diturunkan menjadi ${throttledSpeed} (Internet tetap jalan)`;
+            } else if (fupAction === 'profile') {
+              // Aksi 2: Pindah ke Profil PPP Tertentu
+              const targetProfile = cust.fup_profile || 'pppoe-fup';
+              await conn.write('/ppp/secret/set', [
+                `=.id=${secId}`,
+                `=profile=${targetProfile}`,
+                `=comment=FUP PROFILE ${targetProfile} - ${todayStr}`
+              ]);
+              actionDesc = `Profil dipindahkan ke ${targetProfile}`;
+            } else {
+              // Aksi 3: Langsung Isolir (Putus Akses)
+              await conn.write('/ppp/secret/set', [
+                `=.id=${secId}`,
+                `=profile=${isolirProfileName}`,
+                `=comment=KUOTA HABIS (ISOLIR) - ${todayStr}`
+              ]);
+              actionDesc = `Dialihkan ke profil ${isolirProfileName} (Akses internet diisolir)`;
+            }
           }
 
-          // Putus sesi aktif agar login ulang dengan profil isolir
+          // Putus sesi aktif 1 kali agar reconnect dengan parameter baru
           const actives: any = await conn.write('/ppp/active/print', [`?name=${cust.pppoe_username}`]);
           if (Array.isArray(actives)) {
             for (const act of actives) {
               await conn.write('/ppp/active/remove', [`=.id=${act['.id']}`]);
             }
           }
-        } catch (isoErr: any) {
-          console.warn(`[PPP QUOTA] Gagal ubah profil isolir di MikroTik untuk ${cust.pppoe_username}:`, isoErr.message);
+        } catch (fupErr: any) {
+          console.warn(`[PPP QUOTA] Gagal eksekusi aksi FUP di MikroTik untuk ${cust.pppoe_username}:`, fupErr.message);
         }
 
         // Catat log kejadian ke pppoe_connection_logs
         await pool.query(
           `INSERT INTO pppoe_connection_logs
            (router_id, customer_id, pppoe_username, event_type, terminate_cause, recorded_at)
-           VALUES ($1, $2, $3, 'quota_exceeded', 'Batas kuota FUP paket telah habis', NOW())`,
-          [router.id, cust.id, cust.pppoe_username]
+           VALUES ($1, $2, $3, 'quota_exceeded', $4, NOW())`,
+          [router.id, cust.id, cust.pppoe_username, `FUP tercapai (${updateInfo.monthly_total_mb} MB) -> ${actionDesc}`]
         ).catch(() => {});
 
         // Kirim Notifikasi Telegram
         const alertMsg =
-          `⚠️ *[PERINGATAN KUOTA PPPoE HABIS / FUP]*\n\n` +
+          `⚠️ *[PERINGATAN FUP TERCAPAI]*\n\n` +
           `👤 *Pelanggan:* ${cust.name} (\`${cust.pppoe_username}\`)\n` +
           `📦 *Paket:* ${cust.package_name || '-'}\n` +
-          `📊 *Batas Kuota:* ${quotaMb} MB\n` +
-          `📈 *Total Terpakai:* ${updateInfo.total_mb} MB\n` +
+          `📊 *Batas FUP:* ${quotaMb} MB\n` +
+          `📈 *Pemakaian Bulan Ini (${currentYearMonth}):* ${updateInfo.monthly_total_mb} MB\n` +
           `🌐 *Router:* ${router.name}\n` +
-          `🔒 *Tindakan:* Otomatis dialihkan ke profil \`${isolirProfileName}\` & sesi aktif di-disconnect.`;
+          `⚡ *Tindakan:* ${actionDesc}.\n\n` +
+          `_Keterangan: Kuota pelanggan tetap terus dihitung & dicatat hingga akhir bulan._`;
 
         await sendTelegramMessage(alertMsg).catch(() => {});
       }
@@ -274,7 +366,7 @@ export async function syncRouterPppQuota(routerId: string): Promise<RouterQuotaS
       matched_users_count: updatedUsers.length,
       updated_users: updatedUsers,
       fup_triggered_users: fupTriggeredUsers,
-      message: `Sinkronisasi kuota router "${router.name}" selesai: ${updatedUsers.length} user diperbarui, ${fupTriggeredUsers.length} user habis kuota.`
+      message: `Sinkronisasi kuota router "${router.name}" selesai: ${updatedUsers.length} user diperbarui, ${fupTriggeredUsers.length} user tembus FUP.`
     };
   } catch (err: any) {
     await conn.close().catch(() => {});
