@@ -1231,7 +1231,30 @@ export function generateHotspotProfileOnLogin(profileData: {
     `else={ [ /ip hotspot user remove $i ]; [ /ip hotspot active remove [find where user=$name] ]; }` +
     `}}};:delay 0.2;};/log warning "checking for expired7 $totlogin7 users...";`;
 
-  return { onlogin, cshglobal };
+  // Webhook notifikasi on-logout ke server Arbill untuk pembaruan kuota & uptime (non-blocking, anti-macet via :do {} on-error={})
+  const onlogout =
+    `:local uName "$user"; :local uMac $"mac-address"; :local uIp "$address"; :local uCause "$cause"; ` +
+    `:local cleanCause "other"; ` +
+    `:if ($uCause = "traffic limit reached") do={ :set cleanCause "traffic_limit"; }; ` +
+    `:if ($uCause = "uptime limit reached") do={ :set cleanCause "uptime_limit"; }; ` +
+    `:if ($uCause = "lost ping") do={ :set cleanCause "lost_ping"; }; ` +
+    `:if ($uCause = "user request") do={ :set cleanCause "user_request"; }; ` +
+    `:if ($uCause = "session timeout") do={ :set cleanCause "session_timeout"; }; ` +
+    `:if ($uCause = "admin reset") do={ :set cleanCause "admin_reset"; }; ` +
+    `:local uIn 0; :local uOut 0; :local uUptime "0s"; ` +
+    `:do { ` +
+    `  :local uId [/ip hotspot user find where name=$uName]; ` +
+    `  :if ([:len $uId] > 0) do={ ` +
+    `    :set uIn [/ip hotspot user get $uId bytes-in]; ` +
+    `    :set uOut [/ip hotspot user get $uId bytes-out]; ` +
+    `    :set uUptime [/ip hotspot user get $uId uptime]; ` +
+    `  }; ` +
+    `} on-error={}; ` +
+    `:do { ` +
+    `  /tool fetch url="${serverUrl}/api/vouchers/on-logout?code=$uName&cause=$cleanCause&uptime=$uUptime&bytes_in=$uIn&bytes_out=$uOut&mac=$uMac&ip=$uIp" ${fetchMode} keep-result=no; ` +
+    `} on-error={};`;
+
+  return { onlogin, onlogout, cshglobal };
 }
 
 /**
@@ -1482,9 +1505,10 @@ export async function executePushProfileToMikrotik(id: string, serverUrlOverride
             `=.id=${existingHs['.id']}`,
             `=rate-limit=${effectiveRateLimit}`,
             `=shared-users=${sharedUsersCount}`,
-            `=on-login=${hotspotScripts.onlogin}`
+            `=on-login=${hotspotScripts.onlogin}`,
+            `=on-logout=${hotspotScripts.onlogout}`
           ]);
-          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" di Mikrotik berhasil di-UPDATE (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
+          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" di Mikrotik berhasil di-UPDATE (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login & On-Logout Script Aktif).`;
           pushSuccess = true;
         } catch (updateErr: any) {
           pushDetailMessage = `⚠️ Profile ditemukan tapi gagal update: ${updateErr.message}`;
@@ -1496,9 +1520,10 @@ export async function executePushProfileToMikrotik(id: string, serverUrlOverride
             `=name=${prof.name}`,
             `=rate-limit=${effectiveRateLimit}`,
             `=shared-users=${sharedUsersCount}`,
-            `=on-login=${hotspotScripts.onlogin}`
+            `=on-login=${hotspotScripts.onlogin}`,
+            `=on-logout=${hotspotScripts.onlogout}`
           ]);
-          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" berhasil DIBUAT BARU di Mikrotik (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login Script Aktif).`;
+          pushDetailMessage = `✅ Profile Hotspot "${prof.name}" berhasil DIBUAT BARU di Mikrotik (Rate: ${effectiveRateLimit}, Shared Users: ${sharedUsersCount}, On-Login & On-Logout Script Aktif).`;
           pushSuccess = true;
         } catch (addErr: any) {
           pushDetailMessage = `❌ Gagal membuat profile baru: ${addErr.message}`;

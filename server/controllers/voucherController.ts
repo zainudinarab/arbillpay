@@ -60,7 +60,7 @@ export async function generateBatchVouchers(req: Request, res: Response) {
     const router = rRes.rows[0];
 
     const pRes = await pool.query(`
-      SELECT rp.*, p.uptime_limit, p.validity_iso 
+      SELECT rp.*, p.uptime_limit, p.validity_iso, p.quota_mb 
       FROM router_profiles rp 
       LEFT JOIN packages p ON rp.package_id = p.id 
       WHERE rp.id = $1
@@ -117,6 +117,10 @@ export async function generateBatchVouchers(req: Request, res: Response) {
           ];
           if (formattedUptime) {
             hsUserParams.push(`=limit-uptime=${formattedUptime}`);
+          }
+          if (profile.quota_mb && Number(profile.quota_mb) > 0) {
+            const bytesTotal = BigInt(profile.quota_mb) * 1024n * 1024n;
+            hsUserParams.push(`=limit-bytes-total=${bytesTotal.toString()}`);
           }
           await conn.write('/ip/hotspot/user/add', hsUserParams);
           itemSynced = true;
@@ -638,7 +642,8 @@ export async function buyVoucher(req: Request, res: Response) {
       // Fetch profile & router info (matching either router_profile id or package_id)
       const pRes = await pool.query(`
         SELECT rp.id, rp.name as profile_name, rp.router_id, r.ip_address, r.api_port, r.username, r.password,
-               p.uptime_limit, p.validity_iso
+               p.uptime_limit,
+             p.quota_mb, p.validity_iso, p.quota_mb
         FROM router_profiles rp
         JOIN routers r ON rp.router_id = r.id
         LEFT JOIN packages p ON rp.package_id = p.id
@@ -683,6 +688,10 @@ export async function buyVoucher(req: Request, res: Response) {
         ];
         if (formattedUptime) {
           hsUserParams.push(`=limit-uptime=${formattedUptime}`);
+        }
+        if (routerProfile.quota_mb && Number(routerProfile.quota_mb) > 0) {
+          const bytesTotal = BigInt(routerProfile.quota_mb) * 1024n * 1024n;
+          hsUserParams.push(`=limit-bytes-total=${bytesTotal.toString()}`);
         }
         await conn.write('/ip/hotspot/user/add', hsUserParams);
         conn.close();
@@ -862,7 +871,18 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         COALESCE(i.amount, p.price, 0)::int as price,
         COALESCE(i.payment_method, 'ArabPay E-Wallet') as payment_channel,
         i.notes as invoice_notes,
-        i.flash_sale_id
+        i.flash_sale_id,
+        v.bytes_in,
+        v.bytes_out,
+        v.bytes_total,
+        v.uptime_seconds,
+        v.uptime_formatted,
+        v.last_logout_at,
+        v.logout_cause,
+        v.is_quota_exhausted,
+        v.is_uptime_exhausted,
+        p.quota_mb,
+        p.uptime_limit
       FROM hotspot_vouchers v
       LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
       LEFT JOIN routers r ON (v.router_id = r.id OR rp.router_id = r.id)
@@ -886,18 +906,32 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
       }
 
       const hasLoggedIn = Boolean(firstLoginAt);
-      const isExpired = Boolean(row.status === 'expired' || (expiredAt && new Date(expiredAt).getTime() <= now));
-      const isUsedActive = Boolean(hasLoggedIn && !isExpired);
-      const isUsedExpired = Boolean(row.status === 'expired' || (hasLoggedIn && isExpired) || (row.status === 'used' && isExpired));
+      const bytesTotal = BigInt(row.bytes_total || 0);
+      const quotaMb = row.quota_mb ? Number(row.quota_mb) : null;
+      const isQuotaExhausted = Boolean(
+        row.is_quota_exhausted || 
+        (quotaMb && quotaMb > 0 && bytesTotal >= BigInt(quotaMb) * 1024n * 1024n)
+      );
+      const isUptimeExhausted = Boolean(row.is_uptime_exhausted);
+      const isExpiredTime = Boolean(row.status === 'expired' || (expiredAt && new Date(expiredAt).getTime() <= now));
 
-      let usageState: 'ready' | 'used_active' | 'used_expired' = 'ready';
-      if (isUsedExpired) {
-        usageState = 'used_expired';
-      } else if (isUsedActive || (row.status === 'used' && !isExpired)) {
-        usageState = 'used_active';
+      let usageState: 'ready' | 'used_active' | 'quota_exhausted' | 'uptime_exhausted' | 'used_expired' = 'ready';
+      if (hasLoggedIn || row.status === 'used' || row.status === 'expired') {
+        if (isQuotaExhausted) {
+          usageState = 'quota_exhausted';
+        } else if (isUptimeExhausted) {
+          usageState = 'uptime_exhausted';
+        } else if (isExpiredTime) {
+          usageState = 'used_expired';
+        } else {
+          usageState = 'used_active';
+        }
       } else {
         usageState = 'ready';
       }
+
+      const isOverallExpired = usageState === 'quota_exhausted' || usageState === 'uptime_exhausted' || usageState === 'used_expired';
+      const isUsed = usageState !== 'ready';
 
       return {
         id: row.invoice_number || row.voucher_id,
@@ -911,12 +945,25 @@ export async function listMyPurchasedVouchers(req: Request, res: Response) {
         password: row.password,
         hotspot_ip: row.hotspot_ip || '10.0.0.1',
         dns_name: row.dns_name || 'ar.net',
-        status: usageState === 'ready' ? (row.status === 'sold' || row.status === 'active' ? 'active' : row.status) : (usageState === 'used_active' ? 'active_used' : 'expired'),
+        status: usageState === 'ready' 
+          ? (row.status === 'sold' || row.status === 'active' ? 'active' : row.status) 
+          : (usageState === 'used_active' ? 'active_used' : 'expired'),
         raw_status: row.status,
-        usage_state: usageState, // 'ready' | 'used_active' | 'used_expired'
-        is_used: usageState !== 'ready',
-        is_expired: isUsedExpired,
-        is_active_used: isUsedActive,
+        usage_state: usageState, // 'ready' | 'used_active' | 'quota_exhausted' | 'uptime_exhausted' | 'used_expired'
+        is_used: isUsed,
+        is_expired: isOverallExpired,
+        is_active_used: usageState === 'used_active',
+        is_quota_exhausted: isQuotaExhausted,
+        is_uptime_exhausted: isUptimeExhausted,
+        bytes_in: Number(row.bytes_in || 0),
+        bytes_out: Number(row.bytes_out || 0),
+        bytes_total: Number(row.bytes_total || 0),
+        quota_mb: quotaMb,
+        uptime_seconds: Number(row.uptime_seconds || 0),
+        uptime_formatted: row.uptime_formatted || null,
+        uptime_limit: row.uptime_limit || null,
+        last_logout_at: row.last_logout_at || null,
+        logout_cause: row.logout_cause || null,
         first_login_at: firstLoginAt,
         expired_at: expiredAt,
         validity_iso: row.validity_iso,
@@ -972,6 +1019,73 @@ export function addIsoDurationToDate(startDate: Date, isoStr?: string | null): D
   if (secs) result.setSeconds(result.getSeconds() + parseInt(secs[1], 10));
 
   return result;
+}
+
+/**
+ * Konversi durasi ISO-8601 (contoh: PT3H, PT30M, P1D) ke detik
+ */
+export function parseIsoDurationToSeconds(isoStr?: string | null): number {
+  if (!isoStr || typeof isoStr !== 'string') return 0;
+  const clean = isoStr.trim().toUpperCase();
+  if (!clean.startsWith('P')) return 0;
+
+  const [datePart, timePart = ''] = clean.split('T');
+  let totalSec = 0;
+
+  const weeks = datePart.match(/(\d+)W/);
+  if (weeks) totalSec += parseInt(weeks[1], 10) * 604800;
+
+  const days = datePart.match(/(\d+)D/);
+  if (days) totalSec += parseInt(days[1], 10) * 86400;
+
+  const hours = timePart.match(/(\d+)H/);
+  if (hours) totalSec += parseInt(hours[1], 10) * 3600;
+
+  const mins = timePart.match(/(\d+)M/);
+  if (mins) totalSec += parseInt(mins[1], 10) * 60;
+
+  const secs = timePart.match(/(\d+)S/);
+  if (secs) totalSec += parseInt(secs[1], 10);
+
+  return totalSec;
+}
+
+/**
+ * Konversi durasi MikroTik RouterOS (contoh: 1w2d3h4m5s, 01:30:15, 45m, 120s) ke detik
+ */
+export function parseMikrotikUptimeToSeconds(uptimeStr?: string | null): number {
+  if (!uptimeStr || typeof uptimeStr !== 'string') return 0;
+  const s = uptimeStr.trim().toLowerCase();
+  if (!s) return 0;
+
+  if (/^\d+$/.test(s)) return parseInt(s, 10);
+
+  let totalSec = 0;
+  const weeks = s.match(/(\d+)\s*w/);
+  const days = s.match(/(\d+)\s*d/);
+  const hours = s.match(/(\d+)\s*h/);
+  const minutes = s.match(/(\d+)\s*m(?!s)/);
+  const seconds = s.match(/(\d+)\s*s/);
+
+  if (weeks || days || hours || minutes || seconds) {
+    if (weeks) totalSec += parseInt(weeks[1], 10) * 604800;
+    if (days) totalSec += parseInt(days[1], 10) * 86400;
+    if (hours) totalSec += parseInt(hours[1], 10) * 3600;
+    if (minutes) totalSec += parseInt(minutes[1], 10) * 60;
+    if (seconds) totalSec += parseInt(seconds[1], 10);
+    return totalSec;
+  }
+
+  const parts = s.split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  } else if (parts.length === 4) {
+    return parts[0] * 86400 + parts[1] * 3600 + parts[2] * 60 + parts[3];
+  }
+
+  return 0;
 }
 
 /**
@@ -1112,6 +1226,147 @@ export async function handleVoucherFirstLogin(req: Request, res: Response) {
 }
 
 /**
+ * Webhook On-Logout dari MikroTik RouterOS
+ * MikroTik RouterOS: /tool fetch url="https://.../api/vouchers/on-logout?code=$user&cause=$cleanCause&uptime=$uUptime&bytes_in=$uIn&bytes_out=$uOut&mac=$mac&ip=$address"
+ */
+export async function handleVoucherLogout(req: Request, res: Response) {
+  const code = (req.query.code || req.body.code || '').toString().trim();
+  const rawCause = (req.query.cause || req.body.cause || '').toString().trim();
+  const uptimeStr = (req.query.uptime || req.body.uptime || '').toString().trim();
+  const rawBytesIn = (req.query.bytes_in || req.body.bytes_in || '0').toString().trim();
+  const rawBytesOut = (req.query.bytes_out || req.body.bytes_out || '0').toString().trim();
+  const mac = (req.query.mac || req.body.mac || '').toString().trim();
+  const ip = (req.query.ip || req.body.ip || '').toString().trim();
+
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'Parameter "code" wajib disertakan.' });
+  }
+
+  const cleanBytesIn = BigInt(rawBytesIn.replace(/[^0-9]/g, '') || 0);
+  const cleanBytesOut = BigInt(rawBytesOut.replace(/[^0-9]/g, '') || 0);
+  const cleanBytesTotal = cleanBytesIn + cleanBytesOut;
+  const uptimeSeconds = parseMikrotikUptimeToSeconds(uptimeStr);
+  const causeLower = rawCause.toLowerCase();
+
+  console.log(`[VOUCHER LOGOUT WEBHOOK] Code: ${code} | Cause: ${rawCause || 'unknown'} | Uptime: ${uptimeStr} (${uptimeSeconds}s) | In: ${cleanBytesIn} | Out: ${cleanBytesOut} | Total: ${cleanBytesTotal} bytes | MAC: ${mac || '-'}`);
+
+  try {
+    const vcRes = await pool.query(`
+      SELECT v.*, rp.name as profile_name, rp.package_id, p.name as package_name, p.validity_iso, p.uptime_limit, p.quota_mb
+      FROM hotspot_vouchers v
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE v.code = $1
+      LIMIT 1
+    `, [code]);
+
+    if (vcRes.rows.length === 0) {
+      console.warn(`[VOUCHER LOGOUT] Voucher "${code}" tidak ditemukan di database.`);
+      return res.status(404).json({ success: false, message: `Voucher "${code}" tidak ditemukan.` });
+    }
+
+    const voucher = vcRes.rows[0];
+
+    // Deteksi apakah kuota habis
+    let isQuotaExhausted = Boolean(
+      voucher.is_quota_exhausted ||
+      causeLower.includes('traffic') ||
+      causeLower.includes('quota')
+    );
+
+    const quotaMb = voucher.quota_mb ? Number(voucher.quota_mb) : 0;
+    if (quotaMb > 0) {
+      const maxQuotaBytes = BigInt(quotaMb) * 1024n * 1024n;
+      if (cleanBytesTotal >= maxQuotaBytes) {
+        isQuotaExhausted = true;
+      }
+    }
+
+    // Deteksi apakah limit uptime habis
+    let isUptimeExhausted = Boolean(
+      voucher.is_uptime_exhausted ||
+      causeLower.includes('uptime')
+    );
+
+    if (voucher.uptime_limit) {
+      const maxUptimeSec = parseIsoDurationToSeconds(voucher.uptime_limit);
+      if (maxUptimeSec > 0 && uptimeSeconds >= maxUptimeSec) {
+        isUptimeExhausted = true;
+      }
+    }
+
+    // Tentukan status akhir
+    const shouldMarkExpired = isQuotaExhausted || isUptimeExhausted;
+    const finalStatus = shouldMarkExpired ? 'expired' : voucher.status;
+
+    // Update PostgreSQL
+    await pool.query(`
+      UPDATE hotspot_vouchers
+      SET bytes_in = GREATEST(COALESCE(bytes_in, 0), $1),
+          bytes_out = GREATEST(COALESCE(bytes_out, 0), $2),
+          bytes_total = GREATEST(COALESCE(bytes_total, 0), $3),
+          uptime_seconds = GREATEST(COALESCE(uptime_seconds, 0), $4),
+          uptime_formatted = COALESCE($5, uptime_formatted),
+          last_logout_at = NOW(),
+          logout_cause = $6,
+          is_quota_exhausted = (is_quota_exhausted OR $7),
+          is_uptime_exhausted = (is_uptime_exhausted OR $8),
+          status = CASE WHEN $9 = 'expired' THEN 'expired' ELSE status END
+      WHERE id = $10
+    `, [
+      cleanBytesIn.toString(),
+      cleanBytesOut.toString(),
+      cleanBytesTotal.toString(),
+      uptimeSeconds,
+      uptimeStr || `${uptimeSeconds}s`,
+      rawCause || 'disconnect',
+      isQuotaExhausted,
+      isUptimeExhausted,
+      finalStatus,
+      voucher.id
+    ]);
+
+    // Update Firestore jika terpasang
+    try {
+      const db = getFirestore();
+      if (db) {
+        await db.collection('hotspot_vouchers').doc(voucher.id).set({
+          bytes_in: Number(cleanBytesIn),
+          bytes_out: Number(cleanBytesOut),
+          bytes_total: Number(cleanBytesTotal),
+          uptime_seconds: uptimeSeconds,
+          uptime_formatted: uptimeStr || `${uptimeSeconds}s`,
+          last_logout_at: new Date().toISOString(),
+          logout_cause: rawCause || 'disconnect',
+          is_quota_exhausted: isQuotaExhausted,
+          is_uptime_exhausted: isUptimeExhausted,
+          status: finalStatus
+        }, { merge: true });
+      }
+    } catch (fbErr: any) {
+      console.warn('[VOUCHER LOGOUT] Firebase sync notice:', fbErr.message);
+    }
+
+    console.log(`✅ [VOUCHER LOGOUT] Selesai update voucher ${code}: Status=${finalStatus} | QuotaExhausted=${isQuotaExhausted} | UptimeExhausted=${isUptimeExhausted}`);
+
+    return res.json({
+      success: true,
+      message: `Data pemakaian voucher "${code}" berhasil di-update.`,
+      voucher_id: voucher.id,
+      code: code,
+      uptime_seconds: uptimeSeconds,
+      bytes_total: cleanBytesTotal.toString(),
+      is_quota_exhausted: isQuotaExhausted,
+      is_uptime_exhausted: isUptimeExhausted,
+      status: finalStatus
+    });
+  } catch (err: any) {
+    console.error(`[VOUCHER LOGOUT ERROR] Gagal update logout voucher ${code}:`, err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
  * GET /api/vouchers/status?code=<username>
  * Mengambil status live voucher (masa aktif, first login, expired_at) untuk status.html MikroTik
  */
@@ -1129,7 +1384,8 @@ export async function getVoucherStatus(req: Request, res: Response) {
              p.name as package_name, 
              p.price as package_price, 
              p.validity_iso, 
-             p.uptime_limit, 
+             p.uptime_limit,
+             p.quota_mb, 
              p.speed_limit,
              r.name as router_name
       FROM hotspot_vouchers v
@@ -1203,6 +1459,11 @@ export async function getVoucherStatus(req: Request, res: Response) {
         is_expired: isExpired,
         validity_iso: v.validity_iso,
         uptime_limit: v.uptime_limit,
+        quota_mb: v.quota_mb ? Number(v.quota_mb) : null,
+        bytes_total: Number(v.bytes_total || 0),
+        uptime_seconds: Number(v.uptime_seconds || 0),
+        is_quota_exhausted: Boolean(v.is_quota_exhausted),
+        is_uptime_exhausted: Boolean(v.is_uptime_exhausted),
         speed_limit: v.speed_limit || '10 Mbps'
       }
     });
@@ -1226,7 +1487,7 @@ export async function syncVouchersToMikrotik(req: Request, res: Response) {
     let query = `
       SELECT v.id, v.code, v.password, v.comment, v.status, v.is_synced, v.expired_at,
              r.id as router_id, r.name as router_name, r.ip_address, r.api_port, r.username, r.password as router_password,
-             COALESCE(rp.name, 'default') as profile_name, p.uptime_limit
+             COALESCE(rp.name, 'default') as profile_name, p.uptime_limit, p.quota_mb
       FROM hotspot_vouchers v
       JOIN routers r ON v.router_id = r.id
       LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
@@ -1314,6 +1575,10 @@ export async function syncVouchersToMikrotik(req: Request, res: Response) {
               ];
               if (formattedUptime) {
                 addParams.push(`=limit-uptime=${formattedUptime}`);
+              }
+              if (item.quota_mb && Number(item.quota_mb) > 0) {
+                const bytesTotal = BigInt(item.quota_mb) * 1024n * 1024n;
+                addParams.push(`=limit-bytes-total=${bytesTotal.toString()}`);
               }
               await conn.write('/ip/hotspot/user/add', addParams);
             } else {

@@ -178,8 +178,8 @@ export default function CustomerPortal({
   const [durationFilter, setDurationFilter] = useState<'all' | '1h' | '3h' | '1d' | '7d' | '30d'>('all');
   const [showVoucherSayaModal, setShowVoucherSayaModal] = useState(false);
   const [showSpeedtestModal, setShowSpeedtestModal] = useState(false);
-  const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'ready' | 'used_active' | 'used_expired' | 'active' | 'used'>('all');
-  const [voucherHistoryFilter, setVoucherHistoryFilter] = useState<'all' | 'ready' | 'used_active' | 'used_expired'>('all');
+  const [voucherModalTab, setVoucherModalTab] = useState<'all' | 'ready' | 'used_active' | 'exhausted' | 'used_expired' | 'active' | 'used'>('all');
+  const [voucherHistoryFilter, setVoucherHistoryFilter] = useState<'all' | 'ready' | 'used_active' | 'exhausted' | 'used_expired'>('all');
   const [showLanggananModal, setShowLanggananModal] = useState(false);
   const [showTagihanModal, setShowTagihanModal] = useState(false);
   const [tagihanModalTab, setTagihanModalTab] = useState<'all' | 'unpaid' | 'paid'>('all');
@@ -3665,13 +3665,18 @@ export default function CustomerPortal({
         {activeTab === 'history' && currentUser && (() => {
           const readyHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'ready');
           const activeHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_active');
-          const expiredHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_expired');
+          const exhaustedHistory = localPurchasedVouchers.filter((v: any) => {
+            const st = classifyVoucherState(v);
+            return st === 'quota_exhausted' || st === 'uptime_exhausted';
+          });
+          const timeExpiredHistory = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_expired');
 
           let displayedHistory: any[] = [];
           if (voucherHistoryFilter === 'ready') displayedHistory = readyHistory;
           else if (voucherHistoryFilter === 'used_active') displayedHistory = activeHistory;
-          else if (voucherHistoryFilter === 'used_expired') displayedHistory = expiredHistory;
-          else displayedHistory = [...readyHistory, ...activeHistory, ...expiredHistory];
+          else if (voucherHistoryFilter === 'exhausted') displayedHistory = exhaustedHistory;
+          else if (voucherHistoryFilter === 'used_expired') displayedHistory = timeExpiredHistory;
+          else displayedHistory = [...readyHistory, ...activeHistory, ...exhaustedHistory, ...timeExpiredHistory];
 
           return (
             <div className="space-y-6">
@@ -3687,7 +3692,7 @@ export default function CustomerPortal({
                       {localPurchasedVouchers.length} Total
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">Riwayat voucher lengkap dengan waktu login perdana, masa aktif, dan status kedaluwarsa</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Riwayat voucher lengkap dengan waktu login perdana, masa aktif, kuota data, dan status pemakaian</p>
                 </div>
                 <button
                   onClick={fetchMyPurchasedVouchers}
@@ -3734,7 +3739,19 @@ export default function CustomerPortal({
                   }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <span>Terpakai (Masih Aktif) ({activeHistory.length})</span>
+                  <span>Masih Aktif ({activeHistory.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVoucherHistoryFilter('exhausted')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    voucherHistoryFilter === 'exhausted'
+                      ? 'bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-600/20'
+                      : 'bg-slate-900 border-slate-800 text-amber-400 hover:text-amber-300'
+                  }`}
+                >
+                  <Database className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Kuota / Uptime Habis ({exhaustedHistory.length})</span>
                 </button>
                 <button
                   type="button"
@@ -3746,7 +3763,7 @@ export default function CustomerPortal({
                   }`}
                 >
                   <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Terpakai (Expired) ({expiredHistory.length})</span>
+                  <span>Expired Waktu ({timeExpiredHistory.length})</span>
                 </button>
               </div>
 
@@ -3758,22 +3775,38 @@ export default function CustomerPortal({
                     Voucher yang Anda beli menggunakan ArabPay akan tercatat otomatis di sini.
                   </p>
                   <button
+                    type="button"
                     onClick={() => setActiveTab('buy')}
-                    className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                    className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-md inline-flex items-center gap-2"
                   >
-                    Beli Voucher Pertama
+                    <ShoppingCart size={14} />
+                    <span>Beli Voucher Sekarang</span>
                   </button>
                 </div>
               ) : displayedHistory.length === 0 ? (
-                <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-3xl space-y-2 text-slate-400">
+                <div className="text-center py-12 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-2">
                   <Ticket className="w-10 h-10 text-slate-600 mx-auto" />
-                  <p className="text-sm font-bold text-slate-300">Tidak ada voucher pada kategori ini</p>
+                  <p className="text-xs text-slate-400 font-bold">Tidak ada voucher dalam kategori ini</p>
+                  <button
+                    type="button"
+                    onClick={() => setVoucherHistoryFilter('all')}
+                    className="text-xs text-indigo-400 hover:underline cursor-pointer font-bold"
+                  >
+                    Lihat Semua Voucher
+                  </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {displayedHistory.map((item: any) => {
                     const st = classifyVoucherState(item);
+                    const isCopied = copiedVoucherCode === item.username;
                     const rem = getVoucherRemainingTime(item.expired_at);
+                    const quotaMb = item.quota_mb ? Number(item.quota_mb) : null;
+                    const bytesTotal = Number(item.bytes_total || 0);
+                    const quotaMaxBytes = quotaMb ? quotaMb * 1024 * 1024 : null;
+                    const quotaPercent = quotaMaxBytes && quotaMaxBytes > 0 
+                      ? Math.min(100, Math.round((bytesTotal / quotaMaxBytes) * 100))
+                      : null;
 
                     return (
                       <div
@@ -3783,6 +3816,10 @@ export default function CustomerPortal({
                             ? 'bg-slate-900 border-emerald-500/30 hover:border-emerald-500/60'
                             : st === 'used_active'
                             ? 'bg-slate-900 border-cyan-500/40 hover:border-cyan-400/60 shadow-cyan-950/20'
+                            : st === 'quota_exhausted'
+                            ? 'bg-slate-950/90 border-amber-500/50 hover:border-amber-400'
+                            : st === 'uptime_exhausted'
+                            ? 'bg-slate-950/90 border-orange-500/50 hover:border-orange-400'
                             : 'bg-slate-950/70 border-slate-800/80 opacity-70 hover:opacity-90'
                         }`}
                       >
@@ -3806,6 +3843,14 @@ export default function CustomerPortal({
                               <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-cyan-500/15 text-cyan-300 border-cyan-400/40 flex items-center gap-1 animate-pulse">
                                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Masih Aktif
                               </span>
+                            ) : st === 'quota_exhausted' ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-amber-500/20 text-amber-300 border-amber-500/40 flex items-center gap-1">
+                                <Database className="w-3.5 h-3.5 text-amber-400" /> Kuota Habis
+                              </span>
+                            ) : st === 'uptime_exhausted' ? (
+                              <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-orange-500/20 text-orange-300 border-orange-500/40 flex items-center gap-1">
+                                <Hourglass className="w-3.5 h-3.5 text-orange-400" /> Uptime Habis
+                              </span>
                             ) : (
                               <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border bg-rose-500/10 text-rose-300 border-rose-500/30 flex items-center gap-1">
                                 <XCircle className="w-3.5 h-3.5 text-rose-400" /> Expired
@@ -3814,7 +3859,7 @@ export default function CustomerPortal({
                           </div>
                         </div>
 
-                        {/* Remaining Time Banner for Active Vouchers */}
+                        {/* Status Banners */}
                         {st === 'used_active' && rem.text && (
                           <div className="p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-between text-xs text-cyan-300">
                             <span className="flex items-center gap-1.5 font-semibold">
@@ -3824,10 +3869,93 @@ export default function CustomerPortal({
                           </div>
                         )}
 
+                        {st === 'quota_exhausted' && (
+                          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+                            <Database size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-bold">Kuota Data Telah Habis Terpakai</p>
+                              {item.expired_at && (
+                                <p className="text-[10px] text-amber-400/80 mt-0.5">Masa aktif sebenarnya berlaku s/d {formatDateTimeWib(item.expired_at)}</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {st === 'uptime_exhausted' && (
+                          <div className="p-2.5 bg-orange-500/10 border border-orange-500/30 rounded-xl text-xs text-orange-300 flex items-start gap-2">
+                            <Hourglass size={15} className="text-orange-400 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-bold">Batas Durasi Pakai (Uptime) Tercapai</p>
+                              <p className="text-[10px] text-orange-400/80 mt-0.5">Batas jam operasional voucher ini telah habis digunakan</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Quota Data & Uptime Usage Progress Box */}
+                        {(bytesTotal > 0 || quotaMb || item.uptime_seconds > 0) && (
+                          <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2 text-xs">
+                            {/* Bar Kuota */}
+                            {quotaMb && quotaMb > 0 ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="flex items-center gap-1 text-slate-400 font-medium">
+                                    <Database size={11} className={st === 'quota_exhausted' ? 'text-amber-400' : 'text-cyan-400'} />
+                                    <span>Kuota Data:</span>
+                                  </span>
+                                  <span className="font-mono font-bold text-slate-200">
+                                    {formatBytesData(bytesTotal)} <span className="text-slate-500">/</span> {quotaMb >= 1024 ? `${(quotaMb/1024).toFixed(1)} GB` : `${quotaMb} MB`}
+                                    {quotaPercent !== null && <span className="text-slate-400 ml-1">(${quotaPercent}%)</span>}
+                                  </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      st === 'quota_exhausted'
+                                        ? 'bg-amber-500'
+                                        : (quotaPercent || 0) > 85
+                                        ? 'bg-rose-500'
+                                        : 'bg-cyan-500'
+                                    }`}
+                                    style={{ width: `${quotaPercent || 0}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : bytesTotal > 0 ? (
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <Database size={11} className="text-cyan-400" />
+                                  <span>Data Terpakai:</span>
+                                </span>
+                                <span className="font-mono font-bold text-slate-200">
+                                  {formatBytesData(bytesTotal)} <span className="text-[10px] text-emerald-400 font-semibold">(Unlimited)</span>
+                                </span>
+                              </div>
+                            ) : null}
+
+                            {/* Uptime Terpakai */}
+                            {item.uptime_seconds > 0 && (
+                              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/60">
+                                <span className="flex items-center gap-1 text-slate-400">
+                                  <Timer size={11} className="text-indigo-400" />
+                                  <span>Total Uptime:</span>
+                                </span>
+                                <span className="font-mono font-bold text-slate-300">
+                                  {formatUptimeDuration(item.uptime_seconds)}
+                                  {item.uptime_limit && (
+                                    <span className="text-slate-500 text-[10px] font-normal"> / Limit {item.uptime_limit.replace('PT','').toLowerCase()}</span>
+                                  )}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Login & Expired Details Box */}
                         <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
                           st === 'used_active'
                             ? 'bg-cyan-950/20 border-cyan-500/20 text-slate-300'
+                            : st === 'quota_exhausted' || st === 'uptime_exhausted'
+                            ? 'bg-amber-950/20 border-amber-500/20 text-slate-300'
                             : st === 'used_expired'
                             ? 'bg-slate-950 border-slate-800 text-slate-400'
                             : 'bg-slate-950/80 border-slate-800/80 text-slate-400'
@@ -3878,68 +4006,138 @@ export default function CustomerPortal({
                         </div>
 
                         {/* Credentials */}
-                        <div className="bg-indigo-950/20 border border-indigo-900/30 rounded-xl p-3.5 space-y-2">
-                          <div className="flex justify-between items-center text-xs">
-                            <span className="text-slate-400">Kode Username:</span>
+                        <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-400">Kode Voucher / User:</span>
                             <div className="flex items-center gap-2">
-                              <span className={`font-mono font-bold text-sm tracking-wider select-all ${
-                                st === 'used_expired' ? 'text-slate-500 line-through' : 'text-amber-400'
+                              <span className={`font-mono font-black text-sm tracking-wide ${
+                                st === 'ready'
+                                  ? 'text-emerald-400'
+                                  : st === 'used_active'
+                                  ? 'text-cyan-400'
+                                  : 'text-slate-500 line-through'
                               }`}>
                                 {item.username}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard?.writeText(item.username);
+                                  navigator.clipboard.writeText(item.username);
                                   setCopiedVoucherCode(item.username);
                                   setTimeout(() => setCopiedVoucherCode(null), 2000);
                                 }}
-                                className="p-1 text-slate-400 hover:text-white rounded bg-slate-800 transition cursor-pointer"
-                                title="Salin kode"
+                                className="text-slate-400 hover:text-white transition cursor-pointer p-1 rounded hover:bg-slate-800"
+                                title="Salin Kode Voucher"
                               >
-                                <Copy size={12} />
+                                <Copy size={13} className={isCopied ? 'text-emerald-400' : ''} />
                               </button>
                             </div>
                           </div>
+
                           {item.password && item.password !== item.username && (
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-slate-400">Password:</span>
-                              <span className="font-mono font-bold text-amber-400 select-all">{item.password}</span>
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-900">
+                              <span className="text-xs text-slate-400">Password:</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-xs text-slate-300">{item.password}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(item.password);
+                                    setCopiedVoucherCode(`pass-${item.id}`);
+                                    setTimeout(() => setCopiedVoucherCode(null), 2000);
+                                  }}
+                                  className="text-slate-400 hover:text-white transition cursor-pointer p-1 rounded hover:bg-slate-800"
+                                  title="Salin Password"
+                                >
+                                  <Copy size={13} className={copiedVoucherCode === `pass-${item.id}` ? 'text-emerald-400' : ''} />
+                                </button>
+                              </div>
                             </div>
                           )}
-                          
-                          {/* Action Button */}
+                        </div>
+
+                        {/* Footer Card */}
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80">
+                          <span className="text-slate-400 text-[11px] truncate">
+                            DNS: <strong className="text-slate-300 font-mono">{item.dns_name || 'ar.net'}</strong>
+                          </span>
+
                           {st === 'ready' ? (
-                            <a
-                              href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2 shadow-sm"
-                            >
-                              <Wifi size={14} />
-                              <span>Hubungkan ke WiFi Hotspot Sekarang</span>
-                            </a>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedQrVoucherId(expandedQrVoucherId === item.id ? null : item.id)}
+                                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
+                                title="Tampilkan QR code untuk scan kamera"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>{expandedQrVoucherId === item.id ? 'Tutup QR' : 'Lihat QR'}</span>
+                              </button>
+
+                              <a
+                                href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex items-center gap-1 shadow-sm shadow-emerald-600/30 text-xs shrink-0"
+                              >
+                                <span>Login WiFi</span>
+                                <ExternalLink size={12} />
+                              </a>
+                            </div>
                           ) : st === 'used_active' ? (
-                            <a
-                              href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2 shadow-sm"
-                            >
-                              <Wifi size={14} />
-                              <span>Login Ulang ke WiFi Hotspot</span>
-                            </a>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedQrVoucherId(expandedQrVoucherId === item.id ? null : item.id)}
+                                className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
+                                title="Tampilkan QR code untuk scan kamera"
+                              >
+                                <QrCode className="w-3.5 h-3.5" />
+                                <span>{expandedQrVoucherId === item.id ? 'Tutup QR' : 'Lihat QR'}</span>
+                              </button>
+
+                              <a
+                                href={`http://${getHotspotDomain(item.dns_name, item.hotspot_ip)}/login?username=${encodeURIComponent(item.username)}&password=${encodeURIComponent(item.password || item.username)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition flex items-center gap-1 shadow-sm shadow-cyan-600/30 text-xs shrink-0"
+                              >
+                                <span>Login Ulang</span>
+                                <ExternalLink size={12} />
+                              </a>
+                            </div>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => setActiveTab('buy')}
-                              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer mt-2"
-                            >
-                              <ShoppingCart size={14} />
-                              <span>Beli Voucher Baru</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-500 text-[11px] italic">
+                                {st === 'quota_exhausted' ? 'Kuota Habis' : st === 'uptime_exhausted' ? 'Uptime Habis' : 'Hangus'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab('buy')}
+                                className="px-3 py-1.5 bg-indigo-600/90 hover:bg-indigo-500 text-white rounded-xl font-bold transition flex items-center gap-1 text-xs shrink-0 cursor-pointer shadow-sm"
+                              >
+                                <span>{st === 'quota_exhausted' ? 'Isi Kuota' : 'Beli Lagi'}</span>
+                                <ArrowRight size={12} />
+                              </button>
+                            </div>
                           )}
                         </div>
+
+                        {/* Expanded QR Code */}
+                        {(st === 'ready' || st === 'used_active') && expandedQrVoucherId === item.id && (
+                          <div className="mt-2 p-4 bg-slate-950 rounded-xl border border-slate-800 flex flex-col items-center animate-in zoom-in-95 duration-150">
+                            <div className="bg-white p-2 rounded-xl shadow-lg border border-slate-200 inline-block">
+                              <VoucherQrCode
+                                code={item.username}
+                                password={item.password || item.username}
+                                dnsName={item.dns_name}
+                                hotspotIp={item.hotspot_ip}
+                                size={140}
+                              />
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-2 font-mono text-center">Scan kamera HP untuk login otomatis</p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -5528,6 +5726,10 @@ export default function CustomerPortal({
       {showVoucherSayaModal && (() => {
         const readyList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'ready');
         const usedActiveList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_active');
+        const exhaustedList = localPurchasedVouchers.filter((v: any) => {
+          const st = classifyVoucherState(v);
+          return st === 'quota_exhausted' || st === 'uptime_exhausted';
+        });
         const usedExpiredList = localPurchasedVouchers.filter((v: any) => classifyVoucherState(v) === 'used_expired');
 
         let displayedList: any[] = [];
@@ -5535,121 +5737,169 @@ export default function CustomerPortal({
           displayedList = readyList;
         } else if (voucherModalTab === 'used_active') {
           displayedList = usedActiveList;
+        } else if (voucherModalTab === 'exhausted') {
+          displayedList = exhaustedList;
         } else if (voucherModalTab === 'used_expired') {
           displayedList = usedExpiredList;
         } else if (voucherModalTab === 'used') {
-          displayedList = [...usedActiveList, ...usedExpiredList];
+          displayedList = [...usedActiveList, ...exhaustedList, ...usedExpiredList];
         } else {
-          // 'all': Siap Pakai -> Masih Aktif -> Expired
-          displayedList = [...readyList, ...usedActiveList, ...usedExpiredList];
+          // 'all'
+          displayedList = [...readyList, ...usedActiveList, ...exhaustedList, ...usedExpiredList];
         }
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-            <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={() => setShowVoucherSayaModal(false)} />
-            <div className="relative bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden text-slate-100 animate-fade-in flex flex-col max-h-[90vh]">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
               
-              {/* Header Modal */}
-              <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              {/* Modal Header */}
+              <div className="p-4 sm:p-6 border-b border-slate-800/80 flex items-center justify-between shrink-0 bg-slate-900/90">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0">
                     <Ticket className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-heading font-extrabold text-base sm:text-lg text-white flex items-center gap-2">
+                    <h3 className="font-heading font-black text-slate-100 text-base sm:text-lg flex items-center gap-2">
                       <span>Daftar Voucher Saya</span>
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/30">
+                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">
                         {localPurchasedVouchers.length} Total
                       </span>
                     </h3>
-                    <p className="text-xs text-slate-400">Pilih kode voucher untuk login WiFi. Informasi waktu login & masa aktif ditampilkan detail.</p>
+                    <p className="text-xs text-slate-400 mt-0.5 hidden sm:block">
+                      Riwayat voucher lengkap dengan masa aktif, kuota data, dan waktu pemakaian
+                    </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowVoucherSayaModal(false)}
-                  className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchMyPurchasedVouchers}
+                    className="p-2 text-slate-400 hover:text-amber-400 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                    title="Muat ulang daftar voucher"
+                  >
+                    <RefreshCw size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowVoucherSayaModal(false)}
+                    className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                    title="Tutup"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
-              {/* Filter Tabs: Semua, Belum Terpakai, Terpakai (Masih Aktif), Terpakai (Expired) */}
-              <div className="px-4 sm:px-6 pt-3 pb-2 border-b border-slate-800/80 bg-slate-950/40 shrink-0 flex items-center gap-2 overflow-x-auto scrollbar-none">
+              {/* Filter Tabs Header */}
+              <div className="px-4 sm:px-6 pt-3 pb-2 border-b border-slate-800/60 bg-slate-950/40 shrink-0 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
                 <button
                   type="button"
                   onClick={() => setVoucherModalTab('all')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     voucherModalTab === 'all'
-                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/20'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
                   }`}
                 >
                   <span>Semua ({localPurchasedVouchers.length})</span>
                 </button>
-
                 <button
                   type="button"
                   onClick={() => setVoucherModalTab('ready')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     voucherModalTab === 'ready' || voucherModalTab === 'active'
-                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/20'
-                      : 'bg-slate-900 border-slate-800 text-emerald-400/80 hover:text-emerald-300'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-emerald-400/80 hover:text-emerald-300 hover:bg-slate-800/50'
                   }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>Belum Terpakai ({readyList.length})</span>
                 </button>
-
                 <button
                   type="button"
                   onClick={() => setVoucherModalTab('used_active')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     voucherModalTab === 'used_active'
-                      ? 'bg-cyan-600 border-cyan-500 text-white shadow-md shadow-cyan-600/20'
-                      : 'bg-slate-900 border-slate-800 text-cyan-400 hover:text-cyan-300'
+                      ? 'bg-cyan-600 text-white shadow-sm'
+                      : 'text-cyan-400 hover:text-cyan-300 hover:bg-slate-800/50'
                   }`}
                 >
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  <span>Terpakai (Masih Aktif) ({usedActiveList.length})</span>
+                  <span>Masih Aktif ({usedActiveList.length})</span>
                 </button>
-
+                <button
+                  type="button"
+                  onClick={() => setVoucherModalTab('exhausted')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    voucherModalTab === 'exhausted'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-amber-400 hover:text-amber-300 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <Database className="w-3 h-3 text-amber-400" />
+                  <span>Kuota / Uptime Habis ({exhaustedList.length})</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setVoucherModalTab('used_expired')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     voucherModalTab === 'used_expired'
-                      ? 'bg-rose-900/80 border-rose-700 text-rose-200'
-                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+                      ? 'bg-rose-900/80 text-rose-200 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
                   }`}
                 >
-                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Terpakai (Expired) ({usedExpiredList.length})</span>
+                  <XCircle className="w-3 h-3 text-rose-400" />
+                  <span>Expired Waktu ({usedExpiredList.length})</span>
                 </button>
               </div>
 
-              {/* Voucher Cards Grid */}
-              <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-                {displayedList.length === 0 ? (
-                  <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800/80">
+              {/* Modal Body: Grid 3 Kolom di Desktop, 1 Kolom di HP */}
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+                {localPurchasedVouchers.length === 0 ? (
+                  <div className="text-center py-12 sm:py-16 space-y-3">
                     <Ticket className="w-12 h-12 text-slate-600 mx-auto" />
-                    <p className="text-sm text-slate-300 font-bold">Tidak Ada Voucher Pada Kategori Ini</p>
+                    <h4 className="text-base font-bold text-slate-300">Belum Ada Voucher</h4>
                     <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      {voucherModalTab === 'ready'
-                        ? 'Semua voucher yang Anda miliki telah dipakai. Silakan beli voucher baru di katalog!'
-                        : voucherModalTab === 'used_active'
-                        ? 'Tidak ada voucher yang sedang aktif berjalan saat ini.'
-                        : 'Belum ada riwayat voucher expired.'}
+                      Voucher yang Anda beli melalui portal akan otomatis tersimpan di sini.
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowVoucherSayaModal(false);
+                        setActiveTab('buy');
+                      }}
+                      className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-md inline-flex items-center gap-2"
+                    >
+                      <ShoppingCart size={14} />
+                      <span>Beli Voucher Sekarang</span>
+                    </button>
+                  </div>
+                ) : displayedList.length === 0 ? (
+                  <div className="text-center py-10 space-y-2 bg-slate-950/40 rounded-2xl border border-slate-800">
+                    <p className="text-xs text-slate-400 font-bold">Tidak ada voucher dalam tab ini</p>
+                    <button
+                      type="button"
+                      onClick={() => setVoucherModalTab('all')}
+                      className="text-xs text-indigo-400 hover:underline cursor-pointer font-bold"
+                    >
+                      Tampilkan Semua Voucher
+                    </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                     {displayedList.map((v: any, idx: number) => {
-                      const code = v.code || v.voucher_code || v.username;
+                      const code = v.username || v.code;
                       const pass = v.password;
                       const st = classifyVoucherState(v);
                       const isCopied = copiedVoucherCode === code;
                       const rem = getVoucherRemainingTime(v.expired_at);
+                      const quotaMb = v.quota_mb ? Number(v.quota_mb) : null;
+                      const bytesTotal = Number(v.bytes_total || 0);
+                      const quotaMaxBytes = quotaMb ? quotaMb * 1024 * 1024 : null;
+                      const quotaPercent = quotaMaxBytes && quotaMaxBytes > 0 
+                        ? Math.min(100, Math.round((bytesTotal / quotaMaxBytes) * 100))
+                        : null;
 
                       return (
                         <div
@@ -5659,6 +5909,10 @@ export default function CustomerPortal({
                               ? 'bg-gradient-to-b from-slate-900/90 to-slate-950 border-emerald-500/30 hover:border-emerald-500/60 shadow-lg shadow-emerald-950/20'
                               : st === 'used_active'
                               ? 'bg-gradient-to-b from-cyan-950/40 via-slate-900 to-slate-950 border-cyan-500/40 hover:border-cyan-400/70 shadow-lg shadow-cyan-950/20'
+                              : st === 'quota_exhausted'
+                              ? 'bg-gradient-to-b from-amber-950/30 via-slate-900 to-slate-950 border-amber-500/50 hover:border-amber-400'
+                              : st === 'uptime_exhausted'
+                              ? 'bg-gradient-to-b from-orange-950/30 via-slate-900 to-slate-950 border-orange-500/50 hover:border-orange-400'
                               : 'bg-slate-950/60 border-slate-800/80 opacity-70 hover:opacity-90'
                           }`}
                         >
@@ -5667,12 +5921,32 @@ export default function CustomerPortal({
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <span className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
-                                  st === 'ready' ? 'text-emerald-400' : st === 'used_active' ? 'text-cyan-400' : 'text-slate-500'
+                                  st === 'ready' 
+                                    ? 'text-emerald-400' 
+                                    : st === 'used_active' 
+                                    ? 'text-cyan-400' 
+                                    : st === 'quota_exhausted'
+                                    ? 'text-amber-400'
+                                    : st === 'uptime_exhausted'
+                                    ? 'text-orange-400'
+                                    : 'text-slate-500'
                                 }`}>
-                                  {st === 'ready' ? 'Voucher Siap Pakai' : st === 'used_active' ? 'Terpakai (Masih Aktif)' : 'Terpakai (Expired)'}
+                                  {st === 'ready' 
+                                    ? 'Voucher Siap Pakai' 
+                                    : st === 'used_active' 
+                                    ? 'Terpakai (Masih Aktif)' 
+                                    : st === 'quota_exhausted'
+                                    ? 'Kuota Habis'
+                                    : st === 'uptime_exhausted'
+                                    ? 'Uptime Habis'
+                                    : 'Terpakai (Expired)'}
                                 </span>
                                 <h4 className={`font-heading font-bold text-sm truncate ${
-                                  st === 'ready' ? 'text-white' : st === 'used_active' ? 'text-cyan-100' : 'text-slate-400'
+                                  st === 'ready' 
+                                    ? 'text-white' 
+                                    : st === 'used_active' 
+                                    ? 'text-cyan-100' 
+                                    : 'text-slate-400'
                                 }`}>
                                   {v.package_name || v.profile_name || 'Voucher Hotspot'}
                                 </h4>
@@ -5683,25 +5957,107 @@ export default function CustomerPortal({
                                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-xs'
                                   : st === 'used_active'
                                   ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40 shadow-xs animate-pulse'
+                                  : st === 'quota_exhausted'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs'
+                                  : st === 'uptime_exhausted'
+                                  ? 'bg-orange-500/20 text-orange-300 border-orange-500/40 shadow-xs'
                                   : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
                               }`}>
                                 {st === 'ready' ? (
                                   <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> SIAP PAKAI</>
                                 ) : st === 'used_active' ? (
                                   <><span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> MASIH AKTIF</>
+                                ) : st === 'quota_exhausted' ? (
+                                  <><Database className="w-3 h-3 text-amber-400" /> KUOTA HABIS</>
+                                ) : st === 'uptime_exhausted' ? (
+                                  <><Hourglass className="w-3 h-3 text-orange-400" /> UPTIME HABIS</>
                                 ) : (
                                   <><XCircle className="w-3 h-3 text-rose-400" /> EXPIRED</>
                                 )}
                               </span>
                             </div>
 
-                            {/* Remaining Time Banner for Active Vouchers */}
+                            {/* Banners */}
                             {st === 'used_active' && rem.text && (
                               <div className="p-2 bg-cyan-500/10 border border-cyan-500/30 rounded-xl flex items-center justify-between text-[11px] text-cyan-300">
                                 <span className="flex items-center gap-1 font-semibold">
                                   <Timer size={13} className="text-cyan-400" /> Sisa Masa Aktif:
                                 </span>
                                 <span className="font-mono font-bold text-cyan-200">{rem.text}</span>
+                              </div>
+                            )}
+
+                            {st === 'quota_exhausted' && (
+                              <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 flex items-start gap-1.5">
+                                <Database size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-bold">Kuota data telah habis</p>
+                                  {v.expired_at && (
+                                    <p className="text-[10px] text-amber-400/80">Masa aktif s/d {formatDateTimeWib(v.expired_at)}</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {st === 'uptime_exhausted' && (
+                              <div className="p-2 bg-orange-500/10 border border-orange-500/30 rounded-xl text-[11px] text-orange-300 flex items-start gap-1.5">
+                                <Hourglass size={13} className="text-orange-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-bold">Batas jam pakai (uptime) habis</p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Quota & Uptime Progress Box */}
+                            {(bytesTotal > 0 || quotaMb || v.uptime_seconds > 0) && (
+                              <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5 text-[11px]">
+                                {quotaMb && quotaMb > 0 ? (
+                                  <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-[10px]">
+                                      <span className="flex items-center gap-1 text-slate-400">
+                                        <Database size={10} className={st === 'quota_exhausted' ? 'text-amber-400' : 'text-cyan-400'} />
+                                        <span>Kuota:</span>
+                                      </span>
+                                      <span className="font-mono font-bold text-slate-200">
+                                        {formatBytesData(bytesTotal)} <span className="text-slate-500">/</span> {quotaMb >= 1024 ? `${(quotaMb/1024).toFixed(1)} GB` : `${quotaMb} MB`}
+                                        {quotaPercent !== null && <span className="text-slate-400 ml-1">(${quotaPercent}%)</span>}
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${
+                                          st === 'quota_exhausted' ? 'bg-amber-500' : (quotaPercent || 0) > 85 ? 'bg-rose-500' : 'bg-cyan-500'
+                                        }`}
+                                        style={{ width: `${quotaPercent || 0}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : bytesTotal > 0 ? (
+                                  <div className="flex items-center justify-between text-[10px]">
+                                    <span className="flex items-center gap-1 text-slate-400">
+                                      <Database size={10} className="text-cyan-400" />
+                                      <span>Data Terpakai:</span>
+                                    </span>
+                                    <span className="font-mono font-bold text-slate-200">
+                                      {formatBytesData(bytesTotal)} <span className="text-emerald-400 font-semibold">(Unlimited)</span>
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {v.uptime_seconds > 0 && (
+                                  <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-800/60">
+                                    <span className="flex items-center gap-1 text-slate-400">
+                                      <Timer size={10} className="text-indigo-400" />
+                                      <span>Uptime:</span>
+                                    </span>
+                                    <span className="font-mono font-bold text-slate-300">
+                                      {formatUptimeDuration(v.uptime_seconds)}
+                                      {v.uptime_limit && (
+                                        <span className="text-slate-500 font-normal"> / {v.uptime_limit.replace('PT','').toLowerCase()}</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             )}
 
@@ -5718,7 +6074,11 @@ export default function CustomerPortal({
                                   {pass && pass !== code ? 'Username' : 'Kode Voucher'}
                                 </span>
                                 <span className={`font-mono font-black text-sm tracking-wider truncate block ${
-                                  st === 'ready' ? 'text-emerald-300' : st === 'used_active' ? 'text-cyan-300' : 'text-slate-500 line-through'
+                                  st === 'ready' 
+                                    ? 'text-emerald-300' 
+                                    : st === 'used_active' 
+                                    ? 'text-cyan-300' 
+                                    : 'text-slate-500 line-through'
                                 }`}>
                                   {code}
                                 </span>
@@ -5748,58 +6108,66 @@ export default function CustomerPortal({
                             {/* Password jika ada dan berbeda dari kode */}
                             {pass && pass !== code && (
                               <div className="px-2.5 py-1.5 bg-slate-900/60 rounded-lg border border-slate-800 text-xs flex items-center justify-between">
-                                <span className="text-slate-400 text-[11px]">Password:</span>
-                                <strong className="font-mono text-slate-200">{pass}</strong>
+                                <span className="text-[10px] text-slate-400">Password:</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold text-slate-200">{pass}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(pass);
+                                      setCopiedVoucherCode(`pass-${v.id}`);
+                                      setTimeout(() => setCopiedVoucherCode(null), 2000);
+                                    }}
+                                    className="text-slate-400 hover:text-white transition p-0.5 cursor-pointer"
+                                    title="Salin password"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
                             )}
 
-                            {/* Waktu Login & Expired Details Box */}
-                            <div className={`p-2.5 rounded-xl border text-[11px] space-y-1.5 ${
-                              st === 'used_active'
-                                ? 'bg-cyan-950/30 border-cyan-500/20 text-slate-300'
-                                : st === 'used_expired'
-                                ? 'bg-slate-900/80 border-slate-800 text-slate-400'
-                                : 'bg-slate-950/50 border-slate-800/80 text-slate-400'
-                            }`}>
+                            {/* Info Waktu Login Perdana & Expired */}
+                            <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] space-y-1 text-slate-400">
                               {v.first_login_at ? (
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="flex items-center gap-1 text-slate-400">
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
                                     <LogIn size={11} className={st === 'used_active' ? 'text-cyan-400' : 'text-slate-500'} />
-                                    <span>Login Pertama:</span>
+                                    <span>Login:</span>
                                   </span>
-                                  <span className={`font-mono font-bold truncate ${st === 'used_active' ? 'text-cyan-300' : 'text-slate-300'}`}>
+                                  <span className={`font-mono font-bold ${st === 'used_active' ? 'text-cyan-300' : 'text-slate-300'}`}>
                                     {formatDateTimeWib(v.first_login_at)}
                                   </span>
                                 </div>
                               ) : (
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="flex items-center gap-1 text-slate-400">
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
                                     <Calendar size={11} className="text-emerald-400" />
-                                    <span>Waktu Pembelian:</span>
+                                    <span>Beli:</span>
                                   </span>
-                                  <span className="font-mono text-slate-300 truncate">
+                                  <span className="font-mono text-slate-300">
                                     {formatDateTimeWib(v.date || v.sold_at)}
                                   </span>
                                 </div>
                               )}
 
                               {v.expired_at ? (
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="flex items-center gap-1 text-slate-400">
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
                                     <Hourglass size={11} className={st === 'used_active' ? 'text-amber-400' : 'text-rose-400'} />
-                                    <span>Expired Pada:</span>
+                                    <span>Kedaluwarsa:</span>
                                   </span>
-                                  <span className={`font-mono font-bold truncate ${st === 'used_active' ? 'text-amber-300' : 'text-rose-300'}`}>
+                                  <span className={`font-mono font-bold ${st === 'used_active' ? 'text-amber-300' : 'text-rose-300'}`}>
                                     {formatDateTimeWib(v.expired_at)}
                                   </span>
                                 </div>
                               ) : st === 'ready' ? (
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="flex items-center gap-1 text-slate-400">
+                                <div className="flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
                                     <Timer size={11} className="text-slate-500" />
                                     <span>Masa Berlaku:</span>
                                   </span>
-                                  <span className="font-mono text-emerald-400 font-semibold truncate">
+                                  <span className="font-mono text-emerald-400 font-semibold">
                                     {v.validity_iso ? formatValidityDisplay(v.validity_iso) : 'Mulai saat pertama login'}
                                   </span>
                                 </div>
@@ -5816,7 +6184,7 @@ export default function CustomerPortal({
                                 <button
                                   type="button"
                                   onClick={() => setExpandedQrVoucherId(expandedQrVoucherId === v.id ? null : v.id)}
-                                  className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
+                                  className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer transition text-xs"
                                   title="Tampilkan QR code untuk scan kamera"
                                 >
                                   <QrCode className="w-3.5 h-3.5" />
@@ -5859,7 +6227,9 @@ export default function CustomerPortal({
                               </div>
                             ) : (
                               <div className="flex items-center gap-2">
-                                <span className="text-slate-500 italic text-[10px]">Hangus</span>
+                                <span className="text-slate-500 italic text-[10px]">
+                                  {st === 'quota_exhausted' ? 'Kuota Habis' : st === 'uptime_exhausted' ? 'Uptime Habis' : 'Hangus'}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -5868,7 +6238,7 @@ export default function CustomerPortal({
                                   }}
                                   className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition cursor-pointer flex items-center gap-1"
                                 >
-                                  <span>Beli Lagi</span>
+                                  <span>{st === 'quota_exhausted' ? 'Isi Kuota' : 'Beli Lagi'}</span>
                                   <ArrowRight size={12} />
                                 </button>
                               </div>
@@ -5876,18 +6246,18 @@ export default function CustomerPortal({
                           </div>
 
                           {/* Expanded QR Code Display */}
-                          {st !== 'used_expired' && expandedQrVoucherId === v.id && (
+                          {(st === 'ready' || st === 'used_active') && expandedQrVoucherId === v.id && (
                             <div className="mt-3 p-3 bg-slate-950 rounded-xl border border-cyan-500/30 flex flex-col items-center animate-in zoom-in-95 duration-150">
                               <div className="bg-white p-2 rounded-xl shadow-lg border border-slate-200 inline-block">
                                 <VoucherQrCode
-                                  text={`http://${getHotspotDomain(v.dns_name, v.hotspot_ip)}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(pass || code)}`}
+                                  code={code}
+                                  password={pass || code}
+                                  dnsName={v.dns_name}
+                                  hotspotIp={v.hotspot_ip}
                                   size={130}
                                 />
                               </div>
-                              <span className="text-[10px] font-bold text-cyan-300 mt-2 flex items-center gap-1.5">
-                                <QrCode size={11} className="text-cyan-400" />
-                                Arahkan kamera HP ke QR ini untuk langsung login otomatis
-                              </span>
+                              <p className="text-[10px] text-slate-400 mt-2 font-mono text-center">Scan kamera HP untuk login otomatis</p>
                             </div>
                           )}
                         </div>
@@ -5897,10 +6267,10 @@ export default function CustomerPortal({
                 )}
               </div>
 
-              {/* Modal Footer Button */}
-              <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3 shrink-0">
-                <span className="text-xs text-slate-400 hidden sm:inline">
-                  Klik tombol <strong>Salin</strong> lalu masukkan ke halaman login WiFi Anda
+              {/* Modal Footer */}
+              <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <span className="text-xs text-slate-400 text-center sm:text-left">
+                  Menampilkan <strong className="text-slate-200">{displayedList.length}</strong> dari <strong className="text-slate-200">{localPurchasedVouchers.length}</strong> voucher Anda
                 </span>
                 <button
                   type="button"

@@ -143,6 +143,15 @@ export async function initDatabaseSchema() {
         mac_address VARCHAR(64),
         ip_address VARCHAR(64),
         expired_at TIMESTAMP WITH TIME ZONE,
+        bytes_in BIGINT DEFAULT 0,
+        bytes_out BIGINT DEFAULT 0,
+        bytes_total BIGINT DEFAULT 0,
+        uptime_seconds INT DEFAULT 0,
+        uptime_formatted VARCHAR(64),
+        last_logout_at TIMESTAMP WITH TIME ZONE,
+        logout_cause VARCHAR(64),
+        is_quota_exhausted BOOLEAN DEFAULT false,
+        is_uptime_exhausted BOOLEAN DEFAULT false,
         comment TEXT,
         sold_to VARCHAR(255),
         sold_at TIMESTAMP WITH TIME ZONE,
@@ -352,7 +361,16 @@ export async function initDatabaseSchema() {
       ADD COLUMN IF NOT EXISTS invoice_id VARCHAR(64),
       ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(64),
       ADD COLUMN IF NOT EXISTS profile_name VARCHAR(128),
-      ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP WITH TIME ZONE;
+      ADD COLUMN IF NOT EXISTS expired_at TIMESTAMP WITH TIME ZONE,
+      ADD COLUMN IF NOT EXISTS bytes_in BIGINT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS bytes_out BIGINT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS bytes_total BIGINT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS uptime_seconds INT DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS uptime_formatted VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS last_logout_at TIMESTAMP WITH TIME ZONE,
+      ADD COLUMN IF NOT EXISTS logout_cause VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS is_quota_exhausted BOOLEAN DEFAULT false,
+      ADD COLUMN IF NOT EXISTS is_uptime_exhausted BOOLEAN DEFAULT false;
 
       -- Alter & Patch invoices table for voucher relation
       ALTER TABLE invoices

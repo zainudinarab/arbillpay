@@ -9,6 +9,7 @@ import {
   listMyPurchasedVouchers,
   getFlashSaleBuyers,
   handleVoucherFirstLogin,
+  handleVoucherLogout,
   syncVouchersToMikrotik,
   inspectMikrotikStatus
 } from '../controllers/voucherController.js';
@@ -18,6 +19,10 @@ const router = Router();
 // Endpoint webhook on-login pertama kali dari MikroTik RouterOS (/tool fetch)
 router.get('/first-login', handleVoucherFirstLogin);
 router.post('/first-login', handleVoucherFirstLogin);
+
+// Endpoint webhook on-logout / pembaruan kuota & uptime dari MikroTik RouterOS (/tool fetch)
+router.get('/on-logout', handleVoucherLogout);
+router.post('/on-logout', handleVoucherLogout);
 
 router.get('/', listVouchers);
 router.get('/status', getVoucherStatus);
