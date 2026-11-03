@@ -18,6 +18,10 @@ services:
     volumes:
       # Mount folder public: Perubahan myqr, gambar, dan aset statis langsung aktif seketika tanpa perlu build ulang Docker
       - ./public:/app/public
+      # Mount dist & server: Memungkinkan update kilat (< 1 detik) via 'docker compose restart arbill' setelah git pull
+      - ./dist:/app/dist
+      - ./server:/app/server
+      - ./server.ts:/app/server.ts
     # Memuat seluruh kredensial & variabel rahasia dari file .env
     env_file:
       - .env
