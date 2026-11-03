@@ -108,7 +108,29 @@ function getVoucherRemainingTime(expiredAt?: string | Date | null): { text: stri
   return { text: `Sisa ${minutes} menit`, isNearExpired: true, isExpired: false };
 }
 
-function classifyVoucherState(v: any): 'ready' | 'used_active' | 'used_expired' {
+function formatBytesData(bytes?: number | bigint | null): string {
+  if (!bytes || Number(bytes) <= 0) return '0 MB';
+  const b = Number(bytes);
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function formatUptimeDuration(seconds?: number | null): string {
+  if (!seconds || seconds <= 0) return '0 mnt';
+  const s = Number(seconds);
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+
+  if (days > 0) return `${days}h ${hours}j ${minutes}m`;
+  if (hours > 0) return `${hours} jam ${minutes} mnt`;
+  return `${minutes} menit`;
+}
+
+function classifyVoucherState(v: any): 'ready' | 'used_active' | 'quota_exhausted' | 'uptime_exhausted' | 'used_expired' {
+  if (v.usage_state === 'quota_exhausted' || v.is_quota_exhausted) return 'quota_exhausted';
+  if (v.usage_state === 'uptime_exhausted' || v.is_uptime_exhausted) return 'uptime_exhausted';
   if (v.usage_state === 'ready') return 'ready';
   if (v.usage_state === 'used_active') return 'used_active';
   if (v.usage_state === 'used_expired') return 'used_expired';
@@ -117,6 +139,11 @@ function classifyVoucherState(v: any): 'ready' | 'used_active' | 'used_expired' 
   const rawStatus = (v.raw_status || v.status || '').toLowerCase();
   const firstLogin = v.first_login_at || v.first_login;
   const expiredAt = v.expired_at;
+
+  if (v.quota_mb && Number(v.quota_mb) > 0 && v.bytes_total) {
+    const maxBytes = Number(v.quota_mb) * 1024 * 1024;
+    if (Number(v.bytes_total) >= maxBytes) return 'quota_exhausted';
+  }
 
   if (rawStatus === 'expired' || (expiredAt && new Date(expiredAt).getTime() <= now)) {
     return 'used_expired';

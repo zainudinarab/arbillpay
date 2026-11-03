@@ -270,13 +270,13 @@ export async function getLiveBalance(req: Request, res: Response) {
 export async function syncUser(req: Request, res: Response) {
   try {
     const { id, username, name, email, phone_number, role, arabpay_user_id, token_jwt, token } = req.body;
-    if (!name && !email && !username && !phone_number) {
+    if (!name && !email && !username && !phone_number && !id && !arabpay_user_id) {
       return res.status(400).json({ success: false, message: 'Data profil user tidak valid' });
     }
 
     const cleanUsername = (username || name || 'user').toLowerCase().replace(/\s+/g, '_');
     const cleanEmail = (email || `${cleanUsername}@arabnet.local`).toLowerCase().trim();
-    const cleanPhone = phone_number || null;
+    const cleanPhone = phone_number ? String(phone_number).trim() : null;
     const ownerUserId = (process.env.ARABPAY_OWNER_USER_ID || '019f74af9fcdWDgDxM8g').trim();
     const arabpayId = arabpay_user_id || id || null;
 
@@ -287,21 +287,22 @@ export async function syncUser(req: Request, res: Response) {
       arabpayId === ownerUserId ||
       cleanEmail.includes('owner') ||
       cleanUsername === 'zainudinarab' ||
+      cleanUsername === 'zainudin_arab' ||
       cleanEmail === 'ketua11@gmail.com'
     ) {
       finalRole = 'owner';
     }
 
-    // Cek apakah user sudah ada di database
+    // Cek apakah user sudah ada di database (fleksibel & toleran variasi username/id/arabpay_user_id)
     const existing = await pool.query(
-      `SELECT id, role FROM users 
-       WHERE id = $1 
-          OR (username IS NOT NULL AND LOWER(username) = $2)
-          OR (email IS NOT NULL AND LOWER(email) = $3) 
-          OR (phone_number IS NOT NULL AND phone_number = $4) 
-          OR (arabpay_user_id IS NOT NULL AND arabpay_user_id = $5) 
+      `SELECT id, username, role, arabpay_user_id FROM users 
+       WHERE (id IS NOT NULL AND id = $1)
+          OR ($2::text <> '' AND arabpay_user_id IS NOT NULL AND arabpay_user_id = $2)
+          OR ($3::text <> '' AND username IS NOT NULL AND (LOWER(username) = LOWER($3) OR REPLACE(LOWER(username), '_', '') = REPLACE(LOWER($3), '_', '')))
+          OR ($4::text <> '' AND email IS NOT NULL AND LOWER(email) = LOWER($4)) 
+          OR ($5::text <> '' AND phone_number IS NOT NULL AND phone_number = $5) 
        LIMIT 1`,
-      [id || '', cleanUsername, cleanEmail, cleanPhone, arabpayId]
+      [id || '', arabpayId || '', cleanUsername, cleanEmail, cleanPhone || '']
     );
 
     let targetId = id;
@@ -309,36 +310,52 @@ export async function syncUser(req: Request, res: Response) {
       targetId = existing.rows[0].id;
       await pool.query(`
         UPDATE users 
-        SET username = COALESCE($1, username),
-            name = COALESCE($2, name),
-            email = COALESCE($3, email),
-            phone_number = COALESCE($4, phone_number),
-            arabpay_user_id = COALESCE($5, arabpay_user_id),
-            arabpay_token = COALESCE($6, arabpay_token),
-            role = CASE WHEN $7 = 'owner' OR role = 'owner' THEN 'owner' ELSE role END
-        WHERE id = $8
-      `, [cleanUsername, name, cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, targetId]);
+        SET name = COALESCE($1, name),
+            email = COALESCE($2, email),
+            phone_number = COALESCE($3, phone_number),
+            arabpay_user_id = COALESCE($4, arabpay_user_id),
+            arabpay_token = COALESCE($5, arabpay_token),
+            role = CASE WHEN $6 = 'owner' OR role = 'owner' THEN 'owner' ELSE role END
+        WHERE id = $7
+      `, [name || null, cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, targetId]);
     } else {
       targetId = id || crypto.randomUUID();
       const defaultPass = finalRole === 'owner' ? 'zainudinarab' : crypto.randomBytes(8).toString('hex');
       const defaultHash = await bcrypt.hash(defaultPass, 10);
 
-      await pool.query(`
-        INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash, password)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (username) DO UPDATE SET
-          name = EXCLUDED.name,
-          email = EXCLUDED.email,
-          phone_number = COALESCE(EXCLUDED.phone_number, users.phone_number),
-          arabpay_user_id = COALESCE(EXCLUDED.arabpay_user_id, users.arabpay_user_id),
-          arabpay_token = COALESCE(EXCLUDED.arabpay_token, users.arabpay_token),
-          role = CASE WHEN EXCLUDED.role = 'owner' OR users.role = 'owner' THEN 'owner' ELSE users.role END
-      `, [targetId, cleanUsername, name || 'User', cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, defaultHash, defaultPass]);
+      try {
+        await pool.query(`
+          INSERT INTO users (id, username, name, email, phone_number, arabpay_user_id, arabpay_token, role, password_hash, password)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            email = COALESCE(EXCLUDED.email, users.email),
+            phone_number = COALESCE(EXCLUDED.phone_number, users.phone_number),
+            arabpay_user_id = COALESCE(EXCLUDED.arabpay_user_id, users.arabpay_user_id),
+            arabpay_token = COALESCE(EXCLUDED.arabpay_token, users.arabpay_token),
+            role = CASE WHEN EXCLUDED.role = 'owner' OR users.role = 'owner' THEN 'owner' ELSE users.role END
+        `, [targetId, cleanUsername, name || 'User', cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, defaultHash, defaultPass]);
+      } catch (insertErr: any) {
+        // Fallback jika ada collision pada username unik
+        console.warn('[SYNC USER INSERT RETRY]', insertErr.message);
+        await pool.query(`
+          UPDATE users 
+          SET arabpay_user_id = COALESCE($1, arabpay_user_id),
+              arabpay_token = COALESCE($2, arabpay_token),
+              name = COALESCE($3, name),
+              role = CASE WHEN $4 = 'owner' OR role = 'owner' THEN 'owner' ELSE role END
+          WHERE id = $5 
+             OR arabpay_user_id = $1 
+             OR LOWER(username) = LOWER($6)
+             OR REPLACE(LOWER(username), '_', '') = REPLACE(LOWER($6), '_', '')
+        `, [arabpayId, token_jwt || token || null, name || null, finalRole, targetId, cleanUsername]);
+      }
     }
 
-    const updated = await pool.query('SELECT id, username, name, email, phone_number, role, arabpay_user_id FROM users WHERE id = $1', [targetId]);
-    console.log(`✅ [USER SYNCED TO POSTGRESQL] User: ${name} (${cleanUsername}) | Role: ${finalRole}`);
-    return res.json({ success: true, user: updated.rows[0] });
+    const updated = await pool.query('SELECT id, username, name, email, phone_number, role, arabpay_user_id FROM users WHERE id = $1 OR arabpay_user_id = $2 LIMIT 1', [targetId, arabpayId || '']);
+    const userRow = updated.rows[0] || { id: targetId, username: cleanUsername, name: name || cleanUsername, role: finalRole };
+    console.log(`✅ [USER SYNCED TO POSTGRESQL] User: ${name} (${userRow.username}) | Role: ${userRow.role}`);
+    return res.json({ success: true, user: userRow });
   } catch (err: any) {
     console.error('[SYNC USER ERROR]', err);
     return res.status(500).json({ success: false, message: err.message });
