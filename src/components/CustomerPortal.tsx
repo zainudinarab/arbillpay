@@ -907,105 +907,34 @@ export default function CustomerPortal({
     };
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
 
-  // Fetch LIVE balance directly from ArabPay API
+  // Fetch LIVE balance directly via Arbill Backend S2S Proxy
   const fetchLiveArabPayBalance = async () => {
     if (!currentUser) return;
     setIsRefreshingBalance(true);
     try {
-      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
-      const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-      const uId = currentUser.arabpay_user_id || currentUser.id || '019f74af9fcdWDgDxM8g';
-
+      const uId = currentUser.arabpay_user_id || currentUser.id || '';
       let fetchedBalance: number | null = null;
 
-      // 1. Try GET /api/v1/s2s/users/detail?user_id=... (Exact endpoint from wallet-service router.go line 85)
+      // Panggil Proxy Backend Arbill /api/auth/live-balance (S2S aman dari server ke ArabPay)
       try {
-        const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-          'raw',
-          enc.encode(clientSecret),
-          { name: 'HMAC', hash: 'SHA-256' },
-          false,
-          ['sign']
-        );
-        const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
-        const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const apiUrl = getApiUrl();
+        if (apiUrl && uId) {
+          const proxyRes = await fetch(`${apiUrl}/api/auth/live-balance?userId=${encodeURIComponent(uId)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          }).catch(() => null);
 
-        const getRes = await fetch(`https://arabpay.my.id/api/v1/users/detail?user_id=${encodeURIComponent(uId)}`, {
-          method: 'GET',
-          headers: {
-            'X-Client-ID': clientId,
-            'X-Timestamp': timestamp,
-            'X-Signature': getSignature,
-            'Content-Type': 'application/json'
-          }
-        }).catch(() => null);
-
-        if (getRes && getRes.ok) {
-          const gData = await getRes.json();
-          if (gData) {
-            const val = gData.balance ?? gData.arabpay_balance ?? gData.wallet_balance ?? gData.saldo ?? gData.data?.balance ?? gData.data?.saldo;
-            if (val !== undefined && val !== null) {
-              fetchedBalance = Number(val);
+          if (proxyRes && proxyRes.ok) {
+            const pData = await proxyRes.json();
+            if (pData && pData.success && pData.balance !== undefined && pData.balance !== null) {
+              fetchedBalance = Number(pData.balance);
             }
           }
         }
-      } catch (getErr) { }
-
-      // 2. Try GET /api/v1/wallet/balance?user_id=... (Exact endpoint from wallet-service router.go line 54)
-      if (fetchedBalance === null || isNaN(fetchedBalance)) {
-        try {
-          const enc = new TextEncoder();
-          const key = await crypto.subtle.importKey(
-            'raw',
-            enc.encode(clientSecret),
-            { name: 'HMAC', hash: 'SHA-256' },
-            false,
-            ['sign']
-          );
-          const getSigBuf = await crypto.subtle.sign('HMAC', key, enc.encode('' + timestamp));
-          const getSignature = Array.from(new Uint8Array(getSigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-          const token = currentUser?.token || localStorage.getItem('arabpay_token');
-          const headers: Record<string, string> = {
-            'X-Client-ID': clientId,
-            'X-Timestamp': timestamp,
-            'X-Signature': getSignature,
-            'Content-Type': 'application/json'
-          };
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-
-          const balRes = await fetch(`https://arabpay.my.id/api/v1/wallet/balance?user_id=${encodeURIComponent(uId)}&_t=${Date.now()}`, {
-            method: 'GET',
-            headers,
-            cache: 'no-store'
-          }).catch(() => null);
-
-          if (balRes && balRes.ok) {
-            const bData = await balRes.json();
-            if (bData) {
-              const val = bData.balance ?? bData.arabpay_balance ?? bData.wallet_balance ?? bData.saldo ?? bData.data?.balance;
-              if (val !== undefined && val !== null) {
-                fetchedBalance = Number(val);
-              }
-              if (bData.fee_bearer !== undefined) {
-                setArabpayFeeBearer(bData.fee_bearer);
-              }
-              if (bData.service_fee !== undefined) {
-                setArabpayServiceFee(Number(bData.service_fee));
-              } else {
-                setArabpayServiceFee(bData.fee_bearer === 'customer' ? 200 : 0);
-              }
-            }
-          }
-        } catch (balErr) { }
-      }
+      } catch (proxyErr) {}
 
       if (fetchedBalance !== null && !isNaN(fetchedBalance)) {
-        console.log('✅ [ARABPAY LIVE BALANCE] Successfully extracted live balance from ArabPay Server:', fetchedBalance);
+        console.log('✅ [ARABPAY LIVE BALANCE] Successfully updated balance from backend proxy:', fetchedBalance);
         onLoginSuccess({
           ...currentUser,
           arabpay_balance: fetchedBalance
