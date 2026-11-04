@@ -34,32 +34,63 @@ export default function HeaderBar({
     return typeof currentUser?.arabpay_balance === 'number' ? currentUser.arabpay_balance : null;
   });
 
-  // Fetch LIVE balance directly from ArabPay via S2S Proxy
+  // Fetch LIVE balance directly from ArabPay via S2S Proxy & SSE Live Stream
   useEffect(() => {
     const uId = currentUser?.arabpay_user_id || currentUser?.id;
     if (!uId) return;
 
     let isMounted = true;
+    let eventSource: EventSource | null = null;
+
+    const updateBalanceState = (newBal: number) => {
+      if (!isMounted) return;
+      setLiveBalance(newBal);
+      const raw = localStorage.getItem('arbil_current_user');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          parsed.arabpay_balance = newBal;
+          localStorage.setItem('arbil_current_user', JSON.stringify(parsed));
+        } catch (e) {}
+      }
+      try {
+        window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: newBal }));
+      } catch (e) {}
+    };
+
     const fetchBalance = async () => {
       try {
         const res = await fetch(`/api/auth/live-balance?userId=${encodeURIComponent(uId)}`);
         const data = await res.json();
-        if (data.success && typeof data.balance === 'number' && isMounted) {
-          setLiveBalance(data.balance);
-          const raw = localStorage.getItem('arbil_current_user');
-          if (raw) {
-            try {
-              const parsed = JSON.parse(raw);
-              parsed.arabpay_balance = data.balance;
-              localStorage.setItem('arbil_current_user', JSON.stringify(parsed));
-            } catch (e) {}
-          }
+        if (data.success && typeof data.balance === 'number') {
+          updateBalanceState(data.balance);
         }
       } catch (err) {}
     };
 
     fetchBalance();
 
+    // 1. Real-time Server-Sent Events (SSE) Stream
+    try {
+      const arabpayUrl = (import.meta as any).env?.VITE_ARABPAY_URL || 'https://arabpay.my.id';
+      eventSource = new EventSource(`${arabpayUrl}/api/v1/wallet/stream?user_id=${encodeURIComponent(uId)}`);
+
+      eventSource.addEventListener('balance_update', (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          const rawBal = data?.balance ?? data?.arabpay_balance;
+          if (rawBal !== undefined && rawBal !== null) {
+            updateBalanceState(Number(rawBal));
+          }
+        } catch (e) {}
+      });
+
+      eventSource.onerror = () => {
+        // EventSource will automatically attempt reconnection
+      };
+    } catch (err) {}
+
+    // 2. Window focus & 15s Polling Fallback
     window.addEventListener('focus', fetchBalance);
     const interval = setInterval(fetchBalance, 15000);
 
@@ -67,6 +98,9 @@ export default function HeaderBar({
       isMounted = false;
       window.removeEventListener('focus', fetchBalance);
       clearInterval(interval);
+      if (eventSource) {
+        eventSource.close();
+      }
     };
   }, [currentUser?.arabpay_user_id, currentUser?.id]);
 

@@ -1450,7 +1450,7 @@ const safeFormatDate = (val: any): string => {
                       </div>
 
                       <div className="inline-block bg-emerald-100/80 border border-emerald-200 text-emerald-800 font-mono font-bold text-[11px] px-2.5 py-0.5 rounded-lg">
-                        Saldo Aktif: Rp {(currentUser?.arabpay_balance ?? 1692700).toLocaleString('id-ID')}
+                        Saldo Aktif: Rp {(currentUser?.arabpay_balance ?? 0).toLocaleString('id-ID')}
                       </div>
 
                       <p className="text-[11px] text-slate-400 leading-tight">

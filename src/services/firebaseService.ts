@@ -691,7 +691,7 @@ export const verifyOwnerLoginWithFirestore = async (identity: string, pass: stri
             phone_number: userDocData.phone_number || userDocData.phone || '',
             role: 'owner',
             arabpay_user_id: userDocData.id || ownerUserId || 'owner',
-            arabpay_balance: userDocData.arabpay_balance || 150000
+            arabpay_balance: typeof userDocData.arabpay_balance === 'number' ? userDocData.arabpay_balance : 0
           }
         };
       }

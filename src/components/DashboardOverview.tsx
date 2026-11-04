@@ -46,6 +46,25 @@ export default function DashboardOverview({
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; month: string; value: number } | null>(null);
 
+  const [arabpayBalance, setArabpayBalance] = useState<number>(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem('arbil_current_user') || '{}');
+      return typeof u?.arabpay_balance === 'number' ? u?.arabpay_balance : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    const handleBalanceUpdate = (e: any) => {
+      if (typeof e.detail === 'number') {
+        setArabpayBalance(e.detail);
+      }
+    };
+    window.addEventListener('arabpay_balance_update', handleBalanceUpdate);
+    return () => window.removeEventListener('arabpay_balance_update', handleBalanceUpdate);
+  }, []);
+
   // Filter invoices for display in recent
   const filteredRecentInvoices = invoices
     .filter(inv => !inv.isArchived)
@@ -235,7 +254,7 @@ export default function DashboardOverview({
                 </span>
               </div>
               <h2 className="text-2xl font-sans font-black tracking-tight mt-1">
-                Rp {((typeof window !== 'undefined' && typeof JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance === 'number' ? JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance : 0)).toLocaleString('id-ID')}
+                Rp {arabpayBalance.toLocaleString('id-ID')}
               </h2>
             </div>
             <div className="flex items-center justify-between mt-4">
