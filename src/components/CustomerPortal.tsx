@@ -2355,9 +2355,10 @@ export default function CustomerPortal({
 
   const renderWalletSection = (section: CustomerPortalSection) => {
     return (
-      <div key={section.id} className="w-full">
+      <div key={section.id} className="w-full space-y-4">
         {currentUser ? (
-          <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 border border-emerald-500/40 text-white shadow-2xl shadow-emerald-950/40 overflow-hidden transition-all duration-300">
+          <>
+            <div className="relative p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 border border-emerald-500/40 text-white shadow-2xl shadow-emerald-950/40 overflow-hidden transition-all duration-300">
             {/* Holographic metallic background glows */}
             <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -2486,6 +2487,8 @@ export default function CustomerPortal({
               </div>
             </div>
           </div>
+          {renderDashboardStats()}
+        </>
         ) : (
           <div className={`p-6 sm:p-7 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${
             isLight ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border-emerald-500/30 text-white'
@@ -3280,6 +3283,7 @@ export default function CustomerPortal({
             {sortedSections.filter(s => s.enabled).map((section) => {
               switch (section.id) {
                 case 'wallet_widget':
+                  return renderWalletSection(section);
                 case 'dashboard_stats':
                   return <div key={section.id}>{renderDashboardStats()}</div>;
                 case 'announcement':
