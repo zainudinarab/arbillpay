@@ -1,5 +1,30 @@
 import crypto from 'crypto';
 
+export async function getArabPayCredentials() {
+  let clientId = process.env.ARABPAY_CLIENT_ID || '';
+  let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+  let panelUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+
+  try {
+    const { pool } = await import('../config/db.js');
+    if (pool) {
+      const dbCreds = await pool.query(
+        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_client_id', 'arabpay_client_secret', 'arabpay_panel_url')"
+      );
+      for (const row of dbCreds.rows) {
+        if (row.key === 'arabpay_client_id' && row.value) clientId = row.value.trim();
+        if (row.key === 'arabpay_client_secret' && row.value) clientSecret = row.value.trim();
+        if (row.key === 'arabpay_panel_url' && row.value) panelUrl = row.value.trim();
+      }
+    }
+  } catch (e) {}
+
+  if (!clientId) clientId = 'AP24228873';
+  if (!clientSecret) clientSecret = '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+
+  return { clientId, clientSecret, panelUrl };
+}
+
 export function generateArabPayHeaders(bodyStr: string, customSecret?: string, customClientId?: string) {
   const clientId = customClientId || process.env.ARABPAY_CLIENT_ID || 'AP24228873';
   const clientSecret = customSecret || process.env.ARABPAY_CLIENT_SECRET || '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
@@ -150,32 +175,75 @@ export async function createArabPayPaymentOrder(params: {
 /**
  * Fetch LIVE balance directly from ArabPay API for a user
  */
-export async function fetchLiveArabPayBalance(tokenOrUserId: string) {
-  const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
-  const headers = generateArabPayHeaders('');
+export async function fetchLiveArabPayBalance(input: string | { token?: string; userId?: string; phone?: string }) {
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl;
+  const headers = generateArabPayHeaders('', clientSecret, clientId);
+
+  let token = typeof input === 'string' ? (input.startsWith('eyJ') ? input : '') : (input.token || '');
+  let userId = typeof input === 'string' ? (!input.startsWith('eyJ') ? input : '') : (input.userId || '');
+  const phone = typeof input === 'object' ? (input.phone || '') : '';
 
   try {
     // 1. Try with Bearer token header if token is provided
-    let res = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/balance`, {
-      headers: {
-        ...headers,
-        'Authorization': `Bearer ${tokenOrUserId}`
-      }
-    });
+    if (token) {
+      const res = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/balance`, {
+        headers: {
+          ...headers,
+          'Authorization': `Bearer ${token}`
+        }
+      });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, balance: Number(data.balance ?? data.data?.balance ?? 0) };
+      if (res.ok) {
+        const data = await res.json();
+        const bal = data.balance ?? data.data?.balance;
+        if (bal !== undefined && bal !== null) {
+          return { success: true, balance: Number(bal) };
+        }
+      }
     }
 
-    // 2. Try S2S endpoint with user_id parameter
-    res = await fetch(`${arabpayBaseUrl}/api/v1/users/detail?user_id=${encodeURIComponent(tokenOrUserId)}`, {
-      headers
-    });
+    // 2. Try S2S endpoint with user_id parameter if userId available
+    if (userId) {
+      // 2a. Try /api/v1/users/detail?user_id=
+      let res = await fetch(`${arabpayBaseUrl}/api/v1/users/detail?user_id=${encodeURIComponent(userId)}`, {
+        headers
+      });
 
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, balance: Number(data.balance ?? data.data?.balance ?? 0) };
+      if (res.ok) {
+        const data = await res.json();
+        const bal = data.balance ?? data.wallet?.balance ?? data.data?.balance;
+        if (bal !== undefined && bal !== null) {
+          return { success: true, balance: Number(bal) };
+        }
+      }
+
+      // 2b. Try /api/v1/checkout/init?client_id=...&user_id=...
+      res = await fetch(`${arabpayBaseUrl}/api/v1/checkout/init?client_id=${encodeURIComponent(clientId)}&user_id=${encodeURIComponent(userId)}`, {
+        headers
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.user_balance !== undefined && data.user_balance !== null) {
+          return { success: true, balance: Number(data.user_balance) };
+        }
+      }
+    }
+
+    // 3. Try with phone number if available
+    const targetPhone = phone || (userId && !userId.includes('-') && /^\d+$/.test(userId) ? userId : '');
+    if (targetPhone) {
+      const res = await fetch(`${arabpayBaseUrl}/api/v1/checkout/init?client_id=${encodeURIComponent(clientId)}&user_id=${encodeURIComponent(targetPhone)}`, {
+        headers
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.user_balance !== undefined && data.user_balance !== null) {
+          return { success: true, balance: Number(data.user_balance) };
+        }
+      }
     }
   } catch (err: any) {
     console.warn('[ArabPay Live Balance API Warning]:', err.message);

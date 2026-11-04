@@ -116,7 +116,9 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
       });
       if (verifyRes.ok) {
         const vData = await verifyRes.json();
-        if (vData.owner_user_id) realOwnerUserId = vData.owner_user_id;
+        if (vData.owner_user_id && !vData.owner_user_id.startsWith('00000000')) {
+          realOwnerUserId = vData.owner_user_id;
+        }
         if (vData.owner_name && !realOwnerName) realOwnerName = vData.owner_name;
         if (vData.owner_phone && !realOwnerPhone) realOwnerPhone = vData.owner_phone;
       }
@@ -124,8 +126,8 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
       console.warn('[SETUP] ArabPay verify-credentials notice:', e);
     }
 
-    if (!realOwnerUserId) {
-      realOwnerUserId = process.env.ARABPAY_OWNER_USER_ID || '01a1admin00000000001';
+    if (!realOwnerUserId || realOwnerUserId.startsWith('00000000')) {
+      realOwnerUserId = realOwnerPhone ? `AP-${realOwnerPhone}` : (process.env.ARABPAY_OWNER_USER_ID || '01a1admin00000000001');
     }
 
     // Set runtime environment variables
@@ -208,8 +210,8 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
         // 1. Turunkan seluruh owner lama menjadi pelanggan biasa
         await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner'");
 
-        // 2. Bersihkan akun dummy lawas berpola '00000000%' yang bukan ID baru
-        await pool.query("DELETE FROM users WHERE arabpay_user_id LIKE '00000000%' AND arabpay_user_id != $1", [realOwnerUserId]);
+        // 2. Bersihkan akun dummy lawas / ID nil berpola '00000000%'
+        await pool.query("UPDATE users SET arabpay_user_id = NULL WHERE arabpay_user_id LIKE '00000000%'");
 
         // 3. Cek apakah ada akun yang cocok untuk di-update menjadi Owner Tunggal (cocok via AP-ID, Email, ATAU Nomor HP)
         // Jika nomor HP / email tersebut sebelumnya terdaftar sebagai 'pelanggan', otomatis DI-UPDATE menjadi OWNER!

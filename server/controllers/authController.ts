@@ -228,38 +228,49 @@ export async function changePassword(req: Request, res: Response) {
  * Endpoint live balance dari ArabPay E-Wallet Service (Always Live, No Static DB Caching)
  */
 export async function getLiveBalance(req: Request, res: Response) {
-  const inputIdOrToken = (req.body.userId || req.body.token || req.query.userId || '').toString();
-
   try {
     const { fetchLiveArabPayBalance } = await import('../services/arabpayService.js');
     
-    let token = req.cookies?.arabpay_token || (req.body.token || '');
-    let userId = req.body.userId || req.query.userId || inputIdOrToken;
+    let token = req.cookies?.arabpay_token || req.body?.token || req.query?.token || '';
+    let userId = (req.body?.userId || req.query?.userId || '').toString().trim();
+    let phone = (req.body?.phone || req.body?.phone_number || req.query?.phone || '').toString().trim();
 
-    // If userId provided, try to find user's arabpay_token or arabpay_user_id from DB
-    if (userId) {
+    // Nil UUID cleaner
+    if (userId.startsWith('00000000')) userId = '';
+
+    // Cari detail user & no telepon dari PostgreSQL jika ada userId
+    if (userId || phone) {
       try {
         const uRes = await pool.query(
-          `SELECT arabpay_token, arabpay_user_id FROM users WHERE id = $1 OR arabpay_user_id = $1 OR phone_number = $1 LIMIT 1`,
-          [userId]
+          `SELECT arabpay_token, arabpay_user_id, phone_number FROM users 
+           WHERE id = $1 OR arabpay_user_id = $1 OR (phone_number IS NOT NULL AND phone_number = $2) LIMIT 1`,
+          [userId || '___none___', phone || userId]
         );
         if (uRes.rows.length > 0) {
-          if (!token && uRes.rows[0].arabpay_token) {
-            token = uRes.rows[0].arabpay_token;
+          const row = uRes.rows[0];
+          if (!token && row.arabpay_token) token = row.arabpay_token;
+          if (row.arabpay_user_id && !row.arabpay_user_id.startsWith('00000000')) {
+            userId = row.arabpay_user_id;
           }
-          if (uRes.rows[0].arabpay_user_id) {
-            userId = uRes.rows[0].arabpay_user_id;
+          if (!phone && row.phone_number) phone = row.phone_number;
+        } else {
+          // Cari juga di tabel customers
+          const cRes = await pool.query(
+            `SELECT phone, user_id, arabpay_user_id FROM customers 
+             WHERE id = $1 OR phone = $2 OR user_id = $1 OR arabpay_user_id = $1 LIMIT 1`,
+            [userId || '___none___', phone || userId]
+          );
+          if (cRes.rows.length > 0) {
+            const cRow = cRes.rows[0];
+            if (cRow.arabpay_user_id && !cRow.arabpay_user_id.startsWith('00000000')) userId = cRow.arabpay_user_id;
+            else if (cRow.user_id && !cRow.user_id.startsWith('00000000')) userId = cRow.user_id;
+            if (!phone && cRow.phone) phone = cRow.phone;
           }
         }
       } catch (dbErr) {}
     }
 
-    const targetKey = token || userId || inputIdOrToken;
-    if (!targetKey) {
-      return res.json({ success: true, balance: 0 });
-    }
-
-    const result = await fetchLiveArabPayBalance(targetKey);
+    const result = await fetchLiveArabPayBalance({ token, userId, phone });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });

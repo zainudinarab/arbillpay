@@ -912,16 +912,19 @@ export default function CustomerPortal({
     if (!currentUser) return;
     setIsRefreshingBalance(true);
     try {
-      const uId = currentUser.arabpay_user_id || currentUser.id || '';
+      const uId = (!currentUser.arabpay_user_id?.startsWith('00000000') ? currentUser.arabpay_user_id : '') || currentUser.id || '';
+      const phone = currentUser.phone_number || currentUser.phone || '';
+      const token = currentUser.token || currentUser.arabpay_token || '';
       let fetchedBalance: number | null = null;
 
       // Panggil Proxy Backend Arbill /api/auth/live-balance (S2S aman dari server ke ArabPay)
       try {
         const apiUrl = getApiUrl();
-        if (apiUrl && uId) {
-          const proxyRes = await fetch(`${apiUrl}/api/auth/live-balance?userId=${encodeURIComponent(uId)}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
+        if (apiUrl) {
+          const proxyRes = await fetch(`${apiUrl}/api/auth/live-balance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: uId, phone, token })
           }).catch(() => null);
 
           if (proxyRes && proxyRes.ok) {
@@ -935,10 +938,15 @@ export default function CustomerPortal({
 
       if (fetchedBalance !== null && !isNaN(fetchedBalance)) {
         console.log('✅ [ARABPAY LIVE BALANCE] Successfully updated balance from backend proxy:', fetchedBalance);
-        onLoginSuccess({
+        const updated = {
           ...currentUser,
           arabpay_balance: fetchedBalance
-        });
+        };
+        onLoginSuccess(updated);
+        try {
+          localStorage.setItem('arbil_current_user', JSON.stringify(updated));
+          window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: fetchedBalance }));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Failed to fetch live ArabPay balance:', err);

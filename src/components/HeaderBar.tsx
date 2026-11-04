@@ -60,7 +60,8 @@ export default function HeaderBar({
 
     const fetchBalance = async () => {
       try {
-        const res = await fetch(`/api/auth/live-balance?userId=${encodeURIComponent(uId)}`);
+        const phone = currentUser?.phone_number || '';
+        const res = await fetch(`/api/auth/live-balance?userId=${encodeURIComponent(uId)}&phone=${encodeURIComponent(phone)}`);
         const data = await res.json();
         if (data.success && typeof data.balance === 'number') {
           updateBalanceState(data.balance);
@@ -226,26 +227,33 @@ export default function HeaderBar({
                 </div>
                 
                 {/* ID ArabPay with 1-Click Copy */}
-                <div className="pt-1 border-t border-white/10 flex items-center justify-between gap-1 text-[10px]">
-                  <span className="text-emerald-100/80 font-mono truncate" title={currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g'}>
-                    ID: {currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const arabId = currentUser?.arabpay_user_id || '019f74af9fcdWDgDxM8g';
-                      navigator.clipboard.writeText(arabId);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white font-sans font-bold text-[9px] rounded flex items-center gap-1 transition-all cursor-pointer border border-white/20 shrink-0"
-                    title="Salin ID ArabPay ke clipboard"
-                  >
-                    {copied ? <Check size={10} className="text-emerald-200" /> : <Copy size={10} />}
-                    <span>{copied ? 'Tersalin!' : 'Salin ID'}</span>
-                  </button>
-                </div>
+                {(() => {
+                  const displayArabId = (!currentUser?.arabpay_user_id?.startsWith('00000000') && currentUser?.arabpay_user_id)
+                    ? currentUser.arabpay_user_id
+                    : (currentUser?.phone_number ? `AP-${currentUser.phone_number}` : (currentUser?.id || 'AP-OWNER'));
+
+                  return (
+                    <div className="pt-1 border-t border-white/10 flex items-center justify-between gap-1 text-[10px]">
+                      <span className="text-emerald-100/80 font-mono truncate" title={displayArabId}>
+                        ID: {displayArabId}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(displayArabId);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="px-2 py-0.5 bg-white/20 hover:bg-white/30 text-white font-sans font-bold text-[9px] rounded flex items-center gap-1 transition-all cursor-pointer border border-white/20 shrink-0"
+                        title="Salin ID ArabPay ke clipboard"
+                      >
+                        {copied ? <Check size={10} className="text-emerald-200" /> : <Copy size={10} />}
+                        <span>{copied ? 'Tersalin!' : 'Salin ID'}</span>
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="py-1">

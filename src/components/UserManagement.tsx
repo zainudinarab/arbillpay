@@ -187,7 +187,10 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       });
 
       const data = await res.json();
-      const arabpayId = data.user_id || data.arabpay_user_id || data.id || `AP-${u.phone_number}`;
+      let arabpayId = data.user_id || data.arabpay_user_id || data.id;
+      if (!arabpayId || String(arabpayId).startsWith('00000000')) {
+        arabpayId = `AP-${u.phone_number}`;
+      }
 
       const updatedUser = {
         ...u,
@@ -628,34 +631,44 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                       {/* UUID & ArabPay ID */}
                       <td className="py-4 px-6 font-mono text-[11px] text-slate-500 max-w-[220px]">
                         <div className="truncate text-slate-400 text-[10px]" title={u.id}>ID: {u.id}</div>
-                        {u.arabpay_user_id ? (
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[10px] text-emerald-600 font-bold truncate" title={u.arabpay_user_id}>AP-ID: {u.arabpay_user_id}</span>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(u.arabpay_user_id!);
-                                setToastMsg({ text: `ID ArabPay (${u.arabpay_user_id}) berhasil disalin!`, type: 'success' });
-                              }}
-                              className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded transition-all cursor-pointer border border-emerald-200 shrink-0"
-                              title="Salin ID ArabPay ke clipboard"
-                            >
-                              Salin
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[10px] text-slate-400 italic">Belum Sync</span>
-                            {u.phone_number && (
-                              <button
-                                onClick={() => handleSyncSingleUserArabPayId(u)}
-                                className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded-lg transition-all cursor-pointer border border-emerald-200 shrink-0 flex items-center gap-1"
-                                title="Sinkronkan ID ArabPay dari Server"
-                              >
-                                ⚡ Sync ID
-                              </button>
-                            )}
-                          </div>
-                        )}
+                        {(() => {
+                          const validArabId = (u.arabpay_user_id && !u.arabpay_user_id.startsWith('00000000'))
+                            ? u.arabpay_user_id
+                            : (u.phone_number ? `AP-${u.phone_number}` : null);
+
+                          if (validArabId) {
+                            return (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] text-emerald-600 font-bold truncate" title={validArabId}>AP-ID: {validArabId}</span>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(validArabId);
+                                    setToastMsg({ text: `ID ArabPay (${validArabId}) berhasil disalin!`, type: 'success' });
+                                  }}
+                                  className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded transition-all cursor-pointer border border-emerald-200 shrink-0"
+                                  title="Salin ID ArabPay ke clipboard"
+                                >
+                                  Salin
+                                </button>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[10px] text-slate-400 italic">Belum Sync</span>
+                              {u.phone_number && (
+                                <button
+                                  onClick={() => handleSyncSingleUserArabPayId(u)}
+                                  className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-sans font-bold text-[9px] rounded-lg transition-all cursor-pointer border border-emerald-200 shrink-0 flex items-center gap-1"
+                                  title="Sinkronkan ID ArabPay dari Server"
+                                >
+                                  ⚡ Sync ID
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Actions */}
