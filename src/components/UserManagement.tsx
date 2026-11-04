@@ -378,11 +378,15 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
   };
 
   const handleDeleteUser = async (u: UserItem) => {
-    if (u.role === 'owner') {
-      alert('⚠️ Akun Owner Utama tidak dapat dihapus! Sistem wajib memiliki 1 akun Owner aktif.');
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('arbil_current_user') : null;
+    const currentLoggedIn = raw ? JSON.parse(raw) : null;
+
+    if (currentLoggedIn && (u.id === currentLoggedIn.id || (u.arabpay_user_id && u.arabpay_user_id === currentLoggedIn.arabpay_user_id))) {
+      alert('⚠️ Anda sedang login menggunakan akun ini! Tidak dapat menghapus akun aktif Anda sendiri.');
       return;
     }
-    if (!confirm(`Yakin ingin menghapus akun "${u.name}" (@${u.username}) dari sistem?`)) {
+
+    if (!confirm(`Yakin ingin MENGHAPUS akun pengguna "${u.name}" (@${u.username})? Semua data profil akun ini akan dihapus permanen.`)) {
       return;
     }
 
@@ -393,7 +397,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
         const resData = await res.json().catch(() => null);
         if (resData && resData.success) {
           setUsers(prev => prev.filter(item => item.id !== u.id));
-          setToastMsg({ type: 'success', text: `Akun "${u.name}" berhasil dihapus dari database!` });
+          setToastMsg({ type: 'success', text: `Akun "${u.name}" berhasil dihapus permanen dari database!` });
           return;
         }
       }
@@ -665,15 +669,14 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                             <Edit size={13} />
                             <span>Edit</span>
                           </button>
-                          {u.role !== 'owner' && (
-                            <button
-                              onClick={() => handleDeleteUser(u)}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-bold text-xs cursor-pointer transition border border-rose-200/60 shadow-2xs inline-flex items-center"
-                              title="Hapus Akun Pengguna"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs rounded-xl cursor-pointer transition border border-rose-200/60 shadow-2xs inline-flex items-center gap-1"
+                            title="Hapus Akun Pengguna"
+                          >
+                            <Trash2 size={13} />
+                            <span>Hapus</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -940,22 +943,37 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
               </div>
 
               {/* Form Buttons */}
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => { setShowEditModal(false); setEditingUser(null); }}
-                  className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
+                  onClick={() => {
+                    const u = editingUser;
+                    setShowEditModal(false);
+                    setEditingUser(null);
+                    if (u) handleDeleteUser(u);
+                  }}
+                  className="px-3.5 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl cursor-pointer flex items-center gap-1.5 transition border border-rose-200"
                 >
-                  Batal
+                  <Trash2 size={14} />
+                  <span>Hapus Akun Ini</span>
                 </button>
-                <button
-                  type="submit"
-                  disabled={submitLoading}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-2"
-                >
-                  {submitLoading && <RefreshCw size={14} className="animate-spin" />}
-                  <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan Role'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowEditModal(false); setEditingUser(null); }}
+                    className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-xl cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitLoading}
+                    className="px-5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-2"
+                  >
+                    {submitLoading && <RefreshCw size={14} className="animate-spin" />}
+                    <span>{submitLoading ? 'Memperbarui...' : 'Simpan Perubahan'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
