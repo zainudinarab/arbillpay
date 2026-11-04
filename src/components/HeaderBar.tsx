@@ -30,6 +30,46 @@ export default function HeaderBar({
   const savedUserStr = typeof window !== 'undefined' ? localStorage.getItem('arbil_current_user') : null;
   const currentUser = savedUserStr ? JSON.parse(savedUserStr) : null;
 
+  const [liveBalance, setLiveBalance] = useState<number | null>(() => {
+    return typeof currentUser?.arabpay_balance === 'number' ? currentUser.arabpay_balance : null;
+  });
+
+  // Fetch LIVE balance directly from ArabPay via S2S Proxy
+  useEffect(() => {
+    const uId = currentUser?.arabpay_user_id || currentUser?.id;
+    if (!uId) return;
+
+    let isMounted = true;
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch(`/api/auth/live-balance?userId=${encodeURIComponent(uId)}`);
+        const data = await res.json();
+        if (data.success && typeof data.balance === 'number' && isMounted) {
+          setLiveBalance(data.balance);
+          const raw = localStorage.getItem('arbil_current_user');
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              parsed.arabpay_balance = data.balance;
+              localStorage.setItem('arbil_current_user', JSON.stringify(parsed));
+            } catch (e) {}
+          }
+        }
+      } catch (err) {}
+    };
+
+    fetchBalance();
+
+    window.addEventListener('focus', fetchBalance);
+    const interval = setInterval(fetchBalance, 15000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', fetchBalance);
+      clearInterval(interval);
+    };
+  }, [currentUser?.arabpay_user_id, currentUser?.id]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -108,7 +148,7 @@ export default function HeaderBar({
           <div className="flex flex-col">
             <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider leading-none">Saldo ArabPay</span>
             <span className="text-xs font-black text-slate-800 leading-tight">
-              Rp {(currentUser?.arabpay_balance ?? 149800).toLocaleString('id-ID')}
+              Rp {(liveBalance ?? (typeof currentUser?.arabpay_balance === 'number' ? currentUser.arabpay_balance : 0)).toLocaleString('id-ID')}
             </span>
           </div>
         </div>
@@ -148,7 +188,7 @@ export default function HeaderBar({
                   <span className="bg-white/20 px-1.5 py-0.5 rounded text-[9px]">Verified</span>
                 </div>
                 <div className="text-base font-black tracking-tight">
-                  Rp {(currentUser?.arabpay_balance ?? 149800).toLocaleString('id-ID')}
+                  Rp {(liveBalance ?? (typeof currentUser?.arabpay_balance === 'number' ? currentUser.arabpay_balance : 0)).toLocaleString('id-ID')}
                 </div>
                 
                 {/* ID ArabPay with 1-Click Copy */}

@@ -2360,7 +2360,7 @@ export default function CustomerPortal({
 
                 <div className="flex items-center gap-3 pt-1">
                   <span className="text-3xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                    {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                    {formatRupiah(currentUser.arabpay_balance ?? 0)}
                   </span>
                   <button
                     onClick={fetchLiveArabPayBalance}
@@ -5586,7 +5586,7 @@ export default function CustomerPortal({
                   <Wallet className="w-4 h-4 text-emerald-400" /> Saldo ArabPay:
                 </span>
                 <span className="font-mono text-sm font-black text-emerald-400">
-                  {formatRupiah(currentUser.arabpay_balance ?? 150000)}
+                  {formatRupiah(currentUser.arabpay_balance ?? 0)}
                 </span>
               </div>
 

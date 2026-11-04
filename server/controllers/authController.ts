@@ -184,11 +184,11 @@ export async function arabpayOAuth(req: Request, res: Response) {
         phone_number: rawPhone,
         username: rawUsername
       },
-      balance: arabpayBalance || 150000,
+      balance: typeof arabpayBalance === 'number' ? arabpayBalance : 0,
       user: {
         ...finalUser,
         phone_number: rawPhone || finalUser.phone_number,
-        arabpay_balance: arabpayBalance || 150000
+        arabpay_balance: typeof arabpayBalance === 'number' ? arabpayBalance : 0
       }
     });
   } catch (err: any) {

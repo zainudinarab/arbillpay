@@ -235,7 +235,7 @@ export default function DashboardOverview({
                 </span>
               </div>
               <h2 className="text-2xl font-sans font-black tracking-tight mt-1">
-                Rp {((typeof window !== 'undefined' && JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance) ?? 149800).toLocaleString('id-ID')}
+                Rp {((typeof window !== 'undefined' && typeof JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance === 'number' ? JSON.parse(localStorage.getItem('arbil_current_user') || '{}')?.arabpay_balance : 0)).toLocaleString('id-ID')}
               </h2>
             </div>
             <div className="flex items-center justify-between mt-4">

@@ -347,7 +347,7 @@ export default function App() {
             if (data.success && data.user) {
               const userWithBalance = {
                 ...data.user,
-                arabpay_balance: data.user.arabpay_balance ?? data.balance ?? 150000
+                arabpay_balance: typeof data.user.arabpay_balance === 'number' ? data.user.arabpay_balance : (typeof data.balance === 'number' ? data.balance : 0)
               };
               console.log('🎉 [OAUTH SSO LOG] Login successful! Authenticated user:', userWithBalance.name);
               handleLoginSuccess(userWithBalance);
@@ -506,7 +506,7 @@ export default function App() {
                 phone_number: '085746520724',
                 role: 'owner',
                 arabpay_user_id: '019f74af9fcdWDgDxM8g',
-                arabpay_balance: 150000
+                arabpay_balance: 0
               };
             } else {
               // REJECT: Data profil dari ArabPay kosong atau tidak terverifikasi -> TIDAK BUAT USER DUMMY!
