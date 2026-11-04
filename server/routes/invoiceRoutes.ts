@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { 
   listInvoices, createManualInvoice, createBatchInvoices, 
   triggerAutoGenerate, payInvoice, createArabPayInvoiceOrder, handleArabPayCallback, sendInvoiceWhatsApp,
-  createCheckout, payWithPin, getCheckoutStatus, deleteInvoice
+  createCheckout, payWithPin, getCheckoutStatus, deleteInvoice, getIncomeReport
 } from '../controllers/invoiceController.js';
 
 const router = Router();
 
+router.get('/income-report', getIncomeReport);
 router.get('/', listInvoices);
 router.post('/create-manual', createManualInvoice);
 router.post('/create-batch', createBatchInvoices);

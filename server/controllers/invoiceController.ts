@@ -519,5 +519,202 @@ export async function deleteInvoice(req: Request, res: Response) {
   }
 }
 
+export async function getIncomeReport(req: Request, res: Response) {
+  const { startDate, endDate } = req.query;
+
+  try {
+    const params: any[] = [];
+    let dateFilter = '';
+    if (startDate) {
+      params.push(startDate);
+      dateFilter += ` AND i.issue_date >= $${params.length}::date`;
+    }
+    if (endDate) {
+      params.push(endDate);
+      dateFilter += ` AND i.issue_date <= $${params.length}::date`;
+    }
+
+    // 1. PPPoE (Pelanggan Rumahan) by Package
+    const pppoePkgRes = await pool.query(`
+      SELECT 
+        COALESCE(i.package_name, p.name, 'Broadband Rumahan') as package_name,
+        COALESCE(p.price, i.amount, 0)::numeric as package_price,
+        p.speed_limit,
+        COUNT(*)::int as paid_count,
+        COALESCE(SUM(i.total), 0)::numeric as total_amount
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE i.status = 'paid'
+        AND (i.connection_type = 'pppoe' OR i.connection_type IS NULL OR i.connection_type = '')
+        ${dateFilter}
+      GROUP BY COALESCE(i.package_name, p.name, 'Broadband Rumahan'), COALESCE(p.price, i.amount, 0), p.speed_limit
+      ORDER BY total_amount DESC
+    `, params);
+
+    // 2. PPPoE Transactions (Recent 100)
+    const pppoeTrxRes = await pool.query(`
+      SELECT 
+        i.id, i.invoice_number, i.customer_name, i.customer_phone,
+        COALESCE(i.package_name, p.name, 'Broadband Rumahan') as package_name,
+        i.total, i.paid_at, i.issue_date, i.payment_method,
+        c.pppoe_username, c.address, c.dusun, c.desa
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE i.status = 'paid'
+        AND (i.connection_type = 'pppoe' OR i.connection_type IS NULL OR i.connection_type = '')
+        ${dateFilter}
+      ORDER BY COALESCE(i.paid_at, i.issue_date, i.created_at) DESC
+      LIMIT 100
+    `, params);
+
+    // 3. Hotspot Member (Langganan Bulanan Hotspot) by Package
+    const hotspotMemberPkgRes = await pool.query(`
+      SELECT 
+        COALESCE(i.package_name, p.name, 'Hotspot Bulanan') as package_name,
+        COALESCE(p.price, i.amount, 0)::numeric as package_price,
+        p.speed_limit,
+        COUNT(*)::int as paid_count,
+        COALESCE(SUM(i.total), 0)::numeric as total_amount
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE i.status = 'paid'
+        AND i.connection_type = 'hotspot'
+        ${dateFilter}
+      GROUP BY COALESCE(i.package_name, p.name, 'Hotspot Bulanan'), COALESCE(p.price, i.amount, 0), p.speed_limit
+      ORDER BY total_amount DESC
+    `, params);
+
+    // 4. Hotspot Member Transactions (Recent 100)
+    const hotspotMemberTrxRes = await pool.query(`
+      SELECT 
+        i.id, i.invoice_number, i.customer_name, i.customer_phone,
+        COALESCE(i.package_name, p.name, 'Hotspot Bulanan') as package_name,
+        i.total, i.paid_at, i.issue_date, i.payment_method,
+        c.address
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE i.status = 'paid'
+        AND i.connection_type = 'hotspot'
+        ${dateFilter}
+      ORDER BY COALESCE(i.paid_at, i.issue_date, i.created_at) DESC
+      LIMIT 100
+    `, params);
+
+    // 5. Hotspot Vouchers Sold by Package
+    const voucherParams: any[] = [];
+    let voucherDateFilter = '';
+    if (startDate) {
+      voucherParams.push(startDate);
+      voucherDateFilter += ` AND (v.sold_at >= $${voucherParams.length}::date OR (v.sold_at IS NULL AND v.created_at >= $${voucherParams.length}::date))`;
+    }
+    if (endDate) {
+      voucherParams.push(endDate);
+      voucherDateFilter += ` AND (v.sold_at <= $${voucherParams.length}::date OR (v.sold_at IS NULL AND v.created_at <= $${voucherParams.length}::date))`;
+    }
+
+    const voucherPkgRes = await pool.query(`
+      SELECT 
+        COALESCE(p.name, rp.name, 'Voucher Hotspot') as package_name,
+        COALESCE(p.price, 0)::numeric as price,
+        COUNT(*)::int as sold_count,
+        COALESCE(SUM(COALESCE(p.price, 0)), 0)::numeric as total_amount
+      FROM hotspot_vouchers v
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE (v.status IN ('sold', 'used') OR v.sold_at IS NOT NULL)
+      ${voucherDateFilter}
+      GROUP BY COALESCE(p.name, rp.name, 'Voucher Hotspot'), COALESCE(p.price, 0)
+      ORDER BY total_amount DESC
+    `, voucherParams);
+
+    // 6. Voucher Transactions (Recent 100)
+    const voucherTrxRes = await pool.query(`
+      SELECT 
+        v.id, v.code, v.password, v.status, v.sold_to, v.sold_at, v.created_at,
+        COALESCE(p.name, rp.name, 'Voucher Hotspot') as package_name,
+        COALESCE(p.price, 0)::numeric as price,
+        r.name as router_name, rp.name as profile_name
+      FROM hotspot_vouchers v
+      LEFT JOIN routers r ON v.router_id = r.id
+      LEFT JOIN router_profiles rp ON v.router_profile_id = rp.id
+      LEFT JOIN packages p ON rp.package_id = p.id
+      WHERE (v.status IN ('sold', 'used') OR v.sold_at IS NOT NULL)
+      ${voucherDateFilter}
+      ORDER BY COALESCE(v.sold_at, v.created_at) DESC
+      LIMIT 100
+    `, voucherParams);
+
+    // 7. Pelanggan yang Belum Bayar (Tunggakan Unpaid Invoices)
+    const unpaidRes = await pool.query(`
+      SELECT 
+        i.id as invoice_id,
+        i.invoice_number,
+        i.total as amount,
+        i.status as invoice_status,
+        i.issue_date,
+        i.due_date,
+        i.connection_type,
+        COALESCE(i.customer_name, c.name, 'Pelanggan') as customer_name,
+        COALESCE(i.customer_phone, c.phone_number, '') as customer_phone,
+        COALESCE(i.package_name, p.name, 'Broadband') as package_name,
+        c.id as customer_id,
+        c.customer_code,
+        c.address,
+        c.dusun,
+        c.desa,
+        c.status as customer_status,
+        c.expired_at,
+        c.pppoe_username,
+        CASE 
+          WHEN i.due_date IS NOT NULL AND i.due_date < CURRENT_DATE 
+          THEN (CURRENT_DATE - i.due_date)
+          WHEN c.expired_at IS NOT NULL AND c.expired_at < CURRENT_DATE
+          THEN (CURRENT_DATE - c.expired_at)
+          ELSE 0 
+        END as overdue_days
+      FROM invoices i
+      LEFT JOIN customers c ON i.customer_id = c.id
+      LEFT JOIN packages p ON c.package_id = p.id
+      WHERE i.status IN ('pending', 'overdue')
+      ORDER BY overdue_days DESC, i.due_date ASC NULLS LAST, i.created_at DESC
+    `);
+
+    // Calculate Summary totals
+    const pppoeTotal = pppoePkgRes.rows.reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
+    const hotspotMemberTotal = hotspotMemberPkgRes.rows.reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
+    const voucherTotal = voucherPkgRes.rows.reduce((sum, r) => sum + Number(r.total_amount || 0), 0);
+    const totalIncome = pppoeTotal + hotspotMemberTotal + voucherTotal;
+
+    const unpaidTotal = unpaidRes.rows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+    const unpaidCount = unpaidRes.rows.length;
+
+    res.json({
+      success: true,
+      summary: {
+        totalIncome,
+        pppoeTotal,
+        hotspotMemberTotal,
+        voucherTotal,
+        unpaidTotal,
+        unpaidCount
+      },
+      pppoeByPackage: pppoePkgRes.rows,
+      pppoeTransactions: pppoeTrxRes.rows,
+      hotspotMemberByPackage: hotspotMemberPkgRes.rows,
+      hotspotMemberTransactions: hotspotMemberTrxRes.rows,
+      voucherByPackage: voucherPkgRes.rows,
+      voucherTransactions: voucherTrxRes.rows,
+      unpaidCustomers: unpaidRes.rows
+    });
+  } catch (err: any) {
+    console.error('Error in getIncomeReport:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 
 

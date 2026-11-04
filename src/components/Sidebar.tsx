@@ -139,6 +139,7 @@ export default function Sidebar({
       icon: TrendingUp,
       roles: ['owner'],
       items: [
+        { id: 'income-report', label: 'Laporan Pemasukan & Piutang', icon: FileText, roles: ['owner'] },
         { id: 'financial-report', label: 'Laba Rugi & Keuntungan', icon: DollarSign, roles: ['owner'] },
         { id: 'expenses', label: 'Catatan Pengeluaran', icon: Receipt, roles: ['owner'] },
         { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },

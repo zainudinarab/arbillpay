@@ -49,6 +49,7 @@ import PaymentSimulator from './components/PaymentSimulator';
 import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
 import FinancialReportPage from './components/FinancialReportPage';
+import IncomeReportPage from './components/IncomeReportPage';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
 import HotspotCustomerManagement from './components/HotspotCustomerManagement';
@@ -1033,6 +1034,16 @@ const safeFormatDate = (val: any): string => {
             onDeleteClient={handleDeleteClient}
             profile={profile}
             t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'income-report':
+        return (
+          <IncomeReportPage
+            profile={profile}
+            t={t}
+            defaultTab="pppoe"
+            setCurrentView={setCurrentView}
             onLogout={handleLogout}
           />
         );
