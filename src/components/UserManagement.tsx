@@ -273,11 +273,15 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       const apiUrl = getApiUrl();
       const isPostgres = isPostgresDriver();
       if (apiUrl) {
-        await fetch(`${apiUrl}/api/users`, {
+        const res = await fetch(`${apiUrl}/api/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newUserObj)
-        }).catch(() => null);
+        });
+        const resData = await res.json().catch(() => null);
+        if (!res.ok || (resData && !resData.success)) {
+          throw new Error(resData?.message || 'Gagal menambahkan user');
+        }
       }
 
       // Save to Firebase Cloud Firestore only if NOT pure postgres mode
@@ -335,7 +339,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       const apiUrl = getApiUrl();
       const isPostgres = isPostgresDriver();
       if (apiUrl) {
-        await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
+        const res = await fetch(`${apiUrl}/api/users/${editingUser.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -346,7 +350,11 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
             role,
             password: password.trim() || undefined
           })
-        }).catch(() => null);
+        });
+        const resData = await res.json().catch(() => null);
+        if (!res.ok || (resData && !resData.success)) {
+          throw new Error(resData?.message || 'Gagal memperbarui user');
+        }
       }
 
       // Update Cloud Firestore database only if not postgres mode

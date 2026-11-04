@@ -22,6 +22,22 @@ export async function getAllUsers() {
 }
 
 export async function createUser(data: { username: string; name: string; email: string; phone_number?: string; role?: string; password: string }) {
+  const cleanEmail = data.email.trim().toLowerCase();
+  const cleanPhone = data.phone_number ? data.phone_number.trim() : null;
+
+  // Validasi email & nomor HP unik
+  const existingEmail = await pool.query('SELECT id, name FROM users WHERE LOWER(email) = $1 LIMIT 1', [cleanEmail]);
+  if (existingEmail.rows.length > 0) {
+    throw new Error(`Email "${cleanEmail}" sudah terdaftar pada pengguna "${existingEmail.rows[0].name}".`);
+  }
+
+  if (cleanPhone) {
+    const existingPhone = await pool.query('SELECT id, name FROM users WHERE phone_number = $1 LIMIT 1', [cleanPhone]);
+    if (existingPhone.rows.length > 0) {
+      throw new Error(`Nomor HP "${cleanPhone}" sudah terdaftar pada pengguna "${existingPhone.rows[0].name}".`);
+    }
+  }
+
   const userId = crypto.randomUUID();
   const saltRounds = 10;
   const passwordHash = await bcrypt.hash(data.password, saltRounds);
@@ -100,6 +116,23 @@ export async function updateUser(id: string, data: { name?: string; username?: s
   if (finalRole === 'owner') {
     // Strictly 1 Owner: Demote all other owners to 'pelanggan'
     await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND id != $1 AND arabpay_user_id != $1", [id]);
+  }
+
+  // Validasi email & nomor HP unik saat update
+  if (data.email && data.email.trim()) {
+    const cleanEmail = data.email.trim().toLowerCase();
+    const existingEmail = await pool.query('SELECT id, name FROM users WHERE LOWER(email) = $1 AND id != $2 AND arabpay_user_id != $2 LIMIT 1', [cleanEmail, id]);
+    if (existingEmail.rows.length > 0) {
+      throw new Error(`Email "${cleanEmail}" sudah terdaftar pada pengguna "${existingEmail.rows[0].name}".`);
+    }
+  }
+
+  if (data.phone_number && data.phone_number.trim()) {
+    const cleanPhone = data.phone_number.trim();
+    const existingPhone = await pool.query('SELECT id, name FROM users WHERE phone_number = $1 AND id != $2 AND arabpay_user_id != $2 LIMIT 1', [cleanPhone, id]);
+    if (existingPhone.rows.length > 0) {
+      throw new Error(`Nomor HP "${cleanPhone}" sudah terdaftar pada pengguna "${existingPhone.rows[0].name}".`);
+    }
   }
 
   const newName = data.name ? data.name.trim() : existingRow.name;

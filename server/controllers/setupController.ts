@@ -211,20 +211,29 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
         // 2. Bersihkan akun dummy lawas berpola '00000000%' yang bukan ID baru
         await pool.query("DELETE FROM users WHERE arabpay_user_id LIKE '00000000%' AND arabpay_user_id != $1", [realOwnerUserId]);
 
-        // 3. Cek apakah ada akun yang cocok untuk di-update menjadi Owner Tunggal
+        // 3. Cek apakah ada akun yang cocok untuk di-update menjadi Owner Tunggal (cocok via AP-ID, Email, ATAU Nomor HP)
+        // Jika nomor HP / email tersebut sebelumnya terdaftar sebagai 'pelanggan', otomatis DI-UPDATE menjadi OWNER!
         const checkExistingOwner = await pool.query(
-          `SELECT id, username, email, phone_number, arabpay_user_id FROM users
+          `SELECT id, username, email, phone_number, arabpay_user_id, role FROM users
            WHERE arabpay_user_id = $1 
               OR id = $1 
-              OR email = $2 
-              OR phone_number = $3
-           ORDER BY (CASE WHEN arabpay_user_id = $1 THEN 1 WHEN id = $1 THEN 2 WHEN email = $2 THEN 3 ELSE 4 END)
+              OR (email IS NOT NULL AND LOWER(email) = LOWER($2))
+              OR (phone_number IS NOT NULL AND phone_number = $3)
+           ORDER BY (
+             CASE 
+               WHEN arabpay_user_id = $1 THEN 1 
+               WHEN id = $1 THEN 2 
+               WHEN (email IS NOT NULL AND LOWER(email) = LOWER($2)) THEN 3 
+               ELSE 4 
+             END
+           )
            LIMIT 1`,
           [realOwnerUserId, finalOwnerEmail, finalOwnerPhone]
         );
 
+        let ownerTargetId = realOwnerUserId;
         if (checkExistingOwner.rows.length > 0) {
-          const targetId = checkExistingOwner.rows[0].id;
+          ownerTargetId = checkExistingOwner.rows[0].id;
           await pool.query(
             `UPDATE users 
              SET role = 'owner',
@@ -234,9 +243,9 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
                  email = COALESCE(NULLIF($4, ''), email),
                  password_hash = COALESCE($5, password_hash)
              WHERE id = $6`,
-            [realOwnerUserId, finalOwnerName, finalOwnerPhone, finalOwnerEmail, oHash, targetId]
+            [realOwnerUserId, finalOwnerName, finalOwnerPhone, finalOwnerEmail, oHash, ownerTargetId]
           );
-          console.log(`👑 [SETUP WIZARD] User ${targetId} sukses DI-UPDATE menjadi 1-satunya OWNER RESMI (AP-ID: ${realOwnerUserId})!`);
+          console.log(`👑 [SETUP WIZARD] User "${checkExistingOwner.rows[0].username}" (sebelumnya: ${checkExistingOwner.rows[0].role}) sukses DI-UPDATE menjadi 1-satunya OWNER RESMI (AP-ID: ${realOwnerUserId})!`);
         } else {
           // Jika belum ada akun sama sekali atau tidak cocok, daftarkan 1 akun Owner Tunggal
           await pool.query(
@@ -253,7 +262,19 @@ export const saveSetupConfig = async (req: Request, res: Response) => {
           console.log(`👑 [SETUP WIZARD] User baru ${realOwnerUserId} sukses DIBUAT sebagai 1-satunya OWNER RESMI!`);
         }
 
-        // 4. Kunci keamanan final: Pastikan STRICTLY hanya 1 akun yang memegang role 'owner'
+        // 4. ATURAN KETAT: EMAIL & NOMOR HP TIDAK BOLEH ADA YANG SAMA (DUPLIKAT)!
+        // Hapus akun lama lainnya yang memiliki Nomor HP atau Email yang sama dengan Owner agar tidak ada duplikasi data
+        await pool.query(
+          `DELETE FROM users 
+           WHERE id != $1 
+             AND (
+               (email IS NOT NULL AND LOWER(email) = LOWER($2)) 
+               OR (phone_number IS NOT NULL AND phone_number = $3)
+             )`,
+          [ownerTargetId, finalOwnerEmail, finalOwnerPhone]
+        );
+
+        // 5. Kunci keamanan final: Pastikan STRICTLY hanya 1 akun yang memegang role 'owner'
         await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND arabpay_user_id != $1", [realOwnerUserId]);
       }
     } catch (dbErr) {

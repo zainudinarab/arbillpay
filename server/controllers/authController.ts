@@ -324,6 +324,18 @@ export async function syncUser(req: Request, res: Response) {
         // Aturan ketat: Owner hanya boleh 1! Demote seluruh user lain menjadi 'pelanggan'
         await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND id != $1", [targetId]);
       }
+      // Hapus duplikat nomor HP atau email pada akun lain
+      if (cleanPhone || cleanEmail) {
+        await pool.query(
+          `DELETE FROM users 
+           WHERE id != $1 
+             AND (
+               ($2::text <> '' AND email IS NOT NULL AND LOWER(email) = LOWER($2))
+               OR ($3::text <> '' AND phone_number IS NOT NULL AND phone_number = $3)
+             )`,
+          [targetId, cleanEmail || '', cleanPhone || '']
+        );
+      }
     } else {
       targetId = id || crypto.randomUUID();
       const defaultPass = finalRole === 'owner' ? 'zainudinarab' : crypto.randomBytes(8).toString('hex');
