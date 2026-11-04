@@ -14,7 +14,8 @@ import {
   Phone,
   Wrench,
   Megaphone,
-  Edit
+  Edit,
+  Trash2
 } from 'lucide-react';
 import HeaderBar from './HeaderBar';
 import { BusinessProfile } from '../types';
@@ -233,7 +234,7 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
 
   // Sync All Users with missing ArabPay IDs
   const handleSyncAllArabPayIds = async () => {
-    const unsynced = users.filter(u => !u.arabpay_user_id || u.arabpay_user_id.includes('Belum'));
+    const unsynced = users.filter(u => !u.arabpay_user_id || u.arabpay_user_id.includes('Belum') || u.arabpay_user_id.startsWith('00000000-'));
     if (unsynced.length === 0) {
       setToastMsg({ type: 'success', text: 'Semua User sudah memiliki ID System / ArabPay terverifikasi!' });
       return;
@@ -365,6 +366,33 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
       setToastMsg({ type: 'error', text: 'Gagal memperbarui user ke database: ' + err?.message });
     } finally {
       setSubmitLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (u: UserItem) => {
+    if (u.role === 'owner') {
+      alert('⚠️ Akun Owner Utama tidak dapat dihapus! Sistem wajib memiliki 1 akun Owner aktif.');
+      return;
+    }
+    if (!confirm(`Yakin ingin menghapus akun "${u.name}" (@${u.username}) dari sistem?`)) {
+      return;
+    }
+
+    try {
+      const apiUrl = getApiUrl();
+      if (apiUrl) {
+        const res = await fetch(`${apiUrl}/api/users/${u.id}`, { method: 'DELETE' });
+        const resData = await res.json().catch(() => null);
+        if (resData && resData.success) {
+          setUsers(prev => prev.filter(item => item.id !== u.id));
+          setToastMsg({ type: 'success', text: `Akun "${u.name}" berhasil dihapus dari database!` });
+          return;
+        }
+      }
+      setUsers(prev => prev.filter(item => item.id !== u.id));
+      setToastMsg({ type: 'success', text: `Akun "${u.name}" berhasil dihapus.` });
+    } catch (err: any) {
+      setToastMsg({ type: 'error', text: 'Gagal menghapus user: ' + err?.message });
     }
   };
 
@@ -618,15 +646,27 @@ export default function UserManagement({ profile, t, onLogout }: UserManagementP
                         )}
                       </td>
 
-                      {/* Edit Role Button */}
+                      {/* Actions */}
                       <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => openEditModal(u)}
-                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-indigo-200/60 inline-flex items-center gap-1.5 shadow-2xs"
-                        >
-                          <Edit size={13} />
-                          <span>Edit Role</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5 ml-auto">
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition-all cursor-pointer border border-indigo-200/60 inline-flex items-center gap-1 shadow-2xs"
+                            title="Edit Data User"
+                          >
+                            <Edit size={13} />
+                            <span>Edit</span>
+                          </button>
+                          {u.role !== 'owner' && (
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-bold text-xs cursor-pointer transition border border-rose-200/60 shadow-2xs inline-flex items-center"
+                              title="Hapus Akun Pengguna"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

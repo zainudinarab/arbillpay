@@ -97,6 +97,11 @@ export async function updateUser(id: string, data: { name?: string; username?: s
     finalRole = 'owner';
   }
 
+  if (finalRole === 'owner') {
+    // Strictly 1 Owner: Demote all other owners to 'pelanggan'
+    await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND id != $1 AND arabpay_user_id != $1", [id]);
+  }
+
   const newName = data.name ? data.name.trim() : existingRow.name;
   const newEmail = data.email ? data.email.trim().toLowerCase() : existingRow.email;
   const newPhone = data.phone_number !== undefined ? data.phone_number : existingRow.phone_number;
@@ -193,4 +198,18 @@ export async function updatePasswordHash(userId: string, newHash: string) {
   }
 
   await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
+}
+
+export async function deleteUser(id: string) {
+  const driver = getDriver();
+  if (driver === 'firebase') {
+    const db = getFirestore();
+    if (db) {
+      await db.collection('users').doc(id).delete();
+      return true;
+    }
+  }
+
+  const result = await pool.query('DELETE FROM users WHERE id = $1 OR arabpay_user_id = $1', [id]);
+  return (result.rowCount ?? 0) > 0;
 }

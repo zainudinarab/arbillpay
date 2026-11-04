@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getAllUsers, createUser, updateUser, updateOwnerProfile } from '../models/userModel.js';
+import { getAllUsers, createUser, updateUser, updateOwnerProfile, deleteUser } from '../models/userModel.js';
 
 export async function listUsers(req: Request, res: Response) {
   try {
@@ -24,6 +24,19 @@ export async function addUser(req: Request, res: Response) {
       message: 'User berhasil dibuat dan tersinkronisasi ke PostgreSQL VPS!',
       user
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function removeUser(req: Request, res: Response) {
+  const { id } = req.params;
+  try {
+    const success = await deleteUser(id);
+    if (!success) {
+      return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'User berhasil dihapus dari sistem.' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }

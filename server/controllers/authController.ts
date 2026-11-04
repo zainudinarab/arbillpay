@@ -138,6 +138,8 @@ export async function arabpayOAuth(req: Request, res: Response) {
       );
       if (arabpayUserId === ownerUserId || finalUser.id === ownerUserId || finalUser.role === 'owner') {
         finalUser.role = 'owner';
+        // Aturan ketat: Owner hanya boleh 1! Demote seluruh user lain menjadi 'pelanggan'
+        await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND id != $1 AND arabpay_user_id != $2", [finalUser.id, arabpayUserId]);
       }
     } else {
       // 3. Jika user BELUM ADA: Baru daftarkan sebagai user baru di database PostgreSQL
@@ -318,6 +320,10 @@ export async function syncUser(req: Request, res: Response) {
             role = CASE WHEN $6 = 'owner' OR role = 'owner' THEN 'owner' ELSE role END
         WHERE id = $7
       `, [name || null, cleanEmail, cleanPhone, arabpayId, token_jwt || token || null, finalRole, targetId]);
+      if (finalRole === 'owner') {
+        // Aturan ketat: Owner hanya boleh 1! Demote seluruh user lain menjadi 'pelanggan'
+        await pool.query("UPDATE users SET role = 'pelanggan' WHERE role = 'owner' AND id != $1", [targetId]);
+      }
     } else {
       targetId = id || crypto.randomUUID();
       const defaultPass = finalRole === 'owner' ? 'zainudinarab' : crypto.randomBytes(8).toString('hex');

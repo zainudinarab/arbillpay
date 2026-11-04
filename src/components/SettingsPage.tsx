@@ -136,12 +136,26 @@ export default function SettingsPage({
               client_id: arabpayClientId.trim(),
               client_secret: arabpayClientSecret.trim(),
               owner_phone: phone || profile.phone || '',
-              business_name: companyName || profile.companyName || 'Arbill Net'
+              business_name: companyName || profile.companyName || 'Arbill Net',
+              owner_email: profile.email || '',
+              owner_name: profile.name || ''
             })
           });
           const resData = await res.json();
           if (res.ok && resData.success) {
             savedToPostgres = true;
+            if (resData.owner_user_id) {
+              const raw = localStorage.getItem('arbil_current_user');
+              if (raw) {
+                try {
+                  const parsed = JSON.parse(raw);
+                  parsed.arabpay_user_id = resData.owner_user_id;
+                  parsed.role = 'owner';
+                  if (resData.owner_name) parsed.name = resData.owner_name;
+                  localStorage.setItem('arbil_current_user', JSON.stringify(parsed));
+                } catch (e) {}
+              }
+            }
           } else if (resData.error) {
             throw new Error(resData.error);
           }
@@ -248,6 +262,18 @@ export default function SettingsPage({
           const resData = await res.json();
           if (res.ok && resData.success) {
             savedToPostgres = true;
+            if (resData.owner_user_id) {
+              const raw = localStorage.getItem('arbil_current_user');
+              if (raw) {
+                try {
+                  const parsed = JSON.parse(raw);
+                  parsed.arabpay_user_id = resData.owner_user_id;
+                  parsed.role = 'owner';
+                  if (resData.owner_name) parsed.name = resData.owner_name;
+                  localStorage.setItem('arbil_current_user', JSON.stringify(parsed));
+                } catch (e) {}
+              }
+            }
           }
         } catch (serverErr) {
           console.warn('Backend change-password notice:', serverErr);
