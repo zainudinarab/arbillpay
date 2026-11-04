@@ -2452,36 +2452,36 @@ export default function CustomerPortal({
               </div>
             </div>
 
-            {/* Card Footer: Quick Actions (Top Up Bebas Min. 1.000, Speedtest, Profil) */}
-            <div className="relative pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400">
+            {/* Card Footer: Quick Actions (Top Up, Speedtest, Profil) */}
+            <div className="relative pt-4 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span className="text-emerald-400 font-bold">✨ Top Up Bebas:</span>
                 <span>Minimal hanya Rp 1.000 via QRIS / VA</span>
               </div>
 
-              <div className="flex items-center gap-2.5 ml-auto">
+              <div className="grid grid-cols-3 sm:flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
                 <button
                   onClick={() => setShowTopupModal(true)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center gap-2 transition cursor-pointer"
+                  className="px-3 sm:px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Top Up Bebas (Min 1.000)</span>
+                  <Plus className="w-4 h-4 shrink-0" />
+                  <span>Top Up</span>
                 </button>
 
                 <button
                   onClick={() => setShowSpeedtestModal(true)}
-                  className="px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/40 active:scale-95 border border-indigo-500/40 text-indigo-300 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3 sm:px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/40 active:scale-95 border border-indigo-500/40 text-indigo-300 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                   title="Uji kecepatan koneksi internet Anda"
                 >
-                  <Gauge className="w-4 h-4 text-indigo-400" />
+                  <Gauge className="w-4 h-4 text-indigo-400 shrink-0" />
                   <span>Speedtest</span>
                 </button>
 
                 <button
                   onClick={() => setShowProfileModal(true)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3 sm:px-4 py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
                 >
-                  <UserCheck className="w-4 h-4 text-emerald-400" />
+                  <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Profil</span>
                 </button>
               </div>

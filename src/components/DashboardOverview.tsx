@@ -450,10 +450,10 @@ export default function DashboardOverview({
                   setTopupError('');
                   setShowTopupModal(true);
                 }}
-                className="py-1.5 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[10px] rounded-lg shadow-sm flex items-center justify-center gap-1 transition cursor-pointer active:scale-95"
+                className="py-1.5 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[10px] rounded-lg shadow-sm flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 whitespace-nowrap"
               >
-                <Plus size={11} />
-                <span>Top Up (Min 1rb)</span>
+                <Plus size={11} className="shrink-0" />
+                <span>Top Up</span>
               </button>
 
               <button
