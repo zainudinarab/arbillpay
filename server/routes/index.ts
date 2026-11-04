@@ -18,6 +18,7 @@ import oltRoutes from './oltRoutes.js';
 import telegramRoutes from './telegramRoutes.js';
 import whatsappRoutes from './whatsappRoutes.js';
 import speedtestRoutes from './speedtestRoutes.js';
+import expenseRoutes from './expenseRoutes.js';
 
 const router = Router();
 
@@ -38,6 +39,7 @@ router.use('/users', userRoutes);
 router.use('/customers', customerRoutes);
 router.use('/packages', packageRoutes);
 router.use('/invoices', invoiceRoutes);
+router.use('/expenses', expenseRoutes);
 router.use('/vouchers', voucherRoutes);
 router.use('/genieacs', genieacsRoutes);
 router.use('/ftth', ftthMapRoutes);

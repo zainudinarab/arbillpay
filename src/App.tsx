@@ -48,6 +48,7 @@ import InvoiceDetails from './components/InvoiceDetails';
 import PaymentSimulator from './components/PaymentSimulator';
 import SettingsPage from './components/SettingsPage';
 import AnalyticsView from './components/AnalyticsView';
+import FinancialReportPage from './components/FinancialReportPage';
 import UserManagement from './components/UserManagement';
 import CustomerManagement from './components/CustomerManagement';
 import HotspotCustomerManagement from './components/HotspotCustomerManagement';
@@ -1032,6 +1033,26 @@ const safeFormatDate = (val: any): string => {
             onDeleteClient={handleDeleteClient}
             profile={profile}
             t={t}
+            onLogout={handleLogout}
+          />
+        );
+      case 'financial-report':
+        return (
+          <FinancialReportPage
+            profile={profile}
+            t={t}
+            defaultTab="report"
+            setCurrentView={setCurrentView}
+            onLogout={handleLogout}
+          />
+        );
+      case 'expenses':
+        return (
+          <FinancialReportPage
+            profile={profile}
+            t={t}
+            defaultTab="expenses"
+            setCurrentView={setCurrentView}
             onLogout={handleLogout}
           />
         );

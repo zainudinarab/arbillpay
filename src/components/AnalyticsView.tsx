@@ -52,7 +52,7 @@ export default function AnalyticsView({
   
   // Total invoice count for top-right card
   const invoiceCount = activeInvoices.length;
-  const displayInvoiceCount = invoiceCount > 0 ? invoiceCount : 18;
+  const displayInvoiceCount = invoiceCount;
 
   // Invoice sent value calculations (This week vs previous week)
   const statsInvoicesSent = useMemo(() => {
@@ -74,10 +74,10 @@ export default function AnalyticsView({
 
     // Fallbacks if no real data in these windows to match the mockup visual scale
     if (thisWeekTotal === 0) {
-      thisWeekTotal = currencyMode === 'USD' ? 823.76 : 82376000;
+      thisWeekTotal = 0;
     }
     if (prevWeekTotal === 0) {
-      prevWeekTotal = currencyMode === 'USD' ? 676.90 : 67690000;
+      prevWeekTotal = 0;
     }
 
     return { thisWeekTotal, prevWeekTotal };
@@ -90,7 +90,7 @@ export default function AnalyticsView({
 
     // Fallback matching mockup
     if (avgVal === 0) {
-      avgVal = currencyMode === 'USD' ? 650.92 : 65092000;
+      avgVal = 0;
     }
 
     // Dynamic percent trend or default +20%
@@ -101,7 +101,7 @@ export default function AnalyticsView({
 
   // Goals percentage (Paid / Total invoices ratio)
   const goalPercentage = useMemo(() => {
-    if (invoiceCount === 0) return 72; // Default mock target matching image
+    if (invoiceCount === 0) return 0;
     const paidCount = activeInvoices.filter(inv => inv.status === 'paid').length;
     return Math.round((paidCount / invoiceCount) * 100);
   }, [activeInvoices, invoiceCount]);
@@ -136,7 +136,7 @@ export default function AnalyticsView({
         result.push(mockPaid[i]);
       }
     }
-    return result;
+    return sorted.slice(0, 5);
   }, [activeInvoices, currencyMode]);
 
   // Top Unpaid Clients (Invoices Unpaid list)
@@ -173,7 +173,7 @@ export default function AnalyticsView({
         result.push(mockUnpaid[i]);
       }
     }
-    return result;
+    return sorted.slice(0, 5);
   }, [activeInvoices, currencyMode]);
 
   // --- 2. CHART COORDINATE CALCULATIONS ---

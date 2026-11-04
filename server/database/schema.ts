@@ -186,6 +186,24 @@ export async function initDatabaseSchema() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS expenses (
+        id VARCHAR(64) PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        category VARCHAR(64) NOT NULL DEFAULT 'operasional',
+        amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+        expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+        payment_method VARCHAR(64) DEFAULT 'cash',
+        vendor VARCHAR(255),
+        notes TEXT,
+        receipt_url TEXT,
+        created_by VARCHAR(64),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (expense_date);
+      CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses (category);
+
       CREATE TABLE IF NOT EXISTS flash_sales (
         id VARCHAR(64) PRIMARY KEY,
         title VARCHAR(255) NOT NULL,

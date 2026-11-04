@@ -140,3 +140,50 @@ export interface CustomerPortalConfig {
 }
 
 
+
+export type ExpenseCategory = 
+  | 'isp' 
+  | 'modem' 
+  | 'kabel' 
+  | 'server' 
+  | 'listrik' 
+  | 'teknisi' 
+  | 'operasional' 
+  | 'lainnya';
+
+export interface ExpenseItem {
+  id: string;
+  title: string;
+  category: ExpenseCategory;
+  amount: number;
+  expense_date: string;
+  payment_method: string;
+  vendor?: string;
+  notes?: string;
+  receipt_url?: string;
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProfitLossReportData {
+  totalIncome: number;
+  totalExpense: number;
+  netProfit: number;
+  profitMargin: number;
+  paidInvoicesCount: number;
+  expensesCount: number;
+  categoryBreakdown: {
+    category: string;
+    amount: number;
+    count: number;
+    percentage: number;
+  }[];
+  monthlyTrend: {
+    month: string;
+    label: string;
+    income: number;
+    expense: number;
+    profit: number;
+  }[];
+}

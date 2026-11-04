@@ -28,7 +28,9 @@ import {
   ShieldAlert,
   Palette,
   Flame,
-  Key
+  Key,
+  DollarSign,
+  Receipt
 } from 'lucide-react';
 import { BusinessProfile, UserRole } from '../types';
 
@@ -133,10 +135,12 @@ export default function Sidebar({
     },
     {
       id: 'reports_group',
-      label: 'Laporan & Metode',
+      label: 'Laporan & Keuangan',
       icon: TrendingUp,
       roles: ['owner'],
       items: [
+        { id: 'financial-report', label: 'Laba Rugi & Keuntungan', icon: DollarSign, roles: ['owner'] },
+        { id: 'expenses', label: 'Catatan Pengeluaran', icon: Receipt, roles: ['owner'] },
         { id: 'analytics', label: t.analytics, icon: TrendingUp, roles: ['owner'] },
         { id: 'gateways', label: t.paymentMethods, icon: CreditCard, roles: ['owner'] },
       ]
