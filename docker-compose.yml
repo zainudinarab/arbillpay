@@ -7,6 +7,7 @@
 
 services:
   arbill:
+    image: ghcr.io/zainudinarab/arbillpay:latest
     build:
       context: .
       dockerfile: Dockerfile

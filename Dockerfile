@@ -1,7 +1,13 @@
 # ==============================================================================
-# Single-Stage Dockerfile untuk Arbill Billing SaaS (Ultra-Fast Pre-built Runner)
-# Frontend di-build di lokal/CI ke 'dist/', server VPS running instan tanpa beban kompilasi!
+# Multi-Stage Dockerfile untuk Arbill Billing SaaS (Ultra-Fast Pre-built Runner)
 # ==============================================================================
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
 FROM node:20-alpine
 WORKDIR /app
 
@@ -12,12 +18,12 @@ ENV TZ=Asia/Jakarta
 # Install dumb-init dan tzdata untuk timezone & signal handler yang aman
 RUN apk add --no-cache dumb-init tzdata
 
-# Install runtime production dependencies + tsx runner (ter-cache efisien di Docker)
+# Install runtime production dependencies + tsx runner
 COPY package*.json ./
 RUN npm ci --omit=dev && npm install -g tsx
 
-# Salin pre-built frontend distribution
-COPY dist ./dist
+# Salin frontend distribution dari builder stage
+COPY --from=builder /app/dist ./dist
 
 # Salin public assets
 COPY public ./public
