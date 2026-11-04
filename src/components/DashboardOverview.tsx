@@ -294,7 +294,7 @@ export default function DashboardOverview({
         </div>
 
         {/* 1. KPI Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
           {/* Card 1: Total Invoiced */}
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
@@ -361,110 +361,6 @@ export default function DashboardOverview({
                 {profile.language === 'id' ? 'Rata-rata 14 hari' : 'Avg. 14 days'}
               </p>
               <div className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white shadow-sm shadow-rose-200"></div>
-            </div>
-          </div>
-
-          {/* Card 5: ArabPay Wallet Pro Platinum Card */}
-          <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-5 rounded-2xl border border-emerald-500/40 shadow-xl shadow-emerald-950/20 text-white flex flex-col justify-between hover:shadow-2xl transition-all relative overflow-hidden group">
-            {/* Background luxury glow */}
-            <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
-
-            <div>
-              {/* Header: Chip, Contactless, Badge & Eye Toggle */}
-              <div className="flex items-center justify-between pb-2 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                  {/* Gold Mini EMV Chip */}
-                  <div className="w-7 h-5 rounded bg-gradient-to-br from-amber-200 via-amber-400 to-amber-600 p-0.5 shadow-xs border border-amber-300/80 shrink-0">
-                    <div className="w-full h-full rounded border border-amber-800/40 grid grid-cols-2 gap-0.5 p-0.5">
-                      <div className="border border-amber-900/40"></div>
-                      <div className="border border-amber-900/40"></div>
-                    </div>
-                  </div>
-                  <Wifi className="w-3.5 h-3.5 rotate-90 text-emerald-400 opacity-80 shrink-0" />
-                  <span className="text-[10px] font-black tracking-wider bg-gradient-to-r from-amber-300 via-emerald-300 to-teal-200 bg-clip-text text-transparent uppercase">
-                    WALLET PRO
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="SSE Live Connected" />
-                  <button
-                    type="button"
-                    onClick={() => setShowBalance(!showBalance)}
-                    className="p-1 hover:bg-white/10 rounded text-slate-300 hover:text-white transition cursor-pointer"
-                    title={showBalance ? 'Sembunyikan Saldo (Sensor Privasi)' : 'Tampilkan Saldo'}
-                  >
-                    {showBalance ? <EyeOff size={13} /> : <Eye size={13} />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Saldo Display */}
-              <div className="pt-3">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">
-                  Total Saldo Aktif
-                </span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <h2 className="text-xl sm:text-2xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-teal-200 to-white bg-clip-text text-transparent">
-                    {showBalance ? `Rp ${arabpayBalance.toLocaleString('id-ID')}` : 'Rp ••••••••'}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={refreshLiveBalance}
-                    className="p-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 rounded-lg text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
-                    title="Refresh Saldo Live S2S"
-                  >
-                    <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Account ID / Owner Details */}
-              <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2 font-mono">
-                <span className="truncate max-w-[120px]" title={displayOwnerId}>
-                  ID: {displayOwnerId}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(displayOwnerId);
-                    setCopiedId(true);
-                    setTimeout(() => setCopiedId(false), 2000);
-                  }}
-                  className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 text-emerald-300 rounded text-[9px] font-sans font-bold flex items-center gap-1 transition cursor-pointer"
-                  title="Salin ID Akun"
-                >
-                  {copiedId ? <Check size={10} /> : <Copy size={10} />}
-                  <span>{copiedId ? 'Tersalin' : 'Salin'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Actions Footer Buttons */}
-            <div className="pt-3 border-t border-white/10 grid grid-cols-2 gap-1.5 mt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setTopupStep('input');
-                  setTopupError('');
-                  setShowTopupModal(true);
-                }}
-                className="py-1.5 px-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-[10px] rounded-lg shadow-sm flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 whitespace-nowrap"
-              >
-                <Plus size={11} className="shrink-0" />
-                <span>Top Up</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowQrisModal(true)}
-                className="py-1.5 px-2 bg-white/10 hover:bg-white/20 border border-white/15 text-slate-200 font-bold text-[10px] rounded-lg flex items-center justify-center gap-1 transition cursor-pointer active:scale-95"
-                title="Tampilkan QRIS Kasir Toko"
-              >
-                <QrCode size={11} className="text-emerald-400" />
-                <span>QRIS Kasir</span>
-              </button>
             </div>
           </div>
 
@@ -573,12 +469,125 @@ export default function DashboardOverview({
             </div>
           </div>
 
-          {/* Payment Methods (Right panel) */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-5">
-            <div>
-              <span className="text-[10px] font-sans font-bold text-slate-400 tracking-wider block uppercase">{t.paymentMethods}</span>
-              <h3 className="font-sans font-bold text-lg text-slate-800 mt-1">{t.connectedGateways}</h3>
+          {/* Right Column: Wallet Pro Card + Payment Gateways */}
+          <div className="space-y-6">
+
+            {/* ArabPay Wallet Pro Platinum Card */}
+            <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 rounded-2xl border border-emerald-500/40 shadow-xl shadow-emerald-950/20 text-white flex flex-col justify-between hover:shadow-2xl transition-all relative overflow-hidden group">
+              {/* Background luxury glow */}
+              <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              <div>
+                {/* Header: Chip, Contactless, Badge & Eye Toggle */}
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2.5">
+                    {/* Gold Mini EMV Chip */}
+                    <div className="w-8 h-6 rounded-md bg-gradient-to-br from-amber-200 via-amber-400 to-amber-600 p-0.5 shadow-xs border border-amber-300/80 shrink-0">
+                      <div className="w-full h-full rounded border border-amber-800/40 grid grid-cols-2 gap-0.5 p-0.5">
+                        <div className="border border-amber-900/40"></div>
+                        <div className="border border-amber-900/40"></div>
+                      </div>
+                    </div>
+                    <Wifi className="w-4 h-4 rotate-90 text-emerald-400 opacity-80 shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-black tracking-wider bg-gradient-to-r from-amber-300 via-emerald-300 to-teal-200 bg-clip-text text-transparent uppercase leading-none">
+                        WALLET PRO
+                      </span>
+                      <span className="text-[8px] text-slate-400 font-mono tracking-widest uppercase mt-0.5">PLATINUM MEMBER</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center gap-1.5 text-[9px] font-extrabold text-emerald-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>SSE LIVE</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowBalance(!showBalance)}
+                      className="p-1.5 hover:bg-white/10 rounded-lg text-slate-300 hover:text-white transition cursor-pointer"
+                      title={showBalance ? 'Sembunyikan Saldo (Sensor Privasi)' : 'Tampilkan Saldo'}
+                    >
+                      {showBalance ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Saldo Display */}
+                <div className="pt-4">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                    Total Saldo Aktif
+                  </span>
+                  <div className="flex items-center gap-2.5 mt-1">
+                    <h2 className="text-2xl sm:text-3xl font-black font-mono tracking-tight bg-gradient-to-r from-emerald-300 via-teal-200 to-white bg-clip-text text-transparent">
+                      {showBalance ? `Rp ${arabpayBalance.toLocaleString('id-ID')}` : 'Rp ••••••••'}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={refreshLiveBalance}
+                      className="p-2 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 rounded-xl text-emerald-400 hover:text-emerald-200 transition cursor-pointer shrink-0"
+                      title="Refresh Saldo Live S2S"
+                    >
+                      <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Account ID / Owner Details */}
+                <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 font-mono">
+                  <span className="truncate max-w-[160px]" title={displayOwnerId}>
+                    ID: <strong className="text-emerald-300 font-bold">{displayOwnerId}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(displayOwnerId);
+                      setCopiedId(true);
+                      setTimeout(() => setCopiedId(false), 2000);
+                    }}
+                    className="px-2 py-1 bg-white/10 hover:bg-white/20 text-emerald-300 rounded-lg text-[10px] font-sans font-bold flex items-center gap-1 transition cursor-pointer"
+                    title="Salin ID Akun"
+                  >
+                    {copiedId ? <Check size={11} /> : <Copy size={11} />}
+                    <span>{copiedId ? 'Tersalin' : 'Salin'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Actions Footer Buttons */}
+              <div className="pt-4 border-t border-white/10 grid grid-cols-2 gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTopupStep('input');
+                    setTopupError('');
+                    setShowTopupModal(true);
+                  }}
+                  className="py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-emerald-950/30 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 whitespace-nowrap"
+                >
+                  <Plus size={13} className="shrink-0" />
+                  <span>Top Up</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowQrisModal(true)}
+                  className="py-2 px-3 bg-white/10 hover:bg-white/20 border border-white/15 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 whitespace-nowrap"
+                  title="Tampilkan QRIS Kasir Toko"
+                >
+                  <QrCode size={13} className="text-emerald-400" />
+                  <span>QRIS Kasir</span>
+                </button>
+              </div>
             </div>
+
+            {/* Payment Methods (Right panel) */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-5">
+              <div>
+                <span className="text-[10px] font-sans font-bold text-slate-400 tracking-wider block uppercase">{t.paymentMethods}</span>
+                <h3 className="font-sans font-bold text-lg text-slate-800 mt-1">{t.connectedGateways}</h3>
+              </div>
 
             {/* List of E-Wallet Gateways */}
             <div className="space-y-3">
@@ -629,6 +638,8 @@ export default function DashboardOverview({
           </div>
 
         </div>
+
+      </div>
 
         {/* 3. Recent Invoices (Table) */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
