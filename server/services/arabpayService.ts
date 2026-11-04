@@ -98,15 +98,13 @@ export async function exchangeArabPayOAuthToken(code: string) {
       if (jwtToken) {
         jwtPayload = decodeJwtPayload(jwtToken);
         
-        const balanceRes = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/balance`, {
-          headers: {
-            ...generateArabPayHeaders(''),
-            'Authorization': `Bearer ${jwtToken}`
-          }
+        const liveBal = await fetchLiveArabPayBalance({
+          token: jwtToken,
+          userId: jwtPayload?.user_id || '',
+          phone: jwtPayload?.phone_number || jwtPayload?.phone || ''
         });
-        if (balanceRes.ok) {
-          const balData = await balanceRes.json();
-          arabpayBalance = balData.balance || 0;
+        if (liveBal && liveBal.success && typeof liveBal.balance === 'number') {
+          arabpayBalance = liveBal.balance;
         }
       }
     }

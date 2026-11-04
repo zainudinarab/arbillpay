@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  Bell, 
-  ArrowUpRight, 
-  Eye, 
-  ChevronRight, 
+import {
+  Search,
+  Bell,
+  ArrowUpRight,
+  Eye,
+  ChevronRight,
   TrendingUp,
   QrCode,
   Smartphone,
@@ -68,7 +68,7 @@ export default function DashboardOverview({
   // Filter invoices for display in recent
   const filteredRecentInvoices = invoices
     .filter(inv => !inv.isArchived)
-    .filter(inv => 
+    .filter(inv =>
       inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       inv.client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (inv.client.company && inv.client.company.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -78,7 +78,7 @@ export default function DashboardOverview({
   // Calculate stats based on actual non-archived invoices array
   const activeInvoices = invoices.filter(inv => !inv.isArchived);
   const totalInvoiced = activeInvoices.reduce((sum, inv) => sum + inv.total, 0);
-  
+
   const paidInvoicesAmt = activeInvoices
     .filter(inv => inv.status === 'paid')
     .reduce((sum, inv) => sum + inv.total, 0);
@@ -161,7 +161,7 @@ export default function DashboardOverview({
 
       {/* Main Content Dashboard */}
       <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
-        
+
         {/* Mobile Header Title */}
         <div className="lg:hidden flex items-center justify-between pb-2">
           <div>
@@ -175,7 +175,7 @@ export default function DashboardOverview({
 
         {/* 1. KPI Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          
+
           {/* Card 1: Total Invoiced */}
           <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-all">
             <div className="space-y-1">
@@ -269,7 +269,7 @@ export default function DashboardOverview({
 
         {/* 2. Middle Row: Line Chart + Gateways List */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Billing & Revenue Flow (Chart) */}
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm lg:col-span-2 space-y-4">
             <div className="flex items-start justify-between">
@@ -285,8 +285,8 @@ export default function DashboardOverview({
 
             {/* Interactive SVG Chart Container */}
             <div className="relative pt-6 h-[220px]">
-              <svg 
-                viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
+              <svg
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                 className="w-full h-full overflow-visible"
               >
                 <defs>
@@ -307,33 +307,33 @@ export default function DashboardOverview({
                 <path d={createAreaPath()} fill="url(#chartGradient)" />
 
                 {/* Line path */}
-                <path 
-                  d={createBezierPath()} 
-                  fill="none" 
-                  stroke="#0066FF" 
-                  strokeWidth="3.5" 
-                  strokeLinecap="round" 
-                  className="animate-[dash_1.5s_ease-in-out]" 
+                <path
+                  d={createBezierPath()}
+                  fill="none"
+                  stroke="#0066FF"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  className="animate-[dash_1.5s_ease-in-out]"
                 />
 
                 {/* Dots / Interactive Circles */}
                 {chartData.map((pt, idx) => (
                   <g key={pt.month} className="cursor-pointer group/dot">
-                    <circle 
-                      cx={pt.x} 
-                      cy={pt.y} 
-                      r="12" 
-                      fill="transparent" 
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r="12"
+                      fill="transparent"
                       onMouseEnter={() => setHoveredPoint({ x: pt.x, y: pt.y, month: pt.month, value: pt.value })}
                       onMouseLeave={() => setHoveredPoint(null)}
                     />
-                    <circle 
-                      cx={pt.x} 
-                      cy={pt.y} 
-                      r="5" 
-                      fill="#FFFFFF" 
-                      stroke="#0066FF" 
-                      strokeWidth="3" 
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r="5"
+                      fill="#FFFFFF"
+                      stroke="#0066FF"
+                      strokeWidth="3"
                       className="transition-all duration-200 group-hover/dot:r-7 group-hover/dot:stroke-[4]"
                     />
                   </g>
@@ -341,11 +341,11 @@ export default function DashboardOverview({
 
                 {/* X Axis Labels */}
                 {chartData.map((pt) => (
-                  <text 
+                  <text
                     key={pt.month}
-                    x={pt.x} 
-                    y={chartHeight - 2} 
-                    textAnchor="middle" 
+                    x={pt.x}
+                    y={chartHeight - 2}
+                    textAnchor="middle"
                     className="text-[11px] font-sans font-medium fill-slate-400"
                   >
                     {pt.month}
@@ -355,10 +355,10 @@ export default function DashboardOverview({
 
               {/* Chart Tooltip Overlay */}
               {hoveredPoint && (
-                <div 
+                <div
                   className="absolute bg-slate-900 text-white rounded-lg px-2.5 py-1.5 text-xs shadow-lg font-sans font-medium flex flex-col pointer-events-none z-20"
-                  style={{ 
-                    left: `${(hoveredPoint.x / chartWidth) * 100}%`, 
+                  style={{
+                    left: `${(hoveredPoint.x / chartWidth) * 100}%`,
                     top: `${(hoveredPoint.y / chartHeight) * 100 - 25}%`,
                     transform: 'translateX(-50%)'
                   }}
@@ -391,11 +391,10 @@ export default function DashboardOverview({
                     </div>
                   </div>
 
-                  <span className={`text-[10px] font-sans font-bold px-2.5 py-1 rounded-full ${
-                    gw.isActive 
-                      ? 'bg-emerald-50 text-emerald-600' 
-                      : 'bg-slate-100 text-slate-400'
-                  }`}>
+                  <span className={`text-[10px] font-sans font-bold px-2.5 py-1 rounded-full ${gw.isActive
+                    ? 'bg-emerald-50 text-emerald-600'
+                    : 'bg-slate-100 text-slate-400'
+                    }`}>
                     {gw.isActive ? (profile.language === 'id' ? 'Aktif' : 'Connected') : (profile.language === 'id' ? 'Nonaktif' : 'Inactive')}
                   </span>
                 </div>
@@ -405,7 +404,7 @@ export default function DashboardOverview({
             {/* Payout Distribution charts */}
             <div className="space-y-3 pt-2">
               <span className="text-[10px] font-sans font-bold text-slate-400 tracking-wider block uppercase">{t.payoutDistribution}</span>
-              
+
               <div className="space-y-3">
                 {gateways.filter(g => g.isActive && g.payoutShare > 0).map((gw) => (
                   <div key={gw.id} className="space-y-1">
@@ -414,8 +413,8 @@ export default function DashboardOverview({
                       <span className="font-semibold text-slate-800">{gw.payoutShare}%</span>
                     </div>
                     <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-[#2563EB] h-full rounded-full transition-all duration-300" 
+                      <div
+                        className="bg-[#2563EB] h-full rounded-full transition-all duration-300"
                         style={{ width: `${gw.payoutShare}%` }}
                       />
                     </div>
@@ -435,7 +434,7 @@ export default function DashboardOverview({
               <span className="text-[10px] font-sans font-bold text-slate-400 tracking-wider block uppercase">{t.recentInvoices}</span>
               <h3 className="font-sans font-bold text-lg text-slate-800 mt-1">{t.latestBillingActivity}</h3>
             </div>
-            <button 
+            <button
               onClick={() => setCurrentView('invoices')}
               className="text-xs font-semibold text-[#2563EB] hover:text-blue-700 flex items-center gap-1 cursor-pointer"
             >
@@ -465,8 +464,8 @@ export default function DashboardOverview({
                   </tr>
                 ) : (
                   filteredRecentInvoices.map((inv) => (
-                    <tr 
-                      key={inv.id} 
+                    <tr
+                      key={inv.id}
                       onClick={() => {
                         setSelectedInvoice(inv);
                         setCurrentView('invoice-detail');
@@ -511,13 +510,12 @@ export default function DashboardOverview({
 
                       {/* Status */}
                       <td className="p-4 pr-6 text-right">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          inv.status === 'paid' 
-                            ? 'bg-emerald-50 text-emerald-600' 
-                            : inv.status === 'pending'
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${inv.status === 'paid'
+                          ? 'bg-emerald-50 text-emerald-600'
+                          : inv.status === 'pending'
                             ? 'bg-amber-50 text-amber-600'
                             : 'bg-rose-50 text-rose-600'
-                        }`}>
+                          }`}>
                           {inv.status === 'paid' ? (
                             <CheckCircle size={12} className="shrink-0" />
                           ) : inv.status === 'pending' ? (

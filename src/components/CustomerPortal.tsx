@@ -878,10 +878,15 @@ export default function CustomerPortal({
           if (data && (data.balance !== undefined || data.arabpay_balance !== undefined)) {
             const newBal = Number(data.balance ?? data.arabpay_balance);
             console.log('🎉 [ARABPAY SSE BROADCAST] Live balance update received from ArabPay:', newBal);
-            onLoginSuccess({
+            const updated = {
               ...currentUser,
               arabpay_balance: newBal
-            });
+            };
+            onLoginSuccess(updated);
+            try {
+              localStorage.setItem('arbil_current_user', JSON.stringify(updated));
+              window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: newBal }));
+            } catch (e) {}
           }
         } catch (e) {
           console.warn('Error parsing SSE balance_update payload:', e);
@@ -889,7 +894,8 @@ export default function CustomerPortal({
       });
 
       eventSource.onopen = () => {
-        console.log('✅ [ARABPAY SSE BROADCAST] Connected to live SSE stream!');
+        console.log('✅ [ARABPAY SSE BROADCAST] Connected to live SSE stream! Syncing live balance...');
+        fetchLiveArabPayBalance();
       };
 
       eventSource.onerror = (err) => {
