@@ -215,6 +215,12 @@ export default function CustomerPortal({
   const [selectedDetailPackage, setSelectedDetailPackage] = useState<any>(null);
   const [showDetailPackageModal, setShowDetailPackageModal] = useState(false);
 
+  // Pending Payments Modal & List State (Menunggu Pembayaran)
+  const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+  const [isLoadingPending, setIsLoadingPending] = useState(false);
+  const [showPendingPaymentsModal, setShowPendingPaymentsModal] = useState(false);
+  const [cancellingPaymentId, setCancellingPaymentId] = useState<string | null>(null);
+
   // Member Registration Modal State
   const [showMemberRegisterModal, setShowMemberRegisterModal] = useState(false);
   const [registerPkg, setRegisterPkg] = useState<any>(null);
@@ -495,11 +501,13 @@ export default function CustomerPortal({
     fetchCustomerProfile();
     fetchLiveArabPayBalance();
     fetchMyPurchasedVouchers();
+    fetchPendingPayments();
 
     // 1. Auto-refresh live balance when returning to tab/window
     const handleFocus = () => {
       fetchLiveArabPayBalance();
       fetchMyPurchasedVouchers();
+      fetchPendingPayments();
     };
     window.addEventListener('focus', handleFocus);
 
@@ -507,6 +515,7 @@ export default function CustomerPortal({
     const balanceInterval = setInterval(() => {
       fetchLiveArabPayBalance();
       fetchMyPurchasedVouchers();
+      fetchPendingPayments();
     }, 15000);
 
     // 3. Real-time Server-Sent Events (SSE) Stream Subscriber
@@ -558,6 +567,113 @@ export default function CustomerPortal({
       if (eventSource) eventSource.close();
     };
   }, [currentUser?.id, currentUser?.arabpay_user_id]);
+
+  // Fetch pending payments (Menunggu Pembayaran) from ArabPay & Arbill
+  const fetchPendingPayments = async () => {
+    if (!currentUser?.phone_number && !currentUser?.arabpay_user_id && !currentUser?.id) return;
+    setIsLoadingPending(true);
+    try {
+      const token = (currentUser as any)?.token_jwt || (currentUser as any)?.token || localStorage.getItem('arabpay_token') || '';
+      const apiUrl = getApiUrl();
+      const qParams = new URLSearchParams({
+        user_id: currentUser?.arabpay_user_id || currentUser?.id || '',
+        phone_number: currentUser?.phone_number || ''
+      });
+      const res = await fetch(`${apiUrl}/api/portal/pending-payments?${qParams.toString()}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.pending_payments)) {
+          setPendingPayments(data.pending_payments);
+        }
+      }
+    } catch (err) {
+      console.warn('[Fetch Pending Payments Error]:', err);
+    } finally {
+      setIsLoadingPending(false);
+    }
+  };
+
+  const handlePayPendingItem = (item: any) => {
+    setShowPendingPaymentsModal(false);
+    if (item.type === 'topup' || item.channel_type === 'jalur_topup') {
+      setTopupData({
+        reference_id: item.reference_id,
+        amount: item.amount,
+        base_amount: item.base_amount || item.amount,
+        unique_code: item.unique_code || 0,
+        qr_string: item.qr_string,
+        qr_image: item.qr_image,
+        qr_url: item.qr_image,
+        va_number: item.va_number,
+        bank_name: item.bank_name,
+        payment_url: item.payment_url,
+        expires_at: item.expires_at,
+        channel: item.payment_method || 'qris'
+      });
+      setTopupStep('qris');
+      setTopupStatus('pending');
+      setShowTopupModal(true);
+    } else {
+      // Jalur 2: Voucher atau Tagihan
+      const pkg = {
+        id: item.checkout_id || item.id,
+        profile_id: item.checkout_id || item.id,
+        name: item.title,
+        package_name: item.title,
+        price: item.amount,
+        is_invoice: item.type === 'invoice'
+      };
+      setSelectedPackage(pkg);
+      setDirectCheckoutInfo({
+        checkoutId: item.checkout_id || item.id,
+        referenceId: item.reference_id,
+        amount: item.amount,
+        qrUrl: item.qr_image || (item.qr_string ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(item.qr_string)}` : null),
+        qrString: item.qr_string || '',
+        vaNumber: item.va_number || null,
+        channelName: item.bank_name ? `Virtual Account ${item.bank_name}` : 'QRIS Instant',
+        packageName: item.title || 'Voucher WiFi Hotspot',
+        buyerName: currentUser?.name || 'Pelanggan',
+        buyerPhone: currentUser?.phone_number || ''
+      });
+      setPaymentStep('pending_payment');
+      setShowPaymentModal(true);
+    }
+  };
+
+  const handleCancelPendingItem = async (item: any) => {
+    if (!window.confirm(`Batalkan transaksi ${item.title} senilai ${formatRupiah(item.amount)}?`)) {
+      return;
+    }
+    setCancellingPaymentId(item.id || item.reference_id);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/portal/pending-payments/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: item.id,
+          reference_id: item.reference_id,
+          checkout_id: item.checkout_id,
+          type: item.type
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToastMsg({ type: 'info', text: 'Pembayaran pending berhasil dibatalkan.' });
+        setPendingPayments(prev => prev.filter(p => p.id !== item.id && p.reference_id !== item.reference_id));
+        fetchPendingPayments();
+      } else {
+        alert(data.error || 'Gagal membatalkan transaksi.');
+      }
+    } catch (err: any) {
+      alert('Terjadi kesalahan saat membatalkan transaksi: ' + err.message);
+    } finally {
+      setCancellingPaymentId(null);
+    }
+  };
 
   // Fetch purchased vouchers history directly from PostgreSQL Database
   const fetchMyPurchasedVouchers = async () => {
@@ -2018,24 +2134,52 @@ export default function CustomerPortal({
 
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {/* Stat 1: Saldo Dompet */}
+        {/* Stat 1: Menunggu Pembayaran / Pembayaran Aktif */}
         <div
           onClick={() => {
-            if (!currentUser) setShowLoginModal(true);
-            else setShowTopupModal(true);
+            if (!currentUser) {
+              setShowLoginModal(true);
+            } else {
+              fetchPendingPayments();
+              setShowPendingPaymentsModal(true);
+            }
           }}
-          className="bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm"
+          className={`bg-slate-900 border rounded-2xl p-3.5 sm:p-4 flex items-center gap-3 transition cursor-pointer group shadow-sm ${
+            pendingPayments.length > 0 
+              ? 'border-amber-500/40 hover:border-amber-500 bg-amber-500/[0.04]' 
+              : 'border-slate-800 hover:border-slate-700'
+          }`}
         >
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20 group-hover:scale-105 transition">
-            <Wallet className="w-5 h-5" />
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition group-hover:scale-105 relative ${
+            pendingPayments.length > 0
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+              : 'bg-slate-800/60 text-slate-400 border-slate-700/50'
+          }`}>
+            <Clock className="w-5 h-5" />
+            {pendingPayments.length > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 border border-slate-900"></span>
+              </span>
+            )}
           </div>
-          <div className="min-w-0">
-            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1">
-              <span>Saldo Dompet</span>
-              <span className="text-[10px] text-emerald-400 font-bold sm:hidden">+TopUp</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] text-slate-400 truncate flex items-center gap-1.5">
+              <span>Menunggu Bayar</span>
+              {pendingPayments.length > 0 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {pendingPayments.length}
+                </span>
+              )}
             </p>
-            <strong className="font-heading font-bold text-sm sm:text-base text-white block truncate">
-              {currentUser ? formatRupiah(balance) : 'Login'}
+            <strong className={`font-heading font-bold text-sm sm:text-base block truncate ${
+              pendingPayments.length > 0 ? 'text-amber-400' : 'text-slate-300'
+            }`}>
+              {currentUser ? (
+                pendingPayments.length > 0
+                  ? `${pendingPayments.length} Tagihan`
+                  : '0 Tagihan'
+              ) : 'Login'}
             </strong>
           </div>
         </div>
@@ -4685,7 +4829,7 @@ export default function CustomerPortal({
       )}
 
       {/* ==================== ARBILJS PAYMENT MODAL (Persis arbiljs) ==================== */}
-      {showPaymentModal && selectedPackage && (
+      {showPaymentModal && (selectedPackage || directCheckoutInfo) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => paymentStep !== 'processing' && handleClosePaymentModal()}></div>
 
@@ -6593,6 +6737,190 @@ export default function CustomerPortal({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL MENUNGGU PEMBAYARAN (AKTIF) ==================== */}
+      {showPendingPaymentsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div 
+            className="absolute inset-0 bg-black/80 backdrop-blur-md" 
+            onClick={() => setShowPendingPaymentsModal(false)} 
+          />
+          <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-up z-10">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base sm:text-lg text-white flex items-center gap-2">
+                    Menunggu Pembayaran
+                    {pendingPayments.length > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                        {pendingPayments.length}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Selesaikan pembayaran untuk top-up saldo atau aktivasi voucher WiFi Anda
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={fetchPendingPayments}
+                  disabled={isLoadingPending}
+                  className="p-2 text-slate-400 hover:text-amber-400 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                  title="Segarkan daftar"
+                >
+                  <RefreshCw size={16} className={isLoadingPending ? 'animate-spin text-amber-400' : ''} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPendingPaymentsModal(false)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                  title="Tutup"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
+              {isLoadingPending && pendingPayments.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-400" />
+                  <p className="text-xs">Memeriksa status pembayaran dari ArabPay...</p>
+                </div>
+              ) : pendingPayments.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-2xl">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <h4 className="font-bold text-white text-sm sm:text-base">Tidak Ada Pembayaran Tertunda</h4>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                    Semua transaksi Anda telah selesai atau lunas. Anda tidak memiliki tagihan atau top-up yang sedang menunggu pembayaran.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPendingPaymentsModal(false);
+                      setActiveTab('buy');
+                    }}
+                    className="mt-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <ShoppingCart size={14} />
+                    <span>Beli Paket Voucher</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between px-3.5 py-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+                    <span>Terdapat <strong>{pendingPayments.length}</strong> transaksi menunggu penyelesaian</span>
+                    <span className="font-mono font-bold text-amber-400">
+                      Total: {formatRupiah(pendingPayments.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0))}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {pendingPayments.map((item: any) => {
+                      const isTopup = item.type === 'topup' || item.channel_type === 'jalur_topup';
+                      const isCancelling = cancellingPaymentId === (item.id || item.reference_id);
+
+                      return (
+                        <div
+                          key={item.id || item.reference_id}
+                          className="bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                        >
+                          {/* Info Transaksi */}
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {isTopup ? (
+                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                  <Wallet size={11} /> Top Up Saldo
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center gap-1">
+                                  <Ticket size={11} /> Voucher WiFi Direct
+                                </span>
+                              )}
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                Menunggu Bayar
+                              </span>
+                            </div>
+
+                            <h4 className="font-bold text-sm text-white group-hover:text-amber-300 transition">
+                              {item.title}
+                            </h4>
+
+                            <div className="text-lg font-mono font-black text-amber-400">
+                              {formatRupiah(item.amount)}
+                            </div>
+
+                            <div className="flex items-center gap-3 text-[11px] text-slate-400 font-mono">
+                              <span>Ref: {item.reference_id}</span>
+                              {item.created_at && (
+                                <span className="text-slate-500">
+                                  {new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Tombol Aksi: Bayar Sekarang & Batalkan */}
+                          <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/80">
+                            <button
+                              type="button"
+                              onClick={() => handlePayPendingItem(item)}
+                              className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+                            >
+                              <QrCode size={14} />
+                              <span>Bayar Sekarang</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleCancelPendingItem(item)}
+                              disabled={isCancelling}
+                              className="px-3 py-2.5 bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 border border-slate-700 hover:border-rose-500/30 font-semibold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1"
+                              title="Batalkan tagihan ini"
+                            >
+                              {isCancelling ? (
+                                <Loader2 size={14} className="animate-spin text-rose-400" />
+                              ) : (
+                                <X size={14} />
+                              )}
+                              <span>Batalkan</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-slate-800/80 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1 text-[11px]">
+                <Shield size={12} className="text-emerald-400" />
+                Sistem Pembayaran Terhubung ArabPay S2S
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowPendingPaymentsModal(false)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-lg transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

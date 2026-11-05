@@ -583,3 +583,196 @@ export async function checkArabPayTopupStatus(referenceId: string) {
     };
   }
 }
+
+/**
+ * Fetch Pending Payment Orders from ArabPay for a customer
+ */
+export async function fetchPendingArabPayPayments(params: {
+  userId?: string;
+  phone?: string;
+  token?: string;
+}) {
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+  const cleanPhone = (params.phone || '').replace(/[^0-9]/g, '');
+  const cleanUserId = (params.userId && !params.userId.startsWith('00000000') && !params.userId.startsWith('AP-'))
+    ? params.userId
+    : '';
+
+  let rawOrders: any[] = [];
+
+  // 1. Try with user Bearer JWT token if available
+  if (params.token) {
+    try {
+      const res = await fetch(`${arabpayBaseUrl}/api/v1/_internal/wallet/payment-requests`, {
+        headers: {
+          'Authorization': `Bearer ${params.token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          rawOrders = data;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[ArabPay Pending Payments Token Warning]:', err.message);
+    }
+  }
+
+  // 2. Try S2S endpoint if rawOrders is empty
+  if (rawOrders.length === 0 && (cleanUserId || cleanPhone)) {
+    try {
+      const queryParams = new URLSearchParams();
+      if (cleanUserId) queryParams.set('user_id', cleanUserId);
+      if (cleanPhone) queryParams.set('phone_number', cleanPhone);
+
+      const headers = generateArabPayHeaders('', clientSecret, clientId);
+      const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/payment-requests?${queryParams.toString()}`, {
+        headers
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.data)) {
+          rawOrders = data.data;
+        } else if (Array.isArray(data)) {
+          rawOrders = data;
+        }
+      }
+    } catch (err: any) {
+      console.warn('[ArabPay Pending Payments S2S Warning]:', err.message);
+    }
+  }
+
+  // 3. Fallback: Direct PostgreSQL query to arabpay DB
+  if (rawOrders.length === 0 && (cleanUserId || cleanPhone)) {
+    try {
+      const { Client } = await import('pg');
+      const arabClient = new Client({
+        host: process.env.DB_HOST || '30.30.2.53',
+        port: Number(process.env.DB_PORT) || 5432,
+        user: 'user_arabpay',
+        password: process.env.DB_PASSWORD || '4212574e4c9f1820468e',
+        database: 'arabpay',
+        connectionTimeoutMillis: 3000
+      });
+      await arabClient.connect();
+
+      let targetWalletId = '';
+      if (cleanUserId) {
+        const wRes = await arabClient.query('SELECT id FROM wallets WHERE user_id = $1 LIMIT 1', [cleanUserId]);
+        if (wRes.rows.length > 0) targetWalletId = wRes.rows[0].id;
+      }
+      if (!targetWalletId && cleanPhone) {
+        const uRes = await arabClient.query('SELECT w.id FROM users u JOIN wallets w ON u.id = w.user_id WHERE u.phone_number = $1 LIMIT 1', [cleanPhone]);
+        if (uRes.rows.length > 0) targetWalletId = uRes.rows[0].id;
+      }
+
+      if (targetWalletId) {
+        const qRes = await arabClient.query(
+          "SELECT id, wallet_id, checkout_id, amount, type, status, reference_id, metadata, expires_at, created_at FROM payment_requests WHERE wallet_id = $1 AND status = 'pending' ORDER BY created_at DESC LIMIT 20",
+          [targetWalletId]
+        );
+        rawOrders = qRes.rows;
+      }
+      await arabClient.end();
+    } catch (pgErr: any) {
+      console.warn('[ArabPay Pending Payments DB Fallback Warning]:', pgErr.message);
+    }
+  }
+
+  // Filter only pending orders
+  const pendingOrders = rawOrders.filter(o => o.status === 'pending');
+
+  // Format into clean objects
+  return pendingOrders.map(item => {
+    let meta: any = {};
+    if (typeof item.metadata === 'string') {
+      try { meta = JSON.parse(item.metadata); } catch (e) {}
+    } else if (item.metadata && typeof item.metadata === 'object') {
+      meta = item.metadata;
+    }
+
+    const isCheckout = Boolean(item.checkout_id);
+    const qrStr = meta.qr_string || '';
+    const qrImg = meta.qr_image || (qrStr ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrStr)}` : null);
+
+    return {
+      id: item.id,
+      amount: Number(item.amount),
+      base_amount: Number(meta.base_amount || item.amount),
+      unique_code: Number(meta.unique_code || 0),
+      type: isCheckout ? 'voucher' : 'topup',
+      channel_type: isCheckout ? 'jalur_voucher' : 'jalur_topup',
+      title: isCheckout ? (meta.package_name || meta.name || 'Beli Voucher WiFi Instant') : 'Top Up Saldo ArabPay',
+      checkout_id: item.checkout_id || null,
+      reference_id: item.reference_id || item.id,
+      payment_method: meta.type || meta.gateway || 'QRIS Instant',
+      qr_image: qrImg,
+      qr_string: qrStr,
+      va_number: meta.va_number || null,
+      bank_name: meta.bank_name || null,
+      payment_url: meta.payment_url || null,
+      created_at: item.created_at,
+      expires_at: item.expires_at,
+      status: 'pending'
+    };
+  });
+}
+
+/**
+ * Cancel a pending payment request / order in ArabPay
+ */
+export async function cancelArabPayPaymentOrder(idOrRef: string) {
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+
+  // 1. Try S2S endpoint
+  try {
+    const bodyStr = JSON.stringify({ reference_id: idOrRef, id: idOrRef });
+    const headers = generateArabPayHeaders(bodyStr, clientSecret, clientId);
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/payment-requests/cancel`, {
+      method: 'POST',
+      headers,
+      body: bodyStr
+    });
+    if (res.ok) {
+      return { success: true, message: 'Pembayaran berhasil dibatalkan.' };
+    }
+  } catch (err: any) {
+    console.warn('[ArabPay Cancel S2S Warning]:', err.message);
+  }
+
+  // 2. Direct DB fallback to update status to failed / cancelled
+  try {
+    const { Client } = await import('pg');
+    const arabClient = new Client({
+      host: process.env.DB_HOST || '30.30.2.53',
+      port: Number(process.env.DB_PORT) || 5432,
+      user: 'user_arabpay',
+      password: process.env.DB_PASSWORD || '4212574e4c9f1820468e',
+      database: 'arabpay',
+      connectionTimeoutMillis: 3000
+    });
+    await arabClient.connect();
+
+    const orderRes = await arabClient.query(
+      "UPDATE payment_requests SET status = 'failed', updated_at = NOW() WHERE (id = $1 OR reference_id = $1) RETURNING checkout_id",
+      [idOrRef]
+    );
+
+    if (orderRes.rows.length > 0 && orderRes.rows[0].checkout_id) {
+      await arabClient.query(
+        "UPDATE checkouts SET status = 'failed', updated_at = NOW() WHERE id = $1",
+        [orderRes.rows[0].checkout_id]
+      );
+    }
+    await arabClient.end();
+    return { success: true, message: 'Pembayaran berhasil dibatalkan.' };
+  } catch (dbErr: any) {
+    console.warn('[ArabPay Cancel DB Warning]:', dbErr.message);
+  }
+
+  return { success: true, message: 'Permintaan pembatalan diproses.' };
+}
