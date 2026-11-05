@@ -1089,7 +1089,14 @@ export default function CustomerPortal({
           }
           // 2. Payment Channels
           if (Array.isArray(data.payment_channels)) {
-            setPaymentChannels(data.payment_channels.filter((ch: any) => ch.is_active));
+            const activeList = data.payment_channels.filter((ch: any) => ch.is_active);
+            setPaymentChannels(activeList);
+            if (activeList.length > 0) {
+              setSelectedChannel((prev: any) => {
+                const found = activeList.find((ch: any) => ch.id === prev?.id || ch.code === prev?.code);
+                return found || activeList[0];
+              });
+            }
           }
           // 3. User Balance
           if (data.user_balance !== undefined && data.user_balance !== null && currentUser) {
@@ -5699,7 +5706,7 @@ export default function CustomerPortal({
                 {/* Primary Action Button */}
                 <button
                   onClick={handleProceedTopup}
-                  disabled={isTopupLoading || topupAmount < 5000 || !selectedChannel}
+                  disabled={isTopupLoading || topupAmount < 1000 || !selectedChannel}
                   className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-[0.98]"
                 >
                   {isTopupLoading ? (
