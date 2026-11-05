@@ -283,7 +283,7 @@ export default function SettingsPage({
       // Sinkronisasi cadangan ke Firestore jika cloud mode aktif
       try {
         await saveMerchantCredentialsToFirestore({
-          client_id: arabpayClientId || 'AP24228873',
+          client_id: arabpayClientId || 'AP32858345',
           client_secret: arabpayClientSecret || '',
           owner_phone: phone || '085746520724',
           owner_pin: cleanPass,

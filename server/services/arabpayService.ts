@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 
 export async function getArabPayCredentials() {
-  let clientId = process.env.ARABPAY_CLIENT_ID || '';
-  let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+  let clientId = '';
+  let clientSecret = '';
   let panelUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
 
   try {
@@ -19,15 +19,15 @@ export async function getArabPayCredentials() {
     }
   } catch (e) {}
 
-  if (!clientId) clientId = 'AP24228873';
-  if (!clientSecret) clientSecret = '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+  if (!clientId) clientId = process.env.ARABPAY_CLIENT_ID || 'AP32858345';
+  if (!clientSecret) clientSecret = process.env.ARABPAY_CLIENT_SECRET || '8k3PefbButr11MjKFO18YMyOaz14CkD9';
 
   return { clientId, clientSecret, panelUrl };
 }
 
 export function generateArabPayHeaders(bodyStr: string, customSecret?: string, customClientId?: string) {
-  const clientId = customClientId || process.env.ARABPAY_CLIENT_ID || 'AP24228873';
-  const clientSecret = customSecret || process.env.ARABPAY_CLIENT_SECRET || '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+  const clientId = customClientId || process.env.ARABPAY_CLIENT_ID || 'AP32858345';
+  const clientSecret = customSecret || process.env.ARABPAY_CLIENT_SECRET || '8k3PefbButr11MjKFO18YMyOaz14CkD9';
   const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   
   const signature = crypto.createHmac('sha256', clientSecret)
@@ -56,8 +56,8 @@ export function decodeJwtPayload(token: string) {
 }
 
 export async function exchangeArabPayOAuthToken(code: string) {
-  let clientId = process.env.ARABPAY_CLIENT_ID || '';
-  let clientSecret = process.env.ARABPAY_CLIENT_SECRET || '';
+  let clientId = '';
+  let clientSecret = '';
   let arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
 
   try {
@@ -67,15 +67,15 @@ export async function exchangeArabPayOAuthToken(code: string) {
         "SELECT key, value FROM system_settings WHERE key IN ('arabpay_client_id', 'arabpay_client_secret', 'arabpay_panel_url')"
       );
       for (const row of dbCreds.rows) {
-        if (row.key === 'arabpay_client_id' && !clientId) clientId = row.value;
-        if (row.key === 'arabpay_client_secret' && !clientSecret) clientSecret = row.value;
-        if (row.key === 'arabpay_panel_url') arabpayBaseUrl = row.value;
+        if (row.key === 'arabpay_client_id' && row.value) clientId = row.value.trim();
+        if (row.key === 'arabpay_client_secret' && row.value) clientSecret = row.value.trim();
+        if (row.key === 'arabpay_panel_url' && row.value) arabpayBaseUrl = row.value.trim();
       }
     }
   } catch (e) {}
 
-  if (!clientId) clientId = 'AP24228873';
-  if (!clientSecret) clientSecret = '06r8Zzlp0e8fDHUF2no4mDuVsdKLPa3n';
+  if (!clientId) clientId = process.env.ARABPAY_CLIENT_ID || 'AP32858345';
+  if (!clientSecret) clientSecret = process.env.ARABPAY_CLIENT_SECRET || '8k3PefbButr11MjKFO18YMyOaz14CkD9';
 
   const bodyObj = { code };
   const bodyStr = JSON.stringify(bodyObj);
@@ -318,23 +318,28 @@ export async function createS2SCheckout(params: {
   amount: number;
   reference_id: string;
   payment_method?: string;
+  payment_channel?: string;
   customer_name?: string;
   customer_phone?: string;
   customer_email?: string;
   order_items?: any[];
 }) {
-  const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+  const cleanPhone = (params.customer_phone || '').replace(/[^0-9]/g, '');
+
   const bodyObj = {
     amount: params.amount,
     reference_id: params.reference_id,
-    payment_method: params.payment_method || 'arabpay',
+    payment_method: params.payment_method || 'arabpay_direct',
+    payment_channel: params.payment_channel || 'qris',
     customer_name: params.customer_name || 'Pelanggan Hotspot',
-    customer_phone: params.customer_phone || '',
+    customer_phone: cleanPhone,
     customer_email: params.customer_email || '',
     order_items: params.order_items || []
   };
   const bodyStr = JSON.stringify(bodyObj);
-  const headers = generateArabPayHeaders(bodyStr);
+  const headers = generateArabPayHeaders(bodyStr, clientSecret, clientId);
 
   try {
     const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts`, {
@@ -345,28 +350,38 @@ export async function createS2SCheckout(params: {
 
     if (res.ok) {
       const data = await res.json();
+      const payData = data.payment_data || data;
+      const qrStr = payData.qr_string || data.qr_string || '';
+      const qrImg = payData.qr_image || data.qr_image || data.qr_url || (qrStr ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrStr)}` : null);
+      const vaNum = payData.va_number || data.va_number || data.pay_code || null;
+
       return {
         success: true,
         id: data.id || data.checkout_id || `chk_${Date.now()}`,
         reference_id: params.reference_id,
-        payment_data: data.payment_data || data,
-        qr_string: data.qr_string || null,
-        qr_image: data.qr_image || data.qr_url || null,
-        va_number: data.va_number || data.pay_code || null,
+        payment_data: payData,
+        qr_string: qrStr,
+        qr_image: qrImg,
+        qr_url: qrImg,
+        va_number: vaNum,
+        amount: payData.amount || params.amount,
         redirect_url: data.redirect_url || null
+      };
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      console.warn('[ArabPay S2S Checkout HTTP Error]:', res.status, errData);
+      return {
+        success: false,
+        error: errData.error || errData.message || `Gagal membuat checkout (${res.status})`
       };
     }
   } catch (err: any) {
-    console.warn('[ArabPay S2S Checkout Warning]:', err.message);
+    console.error('[ArabPay S2S Checkout Exception]:', err.message);
+    return {
+      success: false,
+      error: err.message
+    };
   }
-
-  // Fallback local checkout object if S2S service is unreachable
-  return {
-    success: true,
-    id: `chk_${Date.now()}`,
-    reference_id: params.reference_id,
-    payment_data: { amount: params.amount }
-  };
 }
 
 /**
@@ -380,7 +395,8 @@ export async function payCheckoutWithPin(params: {
   token_jwt: string;  // JWT token ArabPay user (wajib!)
   user_id?: string;
 }) {
-  const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
+  const { panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
   
   // Body persis seperti arbiljs: { checkout_id, pin, token_jwt }
   const bodyObj = {
@@ -416,17 +432,9 @@ export async function payCheckoutWithPin(params: {
     }
   } catch (err: any) {
     console.warn('[ArabPay Pay PIN Warning]:', err.message);
-    if (params.pin && params.pin.length === 6) {
-      return {
-        success: true,
-        status: 'PAID',
-        paid: true,
-        message: 'Pembayaran PIN ArabPay berhasil diproses (fallback lokal).'
-      };
-    }
     return {
       success: false,
-      error: 'Gagal memproses verifikasi PIN ArabPay.'
+      error: 'Gagal memproses verifikasi PIN ArabPay: ' + err.message
     };
   }
 }
@@ -435,27 +443,30 @@ export async function payCheckoutWithPin(params: {
  * 3. Check Checkout Payment Status (persis arbiljs)
  */
 export async function checkCheckoutStatus(checkoutIdOrRef: string) {
-  const arabpayBaseUrl = process.env.ARABPAY_PANEL_URL || process.env.ARABPAY_SERVICE_URL || 'https://arabpay.my.id';
-  const headers = generateArabPayHeaders('');
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+  const headers = generateArabPayHeaders('', clientSecret, clientId);
 
   try {
-    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts/status?id=${encodeURIComponent(checkoutIdOrRef)}`, {
+    const encodedId = encodeURIComponent(checkoutIdOrRef);
+    const res = await fetch(`${arabpayBaseUrl}/api/v1/checkouts/status?checkout_id=${encodedId}&reference_id=${encodedId}`, {
       headers
     });
     if (res.ok) {
       const data = await res.json();
+      const isPaid = data.status === 'PAID' || data.status === 'SUCCESS' || data.status === 'paid' || data.status === 'success' || data.paid === true;
       return {
         success: true,
-        status: data.status || 'PAID',
-        paid: data.status === 'PAID' || data.status === 'SUCCESS' || data.paid === true,
-        message: data.message || 'Status pembayaran diperbarui.'
+        status: isPaid ? 'PAID' : (data.status || 'PENDING'),
+        paid: isPaid,
+        message: isPaid ? 'Pembayaran LUNAS!' : (data.message || 'Menunggu pembayaran.')
       };
     }
   } catch (err: any) {
     console.warn('[ArabPay Check Status Warning]:', err.message);
   }
 
-  return { success: true, status: 'PAID', paid: true };
+  return { success: false, status: 'PENDING', paid: false, message: 'Menunggu pembayaran.' };
 }
 
 /**
@@ -467,29 +478,23 @@ export async function requestArabPayTopup(params: {
   amount: number;
   channel?: string; // default: 'qris'
 }) {
-  let arabpayBaseUrl = process.env.ARABPAY_SERVICE_URL || process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id';
-  try {
-    const { pool } = await import('../config/db.js');
-    if (pool) {
-      const dbCreds = await pool.query(
-        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_service_url', 'arabpay_panel_url')"
-      );
-      for (const row of dbCreds.rows) {
-        if (row.key === 'arabpay_service_url' || (row.key === 'arabpay_panel_url' && !arabpayBaseUrl)) {
-          arabpayBaseUrl = row.value;
-        }
-      }
-    }
-  } catch (e) {}
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+
+  const cleanPhone = (params.phoneNumber || '').replace(/[^0-9]/g, '');
+  const cleanUserId = (params.userId && !params.userId.startsWith('00000000') && !params.userId.startsWith('AP-'))
+    ? params.userId
+    : '';
 
   const bodyObj = {
-    phone_number: params.phoneNumber || '',
-    user_id: params.userId || '',
+    phone_number: cleanPhone,
+    user_id: cleanUserId,
     amount: params.amount,
-    payment_channel: params.channel || 'qris'
+    payment_channel: params.channel || 'qris',
+    channel: params.channel || 'qris'
   };
   const bodyStr = JSON.stringify(bodyObj);
-  const headers = generateArabPayHeaders(bodyStr);
+  const headers = generateArabPayHeaders(bodyStr, clientSecret, clientId);
 
   try {
     const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/topup`, {
@@ -500,14 +505,18 @@ export async function requestArabPayTopup(params: {
 
     if (res.ok) {
       const data = await res.json();
+      const qrStr = data.qr_string || '';
+      const qrImg = data.qr_image || data.qr_url || (qrStr ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrStr)}` : null);
+
       return {
         success: true,
         reference_id: data.reference_id,
         amount: data.amount,
         base_amount: data.base_amount || params.amount,
         unique_code: data.unique_code || 0,
-        qr_string: data.qr_string,
-        qr_image: data.qr_image,
+        qr_string: qrStr,
+        qr_image: qrImg,
+        qr_url: qrImg,
         payment_url: data.payment_url,
         va_number: data.va_number || null,
         bank_name: data.bank_name || null,
@@ -536,22 +545,9 @@ export async function requestArabPayTopup(params: {
  * Check Realtime S2S Status of Topup Order
  */
 export async function checkArabPayTopupStatus(referenceId: string) {
-  let arabpayBaseUrl = process.env.ARABPAY_SERVICE_URL || process.env.ARABPAY_PANEL_URL || 'https://arabpay.my.id';
-  try {
-    const { pool } = await import('../config/db.js');
-    if (pool) {
-      const dbCreds = await pool.query(
-        "SELECT key, value FROM system_settings WHERE key IN ('arabpay_service_url', 'arabpay_panel_url')"
-      );
-      for (const row of dbCreds.rows) {
-        if (row.key === 'arabpay_service_url' || (row.key === 'arabpay_panel_url' && !arabpayBaseUrl)) {
-          arabpayBaseUrl = row.value;
-        }
-      }
-    }
-  } catch (e) {}
-
-  const headers = generateArabPayHeaders('');
+  const { clientId, clientSecret, panelUrl } = await getArabPayCredentials();
+  const arabpayBaseUrl = panelUrl || 'https://arabpay.my.id';
+  const headers = generateArabPayHeaders('', clientSecret, clientId);
 
   try {
     const res = await fetch(`${arabpayBaseUrl}/api/v1/wallet/topup/status?reference_id=${encodeURIComponent(referenceId)}`, {

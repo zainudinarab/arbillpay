@@ -25,7 +25,7 @@ export default function LoginModal({ onLoginSuccess, onClose, initialMode }: Log
 
   const handleArabPayLogin = () => {
     setIsLoading(true);
-    const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
+    const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP32858345';
     const redirectUri = encodeURIComponent(window.location.origin + '/#/oauth/callback');
     const authUrl = `https://arabpay.my.id/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&app_name=Arbillpay`;
     

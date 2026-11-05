@@ -270,6 +270,7 @@ export default function CustomerPortal({
   const [guestPhone, setGuestPhone] = useState('');
   const [guestName, setGuestName] = useState('');
   const [expandedQrVoucherId, setExpandedQrVoucherId] = useState<string | null>(null);
+  const [isVerifyingDirectPayment, setIsVerifyingDirectPayment] = useState(false);
 
   // Status Check State for History
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
@@ -968,8 +969,8 @@ export default function CustomerPortal({
   const fetchCheckoutInit = async (userIdOverride?: string) => {
     try {
       setIsLoadingChannels(true);
-      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'dOAZFeFW$bC0xHgj7t$UfrzXmMAzebAu';
+      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP32858345';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || '8k3PefbButr11MjKFO18YMyOaz14CkD9';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
       const targetUserId = userIdOverride || currentUser?.phone || currentUser?.phone_number || currentUser?.user_id || currentUser?.id || currentUser?.username || '';
 
@@ -1397,108 +1398,146 @@ export default function CustomerPortal({
         return;
       }
 
-      const realCheckoutId = checkoutData.id || checkoutData.checkout_id || `chk_${Date.now()}`;
+      const realCheckoutId = checkoutData.id || checkoutData.checkout_id || invoiceCode;
       setCheckoutId(realCheckoutId);
 
       if (paymentMethod === 'direct') {
-        // Direct payment flow — langsung beli voucher
-        handleCreateDirectCheckout();
+        // PERBAIKAN: Direct payment (QRIS / VA) -> Tampilkan kode bayar / QRIS, TUNGGU SAMPAI LUNAS
+        const qrUrl = checkoutData.qr_image || checkoutData.qr_url || (checkoutData.qr_string ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(checkoutData.qr_string)}` : null);
+        const vaNum = checkoutData.va_number || null;
+
+        setDirectCheckoutInfo({
+          checkoutId: realCheckoutId,
+          referenceId: invoiceCode,
+          amount: checkoutData.amount || price,
+          qrUrl: qrUrl,
+          qrString: checkoutData.qr_string || '',
+          vaNumber: vaNum,
+          channelName: selectedChannel?.name || 'QRIS Instant',
+          packageName: selectedPackage?.package_name || selectedPackage?.name || (selectedPackage?.is_invoice ? 'Tagihan Internet' : 'Voucher WiFi'),
+          buyerName: buyerName,
+          buyerPhone: buyerPhone
+        });
+
+        setPaymentStep('pending_payment');
       } else {
         // Balance payment — lanjut ke PIN step
         setPaymentStep('pin');
       }
     } catch (err: any) {
-      console.warn('Checkout creation failed, using local fallback:', err.message);
-      // Fallback: tetap lanjut (local mode)
-      setCheckoutId(`chk_local_${Date.now()}`);
-      if (paymentMethod === 'direct') {
-        handleCreateDirectCheckout();
-      } else {
-        setPaymentStep('pin');
-      }
+      console.warn('Checkout creation failed:', err.message);
+      setPinError('Gagal membuat pesanan pembayaran: ' + (err?.message || 'Koneksi gateway error'));
+      setPaymentStep('confirm');
     }
   };
 
-  // Create Direct Payment Checkout (QRIS / VA)
-  const handleCreateDirectCheckout = async () => {
-    setPaymentStep('processing');
-    const invoiceCode = 'VCH-' + Date.now().toString(36).toUpperCase();
-    const price = Number(selectedPackage.price || 0);
-
-    if (selectedPackage?.is_invoice) {
-      try {
-        const payRes = await fetch(`${apiUrl}/api/invoices/${selectedPackage.invoice_id}/pay`, {
+  // Helper untuk menyelesaikan pesanan & menerbitkan voucher HANYA jika pembayaran sudah LUNAS di ArabPay
+  const fulfillPaymentAndIssueVoucher = async (info: any) => {
+    if (!info) return false;
+    try {
+      // 1. Jika ini pembayaran Tagihan Layanan Bulanan / Invoice:
+      if (selectedPackage?.is_invoice) {
+        const targetInvId = selectedPackage.invoice_id || selectedPackage.invoice_number;
+        const payRes = await fetch(`${apiUrl}/api/invoices/${encodeURIComponent(targetInvId)}/pay`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payment_method: 'Transfer / QRIS Direct' })
+          body: JSON.stringify({
+            payment_method: 'ArabPay QRIS Direct',
+            reference_id: info.referenceId || info.checkoutId
+          })
         });
-        const payData = await payRes.json();
-        if (payData.success) {
+        const payData = await payRes.json().catch(() => null);
+        if (payData && payData.success) {
           setPaymentStep('success');
           fetchLiveMemberRegistrationsStatus();
           fetchCustomerProfile();
-        } else {
-          setPinError(payData.message || 'Gagal melunasi tagihan.');
-          setPaymentStep('error');
+          fetchPortalConfig();
+          return true;
         }
-      } catch (err: any) {
-        setPinError(err?.message || 'Gagal terhubung ke gateway.');
-        setPaymentStep('error');
-      }
-      return;
-    }
-
-    try {
-      const buyerPhone = currentUser?.phone_number || guestPhone || '081234567890';
-      const buyerName = currentUser?.name || guestName || `Pelanggan WiFi (${buyerPhone.slice(-4)})`;
-
-      const buyRes = await fetch(`${apiUrl}/api/vouchers/buy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile_id: selectedPackage.profile_id || selectedPackage.id,
-          mode: selectedPackage.mode || 'auto',
-          buyer_name: buyerName,
-          buyer_phone: buyerPhone,
-          arabpay_user_id: currentUser?.id || null,
-          payment_method: selectedChannel ? `ArabPay ${selectedChannel.name || 'QRIS'}` : 'ArabPay QRIS Transfer',
-          amount: price,
-          is_flash_sale: Boolean(selectedPackage.is_flash_sale),
-          flash_sale_id: selectedPackage.flash_sale_id
-        })
-      });
-
-      const buyData = await buyRes.json();
-      if (buyData.success) {
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(buyData.invoice_number)}`;
-        setDirectCheckoutInfo({
-          referenceId: invoiceCode,
-          payCode: buyData.invoice_number,
-          qrUrl: qrUrl,
-          amount: price,
-          packageName: selectedPackage.package_name || selectedPackage.name
-        });
-
-        setVoucherResult({
-          code: buyData.voucher.code,
-          password: buyData.voucher.password,
-          invoice: buyData.invoice_number,
-          hotspot_ip: buyData.voucher.hotspot_ip || selectedPackage?.hotspot_ip || '10.0.0.1',
-          dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'ar.net'
-        });
-        setPaymentStep('success');
-        fetchPortalConfig();
-        fetchAvailableVouchers();
-        fetchMyPurchasedVouchers();
       } else {
-        setPinError(buyData.message || 'Gagal membuat transaksi.');
-        setPaymentStep('error');
+        // 2. Jika ini pembelian Voucher Hotspot:
+        const buyRes = await fetch(`${apiUrl}/api/vouchers/buy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile_id: selectedPackage.profile_id || selectedPackage.id,
+            mode: selectedPackage.mode || 'auto',
+            buyer_name: info.buyerName,
+            buyer_phone: info.buyerPhone,
+            arabpay_user_id: currentUser?.arabpay_user_id || currentUser?.id || null,
+            payment_method: info.channelName ? `ArabPay ${info.channelName}` : 'ArabPay QRIS Direct',
+            amount: info.amount,
+            skip_arabpay_deduction: true,
+            is_flash_sale: Boolean(selectedPackage.is_flash_sale),
+            flash_sale_id: selectedPackage.flash_sale_id
+          })
+        });
+        const buyData = await buyRes.json().catch(() => null);
+        if (buyData && buyData.success && buyData.voucher) {
+          const vRes = {
+            code: buyData.voucher.code,
+            password: buyData.voucher.password || buyData.voucher.code,
+            invoice: buyData.invoice_number || info.referenceId,
+            hotspot_ip: buyData.voucher.hotspot_ip || selectedPackage?.hotspot_ip || '10.0.0.1',
+            dns_name: buyData.voucher.dns_name || selectedPackage?.dns_name || 'ar.net'
+          };
+          setVoucherResult(vRes);
+
+          // Simpan ke riwayat voucher lokal agar aman di perangkat pelanggan
+          try {
+            const currentList = JSON.parse(localStorage.getItem('arbill_purchased_vouchers') || '[]');
+            const newItem = {
+              id: buyData.voucher.id || `vch-${Date.now()}`,
+              code: vRes.code,
+              password: vRes.password,
+              package_name: selectedPackage.package_name || selectedPackage.name,
+              amount: info.amount,
+              invoice_number: vRes.invoice,
+              created_at: new Date().toISOString()
+            };
+            localStorage.setItem('arbill_purchased_vouchers', JSON.stringify([newItem, ...currentList]));
+            setLocalPurchasedVouchers([newItem, ...currentList]);
+          } catch (_) {}
+
+          setPaymentStep('success');
+          fetchPortalConfig();
+          fetchAvailableVouchers();
+          fetchMyPurchasedVouchers();
+          return true;
+        }
       }
     } catch (err: any) {
-      setPinError(err?.message || 'Gagal terhubung ke gateway.');
-      setPaymentStep('error');
+      console.warn('Error fulfilling voucher after payment:', err);
+    }
+    return false;
+  };
+
+  // Cek Status Pembayaran Direct Manual (Tombol Cek Status)
+  const handleCheckDirectCheckoutManual = async () => {
+    if (!directCheckoutInfo?.checkoutId) return;
+    setIsVerifyingDirectPayment(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/invoices/status/${encodeURIComponent(directCheckoutInfo.checkoutId)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const isPaid = data.paid || data.status === 'PAID' || data.status === 'SUCCESS' || String(data.status).toLowerCase() === 'paid';
+        if (isPaid) {
+          await fulfillPaymentAndIssueVoucher(directCheckoutInfo);
+          return;
+        } else {
+          alert('Pembayaran belum terdeteksi oleh gateway ArabPay. Mohon selesaikan transfer / scan QRIS Anda terlebih dahulu.');
+        }
+      } else {
+        alert('Gagal menghubungi gateway pembayaran ArabPay.');
+      }
+    } catch (err: any) {
+      alert('Koneksi gagal: ' + err.message);
+    } finally {
+      setIsVerifyingDirectPayment(false);
     }
   };
+
+  const handleCreateDirectCheckout = handleProceedPayment;
 
   // Submit 6-digit ArabPay PIN (persis arbiljs onPayWithPin)
   const handleSubmitPinPayment = async (e?: React.FormEvent) => {
@@ -1525,8 +1564,8 @@ export default function CustomerPortal({
     }
 
     try {
-      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP24228873';
-      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || 'nXvEhiJHpSUDyDOF3r88xDwonYf6JAdR';
+      const clientId = (import.meta as any).env?.VITE_ARABPAY_CLIENT_ID || 'AP32858345';
+      const clientSecret = (import.meta as any).env?.VITE_ARABPAY_CLIENT_SECRET || '8k3PefbButr11MjKFO18YMyOaz14CkD9';
       const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
       const refCode = (selectedPackage?.is_invoice ? 'INV-' : 'VCH-') + Date.now().toString(36).toUpperCase();
 
@@ -1823,8 +1862,10 @@ export default function CustomerPortal({
     setIsTopupLoading(true);
     setTopupError('');
     try {
-      const phone = currentUser?.phone_number || currentUser?.username || '';
-      const uId = currentUser?.arabpay_user_id || currentUser?.id || '';
+      const rawPhone = (currentUser?.phone_number || '').replace(/\D/g, '');
+      const phone = rawPhone || (currentUser?.username?.replace(/\D/g, '') || '');
+      const rawUId = currentUser?.arabpay_user_id || currentUser?.id || '';
+      const uId = (!rawUId.startsWith('00000000') && !rawUId.startsWith('AP-')) ? rawUId : '';
       const channelFee = calculateChannelFee(selectedChannel, topupAmount);
       const totalAmount = Number(topupAmount) + channelFee;
 
@@ -1856,6 +1897,29 @@ export default function CustomerPortal({
       setIsTopupLoading(false);
     }
   };
+
+  // Auto-polling for pending direct payment (QRIS / VA)
+  useEffect(() => {
+    if (!showPaymentModal || paymentStep !== 'pending_payment' || !directCheckoutInfo?.checkoutId) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiUrl}/api/invoices/status/${encodeURIComponent(directCheckoutInfo.checkoutId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const isPaid = data.paid || data.status === 'PAID' || data.status === 'SUCCESS' || String(data.status).toLowerCase() === 'paid';
+          if (isPaid) {
+            clearInterval(interval);
+            await fulfillPaymentAndIssueVoucher(directCheckoutInfo);
+          }
+        }
+      } catch (_) {}
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [showPaymentModal, paymentStep, directCheckoutInfo]);
 
   // Top Up Status Polling Effect
   useEffect(() => {
@@ -5075,6 +5139,101 @@ export default function CustomerPortal({
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* STEP 2.5: PENDING PAYMENT (QRIS / VA DIRECT GATEWAY) */}
+            {paymentStep === 'pending_payment' && directCheckoutInfo && (
+              <div className="p-6 space-y-5 animate-fade-in text-center">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <h4 className="font-extrabold text-base text-slate-100 flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-emerald-400" /> Selesaikan Pembayaran
+                  </h4>
+                  <button
+                    onClick={handleClosePaymentModal}
+                    className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Package & Total Amount Box */}
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-center">
+                  <span className="text-xs text-slate-400 font-medium block">
+                    {directCheckoutInfo.packageName}
+                  </span>
+                  <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 mt-1">
+                    {formatRupiah(directCheckoutInfo.amount)}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono mt-1 block">
+                    Ref: {directCheckoutInfo.referenceId || directCheckoutInfo.checkoutId}
+                  </span>
+                </div>
+
+                {/* QRIS Display */}
+                {directCheckoutInfo.qrUrl && (
+                  <div className="bg-white p-4 rounded-2xl flex flex-col items-center justify-center shadow-lg mx-auto max-w-[260px]">
+                    <img
+                      src={directCheckoutInfo.qrUrl}
+                      alt="QRIS Pembayaran"
+                      className="w-52 h-52 object-contain"
+                    />
+                    <div className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold mt-2">
+                      <QrCode className="w-3.5 h-3.5 text-slate-700 shrink-0" />
+                      <span>Scan via GoPay, BCA, Dana, OVO, Bank Apapun</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Virtual Account Display */}
+                {directCheckoutInfo.vaNumber && (
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 text-center">
+                    <span className="text-xs text-slate-400 font-medium block">
+                      Nomor Virtual Account ({directCheckoutInfo.channelName})
+                    </span>
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="font-mono text-xl font-black text-indigo-300 tracking-wider">
+                        {directCheckoutInfo.vaNumber}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(directCheckoutInfo.vaNumber);
+                          alert('Nomor VA berhasil disalin!');
+                        }}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Salin
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Animated status notice */}
+                <div className="flex items-center justify-center gap-2 py-2.5 px-3 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl text-xs font-semibold">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                  <span>Menunggu konfirmasi pembayaran sistem...</span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleClosePaymentModal}
+                    className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCheckDirectCheckoutManual}
+                    disabled={isVerifyingDirectPayment}
+                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isVerifyingDirectPayment ? 'animate-spin' : ''}`} />
+                    <span>{isVerifyingDirectPayment ? 'Mengecek...' : 'Cek Status Sekarang'}</span>
+                  </button>
+                </div>
+              </div>
             )}
 
             {/* STEP 3: PROCESSING */}

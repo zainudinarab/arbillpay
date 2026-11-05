@@ -140,8 +140,10 @@ export default function DashboardOverview({
     setTopupError('');
     try {
       const apiUrl = getApiUrl();
-      const phone = currentUser?.phone_number || '';
-      const uId = displayOwnerId;
+      const phone = (currentUser?.phone_number || '').replace(/[^0-9]/g, '');
+      const uId = (!currentUser?.arabpay_user_id?.startsWith('00000000') && currentUser?.arabpay_user_id && !currentUser.arabpay_user_id.startsWith('AP-'))
+        ? currentUser.arabpay_user_id
+        : '';
       const res = await fetch(`${apiUrl}/api/portal/topup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,12 +159,35 @@ export default function DashboardOverview({
         setTopupData(data);
         setTopupStep('qris');
       } else {
-        setTopupError(data?.error || 'Gagal memproses QRIS top up. Coba lagi.');
+        setTopupError(data?.error || data?.message || 'Gagal memproses QRIS top up. Coba lagi.');
       }
     } catch (err: any) {
       setTopupError('Gagal terhubung ke gateway ArabPay: ' + err.message);
     } finally {
       setTopupLoading(false);
+    }
+  };
+
+  const [checkingTopup, setCheckingTopup] = useState(false);
+
+  const handleCheckDashboardTopupManual = async () => {
+    if (!topupData?.reference_id) return;
+    setCheckingTopup(true);
+    setTopupError('');
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/portal/topup-status?reference_id=${encodeURIComponent(topupData.reference_id)}`);
+      const data = await res.json();
+      if (data && (data.is_paid || String(data.status).toLowerCase() === 'paid' || String(data.status).toLowerCase() === 'success')) {
+        setTopupStep('success');
+        refreshLiveBalance();
+      } else {
+        setTopupError('Pembayaran belum terdeteksi. Silakan selesaikan scan & bayar QRIS terlebih dahulu.');
+      }
+    } catch (e: any) {
+      setTopupError('Gagal cek status: ' + e.message);
+    } finally {
+      setCheckingTopup(false);
     }
   };
 
@@ -175,7 +200,7 @@ export default function DashboardOverview({
       try {
         const res = await fetch(`${apiUrl}/api/portal/topup-status?reference_id=${encodeURIComponent(refId)}`);
         const data = await res.json();
-        if (data && data.success && (data.status === 'paid' || data.status === 'success')) {
+        if (data && (data.is_paid || String(data.status).toLowerCase() === 'paid' || String(data.status).toLowerCase() === 'success')) {
           setTopupStep('success');
           refreshLiveBalance();
           clearInterval(interval);
@@ -884,6 +909,20 @@ export default function DashboardOverview({
                     <RefreshCw size={13} className="animate-spin text-amber-400" />
                     <span>Menunggu konfirmasi pembayaran otomatis...</span>
                   </div>
+
+                  {topupError && (
+                    <p className="text-xs text-rose-400 font-semibold">{topupError}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={checkingTopup}
+                    onClick={handleCheckDashboardTopupManual}
+                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={checkingTopup ? 'animate-spin' : ''} />
+                    <span>{checkingTopup ? 'Mengecek...' : 'Sudah Bayar? Cek Status Sekarang'}</span>
+                  </button>
                 </div>
               )}
 
