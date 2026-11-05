@@ -520,11 +520,19 @@ export default function CustomerPortal({
         eventSource.addEventListener('balance_update', (e: any) => {
           try {
             const data = JSON.parse(e.data);
-            if (data && data.balance !== undefined && data.balance !== null) {
-              onLoginSuccess({
-                ...currentUser,
-                arabpay_balance: Number(data.balance)
-              });
+            if (data && (data.balance !== undefined || data.arabpay_balance !== undefined)) {
+              const newBal = Number(data.balance ?? data.arabpay_balance);
+              if (currentUser && currentUser.arabpay_balance !== newBal) {
+                console.log('🎉 [ARABPAY SSE BROADCAST] Live balance update received from ArabPay:', newBal);
+                onLoginSuccess({
+                  ...currentUser,
+                  arabpay_balance: newBal
+                });
+                try {
+                  localStorage.setItem('arbil_current_user', JSON.stringify({ ...currentUser, arabpay_balance: newBal }));
+                  window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: newBal }));
+                } catch (e) {}
+              }
             }
           } catch (err) { }
         });
@@ -861,62 +869,6 @@ export default function CustomerPortal({
     }
   };
 
-  // Real-time SSE Live Balance Listener from ArabPay Broadcast Server (wallet-service SSE)
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const userId = currentUser.arabpay_user_id || currentUser.id;
-    if (!userId) return;
-
-    // Exact Stream SSE Endpoint from wallet-service (router.go line 46: GET /api/v1/wallet/stream)
-    const sseUrl = `https://arabpay.my.id/api/v1/wallet/stream?user_id=${encodeURIComponent(userId)}`;
-    console.log('⚡ [ARABPAY SSE BROADCAST] Connecting to live balance stream:', sseUrl);
-
-    let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource(sseUrl);
-
-      eventSource.addEventListener('balance_update', (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && (data.balance !== undefined || data.arabpay_balance !== undefined)) {
-            const newBal = Number(data.balance ?? data.arabpay_balance);
-            console.log('🎉 [ARABPAY SSE BROADCAST] Live balance update received from ArabPay:', newBal);
-            const updated = {
-              ...currentUser,
-              arabpay_balance: newBal
-            };
-            onLoginSuccess(updated);
-            try {
-              localStorage.setItem('arbil_current_user', JSON.stringify(updated));
-              window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: newBal }));
-            } catch (e) {}
-          }
-        } catch (e) {
-          console.warn('Error parsing SSE balance_update payload:', e);
-        }
-      });
-
-      eventSource.onopen = () => {
-        console.log('✅ [ARABPAY SSE BROADCAST] Connected to live SSE stream! Syncing live balance...');
-        fetchLiveArabPayBalance();
-      };
-
-      eventSource.onerror = (err) => {
-        console.warn('⚠️ [ARABPAY SSE BROADCAST] SSE stream notice:', err);
-      };
-    } catch (err) {
-      console.warn('Failed to initialize EventSource for ArabPay SSE:', err);
-    }
-
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-        console.log('🔌 [ARABPAY SSE BROADCAST] Closed SSE stream connection.');
-      }
-    };
-  }, [currentUser?.id, currentUser?.arabpay_user_id]);
-
   // Fetch LIVE balance directly via Arbill Backend S2S Proxy
   const fetchLiveArabPayBalance = async () => {
     if (!currentUser) return;
@@ -947,16 +899,18 @@ export default function CustomerPortal({
       } catch (proxyErr) {}
 
       if (fetchedBalance !== null && !isNaN(fetchedBalance)) {
-        console.log('✅ [ARABPAY LIVE BALANCE] Successfully updated balance from backend proxy:', fetchedBalance);
-        const updated = {
-          ...currentUser,
-          arabpay_balance: fetchedBalance
-        };
-        onLoginSuccess(updated);
-        try {
-          localStorage.setItem('arbil_current_user', JSON.stringify(updated));
-          window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: fetchedBalance }));
-        } catch (e) {}
+        if (!currentUser || currentUser.arabpay_balance !== fetchedBalance) {
+          console.log('✅ [ARABPAY LIVE BALANCE] Successfully updated balance from backend proxy:', fetchedBalance);
+          const updated = {
+            ...currentUser,
+            arabpay_balance: fetchedBalance
+          };
+          onLoginSuccess(updated);
+          try {
+            localStorage.setItem('arbil_current_user', JSON.stringify(updated));
+            window.dispatchEvent(new CustomEvent('arabpay_balance_update', { detail: fetchedBalance }));
+          } catch (e) {}
+        }
       }
     } catch (err) {
       console.warn('Failed to fetch live ArabPay balance:', err);
