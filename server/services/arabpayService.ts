@@ -758,13 +758,13 @@ export async function cancelArabPayPaymentOrder(idOrRef: string) {
     await arabClient.connect();
 
     const orderRes = await arabClient.query(
-      "UPDATE payment_requests SET status = 'failed', updated_at = NOW() WHERE (id = $1 OR reference_id = $1) RETURNING checkout_id",
+      "UPDATE payment_requests SET status = 'cancelled', updated_at = NOW() WHERE (id = $1 OR reference_id = $1) RETURNING checkout_id",
       [idOrRef]
     );
 
     if (orderRes.rows.length > 0 && orderRes.rows[0].checkout_id) {
       await arabClient.query(
-        "UPDATE checkouts SET status = 'failed', updated_at = NOW() WHERE id = $1",
+        "UPDATE checkouts SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
         [orderRes.rows[0].checkout_id]
       );
     }
